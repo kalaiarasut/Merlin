@@ -1,0 +1,590 @@
+import { Router, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
+import { authenticate, AuthRequest } from '../middleware/auth';
+import { IngestionJob } from '../models/IngestionJob';
+import { Species } from '../models/Species';
+import logger from '../utils/logger';
+import notificationService from '../utils/notificationService';
+
+const router = Router();
+
+// Store uploads outside the repo so dev hot-reload isn't triggered
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(os.tmpdir(), 'cmlre-uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+
+const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
+
+router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, res: Response, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const job = await IngestionJob.create({
+      filename: req.file.originalname,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size,
+      dataType: req.body.dataType,
+      status: 'pending',
+      progress: 0,
+      userId: req.user.id,
+    });
+
+    // Process file asynchronously
+    processFile(req.file.path, req.body.dataType, job._id.toString(), req.user.id).catch((error) => {
+      logger.error('File processing error:', error);
+    });
+    
+    res.json({ message: 'File uploaded successfully', jobId: job._id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/jobs', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const jobs = await IngestionJob.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json(jobs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Process uploaded file
+async function processFile(filePath: string, dataType: string, jobId: string, userId: string) {
+  try {
+    logger.info(`🔄 Starting file processing: ${filePath}, type: ${dataType}`);
+    await IngestionJob.findByIdAndUpdate(jobId, { status: 'processing', progress: 10 });
+    
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    let data: any[];
+    let recordsProcessedCount = 0;
+
+    // Parse file based on type
+    if (filePath.endsWith('.json')) {
+      data = JSON.parse(fileContent);
+      if (!Array.isArray(data)) {
+        data = [data];
+      }
+    } else if (filePath.endsWith('.csv')) {
+      // Simple CSV parsing (for production use a proper CSV library)
+      const lines = fileContent.split('\n').filter(line => line.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+      data = lines.slice(1).map(line => {
+        const values = line.split(',');
+        const obj: any = {};
+        headers.forEach((header, i) => {
+          obj[header] = values[i]?.trim();
+        });
+        return obj;
+      });
+    } else {
+      throw new Error('Unsupported file format');
+    }
+
+    logger.info(`📊 Parsed ${data.length} records from file`);
+    recordsProcessedCount = data.length;
+    await IngestionJob.findByIdAndUpdate(jobId, { progress: 30, recordsTotal: data.length });
+
+    // Insert data based on dataType
+    if (dataType === 'species' || dataType === 'Species') {
+      logger.info('🐟 Processing species data...');
+      let processed = 0;
+      let created = 0;
+      let updated = 0;
+      let failed = 0;
+
+      for (const record of data) {
+        try {
+          if (!record.scientificName) {
+            logger.warn('Skipping record without scientificName:', record);
+            failed++;
+            continue;
+          }
+
+          const speciesData = {
+            scientificName: record.scientificName,
+            commonName: record.commonName || record.common_name,
+            taxonomicRank: record.taxonomicRank || record.taxonomic_rank || 'species',
+            kingdom: record.kingdom || 'Animalia',
+            phylum: record.phylum || 'Chordata',
+            class: record.class || 'Actinopterygii',
+            order: record.order || 'Unknown',
+            family: record.family || 'Unknown',
+            genus: record.genus || record.scientificName?.split(' ')[0] || 'Unknown',
+            habitat: record.habitat,
+            conservationStatus: record.conservationStatus || record.conservation_status,
+            distribution: record.distribution ? (Array.isArray(record.distribution) ? record.distribution : [record.distribution]) : [],
+          };
+
+          const result = await Species.updateOne(
+            { scientificName: record.scientificName },
+            { $set: speciesData },
+            { upsert: true }
+          );
+
+          processed++;
+          if (result.upsertedCount && result.upsertedCount > 0) {
+            created += result.upsertedCount;
+          } else if (result.modifiedCount && result.modifiedCount > 0) {
+            updated += result.modifiedCount;
+          }
+          
+          if (processed % 10 === 0 || processed === data.length) {
+            logger.info(`  ✓ Processed ${processed}/${data.length} records (created: ${created}, updated: ${updated})`);
+          }
+
+          await IngestionJob.findByIdAndUpdate(jobId, { 
+            progress: 30 + Math.floor((processed / data.length) * 60),
+            recordsProcessed: processed,
+            metadata: { created, updated }
+          });
+        } catch (err: any) {
+          logger.warn(`Failed to insert species record: ${err.message}`);
+          failed++;
+        }
+      }
+
+      logger.info(`✅ Species import complete: processed ${processed}, created ${created}, updated ${updated}, failed ${failed}`);
+      recordsProcessedCount = processed;
+    } else if (dataType === 'oceanography' || dataType === 'Oceanography') {
+      logger.info('🌊 Processing oceanography data...');
+      const { getSequelize } = await import('../config/database');
+      const sequelize = getSequelize();
+      
+      let processed = 0;
+      let created = 0;
+      let failed = 0;
+
+      for (const record of data) {
+        try {
+          // Extract fields - handle various field name formats
+          const parameter = record.parameter || record.Parameter;
+          const value = parseFloat(record.value || record.Value || 0);
+          const unit = record.unit || record.Unit || '';
+          const latitude = parseFloat(record.latitude || record.Latitude || record.lat || 0);
+          const longitude = parseFloat(record.longitude || record.Longitude || record.lon || record.lng || 0);
+          const depth = parseFloat(record.depth || record.Depth || 0);
+          const timestamp = record.timestamp || record.Timestamp || record.date || record.Date || new Date().toISOString();
+          const source = record.source || record.Source || 'Upload';
+          const qualityFlag = record.quality_flag || record.quality || record.Quality || 'unknown';
+          const metadata = record.metadata || { region: record.region, id: record.id };
+
+          if (!parameter) {
+            logger.warn('Skipping record without parameter:', record);
+            failed++;
+            continue;
+          }
+
+          // Insert into PostgreSQL with PostGIS
+          await sequelize.query(`
+            INSERT INTO oceanographic_data 
+            (parameter, value, unit, location, depth, timestamp, source, quality_flag, metadata)
+            VALUES 
+            ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6, $7, $8, $9, $10)
+          `, {
+            bind: [
+              parameter,
+              value,
+              unit,
+              longitude,
+              latitude,
+              depth,
+              new Date(timestamp),
+              source,
+              qualityFlag,
+              JSON.stringify(metadata)
+            ]
+          });
+
+          processed++;
+          created++;
+          
+          if (processed % 50 === 0 || processed === data.length) {
+            logger.info(`  ✓ Processed ${processed}/${data.length} oceanography records`);
+          }
+
+          await IngestionJob.findByIdAndUpdate(jobId, { 
+            progress: 30 + Math.floor((processed / data.length) * 60),
+            recordsProcessed: processed,
+            metadata: { created }
+          });
+        } catch (err: any) {
+          logger.warn(`Failed to insert oceanography record: ${err.message}`);
+          failed++;
+        }
+      }
+
+      logger.info(`✅ Oceanography import complete: processed ${processed}, created ${created}, failed ${failed}`);
+      recordsProcessedCount = processed;
+    } else if (dataType === 'edna' || dataType === 'eDNA' || dataType === 'Edna') {
+      logger.info('🧬 Processing eDNA data...');
+      
+      // Import the EdnaSample model from edna routes or create it here
+      const mongoose = await import('mongoose');
+      const ednaSchema = new mongoose.Schema({
+        id: { type: String, unique: true },
+        sequence: String,
+        length: Number,
+        detected_species: String,
+        confidence: Number,
+        method: String,
+        latitude: Number,
+        longitude: Number,
+        sampleDate: Date,
+        depth: Number,
+        reads: Number,
+        region: String,
+        metadata: mongoose.Schema.Types.Mixed,
+        createdAt: { type: Date, default: Date.now },
+        updatedAt: { type: Date, default: Date.now }
+      });
+      const EdnaSample = mongoose.models.EdnaSample || mongoose.model('EdnaSample', ednaSchema);
+
+      let processed = 0;
+      let created = 0;
+      let updated = 0;
+      let failed = 0;
+
+      for (const record of data) {
+        try {
+          // Generate ID if not provided
+          const recordId = record.id || record.ID || record.sample_id || `EDNA_${Date.now()}_${processed}`;
+          
+          const ednaData = {
+            id: recordId,
+            sequence: record.sequence || record.Sequence || '',
+            length: parseInt(record.length || record.Length || record.sequence?.length || 0),
+            detected_species: record.detected_species || record.species || record.Species || record.taxon || 'Unknown',
+            confidence: parseFloat(record.confidence || record.Confidence || record.probability || 0),
+            method: record.method || record.Method || record.analysis_method || 'Unknown',
+            latitude: parseFloat(record.latitude || record.Latitude || record.lat || 0),
+            longitude: parseFloat(record.longitude || record.Longitude || record.lon || record.lng || 0),
+            sampleDate: record.sampleDate || record.sample_date || record.date || record.Date || new Date(),
+            depth: parseFloat(record.depth || record.Depth || 0),
+            reads: parseInt(record.reads || record.Reads || record.read_count || 0),
+            region: record.region || record.Region || record.location || 'Unknown',
+            metadata: record.metadata || {
+              primer: record.primer,
+              barcode: record.barcode,
+              marker: record.marker,
+              gene: record.gene
+            },
+            updatedAt: new Date()
+          };
+
+          const result = await EdnaSample.updateOne(
+            { id: recordId },
+            { $set: ednaData },
+            { upsert: true }
+          );
+
+          processed++;
+          if (result.upsertedCount && result.upsertedCount > 0) {
+            created++;
+          } else if (result.modifiedCount && result.modifiedCount > 0) {
+            updated++;
+          }
+
+          if (processed % 10 === 0 || processed === data.length) {
+            logger.info(`  ✓ Processed ${processed}/${data.length} eDNA records (created: ${created}, updated: ${updated})`);
+          }
+
+          await IngestionJob.findByIdAndUpdate(jobId, {
+            progress: 30 + Math.floor((processed / data.length) * 60),
+            recordsProcessed: processed,
+            metadata: { created, updated }
+          });
+        } catch (err: any) {
+          logger.warn(`Failed to insert eDNA record: ${err.message}`);
+          failed++;
+        }
+      }
+
+      logger.info(`✅ eDNA import complete: processed ${processed}, created ${created}, updated ${updated}, failed ${failed}`);
+      recordsProcessedCount = processed;
+    } else {
+      // For other data types, just mark as complete for now
+      logger.info(`📦 Processing ${dataType} data (basic handling)...`);
+      recordsProcessedCount = data.length;
+      logger.info(`✅ ${dataType} import complete: ${data.length} records`);
+    }
+
+    await IngestionJob.findByIdAndUpdate(jobId, { 
+      status: 'completed', 
+      progress: 100,
+      recordsProcessed: recordsProcessedCount 
+    });
+
+    // Send notification to user
+    await notificationService.notifyIngestionComplete(userId, dataType, recordsProcessedCount, jobId);
+
+    logger.info(`✅ Job ${jobId} completed`);
+
+    // Clean up uploaded file
+    try {
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      logger.warn('Failed to clean up file:', err);
+    }
+  } catch (error: any) {
+    logger.error(`❌ Processing error for job ${jobId}:`, error);
+    await IngestionJob.findByIdAndUpdate(jobId, { 
+      status: 'failed', 
+      errorMessages: [error.message] 
+    }).catch(err => logger.error('Failed to update job status:', err));
+    
+    // Send failure notification to user
+    await notificationService.notifyIngestionFailed(userId, dataType, error.message, jobId);
+  }
+}
+
+// Detect data type from file content
+interface DataTypeDetection {
+  detectedType: string;
+  confidence: number;
+  indicators: string[];
+  sampleFields: string[];
+}
+
+function detectDataType(data: any[]): DataTypeDetection {
+  if (!data || data.length === 0) {
+    return { detectedType: 'unknown', confidence: 0, indicators: ['Empty data'], sampleFields: [] };
+  }
+
+  const sample = data[0];
+  const fields = Object.keys(sample).map(f => f.toLowerCase());
+  const sampleFields = Object.keys(sample).slice(0, 10);
+  
+  // Species indicators
+  const speciesFields = ['scientificname', 'scientific_name', 'commonname', 'common_name', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species', 'taxonomicrank', 'taxonomic_rank'];
+  const speciesMatches = fields.filter(f => speciesFields.some(sf => f.includes(sf)));
+  
+  // Oceanography indicators
+  const oceanFields = ['temperature', 'salinity', 'depth', 'latitude', 'longitude', 'parameter', 'value', 'unit', 'quality', 'quality_flag', 'dissolved_oxygen', 'chlorophyll', 'ph'];
+  const oceanMatches = fields.filter(f => oceanFields.some(of => f.includes(of)));
+  
+  // eDNA indicators
+  const ednaFields = ['sequence', 'primer', 'barcode', 'read', 'sample_id', 'otu', 'asv', 'marker', 'gene', 'amplicon'];
+  const ednaMatches = fields.filter(f => ednaFields.some(ef => f.includes(ef)));
+  
+  // Otolith indicators
+  const otolithFields = ['otolith', 'age', 'growth', 'ring', 'increment', 'measurement', 'fish_id', 'specimen'];
+  const otolithMatches = fields.filter(f => otolithFields.some(of => f.includes(of)));
+  
+  // Survey indicators
+  const surveyFields = ['station', 'survey', 'transect', 'quadrat', 'plot', 'observer', 'recorded_by', 'sampling'];
+  const surveyMatches = fields.filter(f => surveyFields.some(sf => f.includes(sf)));
+  
+  // Calculate scores
+  const scores = [
+    { type: 'species', score: speciesMatches.length, matches: speciesMatches },
+    { type: 'oceanography', score: oceanMatches.length, matches: oceanMatches },
+    { type: 'edna', score: ednaMatches.length, matches: ednaMatches },
+    { type: 'otolith', score: otolithMatches.length, matches: otolithMatches },
+    { type: 'survey', score: surveyMatches.length, matches: surveyMatches },
+  ].sort((a, b) => b.score - a.score);
+  
+  const bestMatch = scores[0];
+  const totalFields = fields.length;
+  const confidence = totalFields > 0 ? Math.min(100, Math.round((bestMatch.score / Math.min(totalFields, 5)) * 100)) : 0;
+  
+  return {
+    detectedType: bestMatch.score > 0 ? bestMatch.type : 'unknown',
+    confidence,
+    indicators: bestMatch.matches,
+    sampleFields,
+  };
+}
+
+// Analyze file and detect data type
+router.post('/analyze', authenticate, upload.single('file'), async (req: AuthRequest, res: Response, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    let data: any[] = [];
+
+    // Parse file
+    if (filePath.endsWith('.json')) {
+      data = JSON.parse(fileContent);
+      if (!Array.isArray(data)) {
+        data = [data];
+      }
+    } else if (filePath.endsWith('.csv')) {
+      const lines = fileContent.split('\n').filter(line => line.trim());
+      if (lines.length > 0) {
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        data = lines.slice(1, Math.min(11, lines.length)).map(line => {
+          const values = line.split(',');
+          const obj: any = {};
+          headers.forEach((header, i) => {
+            obj[header] = values[i]?.trim().replace(/^"|"$/g, '');
+          });
+          return obj;
+        });
+      }
+    }
+
+    // Clean up temp file
+    try {
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      logger.warn('Failed to clean up analysis file:', err);
+    }
+
+    const detection = detectDataType(data);
+    
+    res.json({
+      filename: req.file.originalname,
+      fileSize: req.file.size,
+      recordCount: data.length,
+      ...detection,
+      sampleData: data.slice(0, 3),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Extract metadata from file using AI
+router.post('/extract-metadata', authenticate, upload.single('file'), async (req: AuthRequest, res: Response, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+    const FormData = (await import('form-data')).default;
+    const fetch = (await import('node-fetch')).default;
+    
+    // Create form data to send to AI service
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(req.file.path), {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype
+    });
+    formData.append('extract_tags', 'true');
+
+    const response = await fetch(`${AI_SERVICE_URL}/extract-metadata`, {
+      method: 'POST',
+      body: formData,
+      headers: formData.getHeaders()
+    });
+
+    // Clean up temp file
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (err) {
+      logger.warn('Failed to clean up temp file:', err);
+    }
+
+    if (!response.ok) {
+      const error = await response.json() as any;
+      throw new Error(error.detail || 'Metadata extraction failed');
+    }
+
+    const result = await response.json();
+    
+    res.json({
+      success: true,
+      filename: req.file.originalname,
+      fileSize: req.file.size,
+      ...(result as any)
+    });
+  } catch (error: any) {
+    logger.error('Metadata extraction error:', error);
+    res.status(500).json({ error: error.message || 'Metadata extraction failed' });
+  }
+});
+
+// Extract metadata from text content
+router.post('/extract-metadata-text', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const { content, content_type } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: 'No content provided' });
+    }
+
+    const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+    const response = await fetch(`${AI_SERVICE_URL}/extract-metadata-text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content,
+        content_type: content_type || 'text'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json() as any;
+      throw new Error(error.detail || 'Metadata extraction failed');
+    }
+
+    const result = await response.json();
+    res.json(result);
+  } catch (error: any) {
+    logger.error('Text metadata extraction error:', error);
+    res.status(500).json({ error: error.message || 'Metadata extraction failed' });
+  }
+});
+
+// Delete a job and its associated data
+router.delete('/jobs/:id', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const job = await IngestionJob.findOne({ _id: req.params.id, userId: req.user.id });
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Delete associated data based on data type
+    const dataType = job.dataType?.toLowerCase();
+    const recordsDeleted = job.recordsProcessed || 0;
+
+    // Note: In a real application, you'd track which records belong to which job
+    // and delete only those records. For now, we just delete the job metadata.
+    
+    await IngestionJob.findByIdAndDelete(req.params.id);
+    
+    logger.info(`🗑️ Deleted job ${req.params.id} (${dataType}, ${recordsDeleted} records)`);
+    
+    res.json({ 
+      message: 'Job deleted successfully',
+      jobId: req.params.id,
+      dataType,
+      recordsDeleted,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

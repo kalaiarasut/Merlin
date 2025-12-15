@@ -1,0 +1,1897 @@
+[
+  {
+    "id": "SPECIES_0001",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0002",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0003",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0004",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0005",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0006",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0007",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0008",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0009",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0010",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0011",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0012",
+    "scientificName": "Sardinella longiceps",
+    "commonName": "Indian oil sardine",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Sardinellaidae",
+    "genus": "Sardinella",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0013",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0014",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0015",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0016",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0017",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0018",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0019",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0020",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0021",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0022",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0023",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0024",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0025",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0026",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0027",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0028",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0029",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0030",
+    "scientificName": "Sardinella longiceps",
+    "commonName": "Indian oil sardine",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Sardinellaidae",
+    "genus": "Sardinella",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0031",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0032",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0033",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0034",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0035",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0036",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0037",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0038",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0039",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0040",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0041",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0042",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0043",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0044",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0045",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0046",
+    "scientificName": "Sardinella longiceps",
+    "commonName": "Indian oil sardine",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Sardinellaidae",
+    "genus": "Sardinella",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0047",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0048",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0049",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0050",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0051",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0052",
+    "scientificName": "Sardinella longiceps",
+    "commonName": "Indian oil sardine",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Sardinellaidae",
+    "genus": "Sardinella",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0053",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0054",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0055",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0056",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0057",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0058",
+    "scientificName": "Sardinella longiceps",
+    "commonName": "Indian oil sardine",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Sardinellaidae",
+    "genus": "Sardinella",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0059",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0060",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0061",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0062",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0063",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0064",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0065",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0066",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0067",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0068",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0069",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0070",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0071",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0072",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0073",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0074",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0075",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0076",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0077",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0078",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0079",
+    "scientificName": "Scomberomorus commerson",
+    "commonName": "Narrow-barred Spanish mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Scomberomorusidae",
+    "genus": "Scomberomorus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0080",
+    "scientificName": "Epinephelus lanceolatus",
+    "commonName": "Giant grouper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Epinephelusidae",
+    "genus": "Epinephelus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0081",
+    "scientificName": "Rastrelliger kanagurta",
+    "commonName": "Indian mackerel",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Rastrelligeridae",
+    "genus": "Rastrelliger",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0082",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0083",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0084",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0085",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Actinopterygii",
+    "order": "Perciformes",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0086",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0087",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal",
+      "Arabian Sea"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0088",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0089",
+    "scientificName": "Euthynnus affinis",
+    "commonName": "Kawakawa",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Euthynnusidae",
+    "genus": "Euthynnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Arabian Sea",
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0090",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0091",
+    "scientificName": "Lutjanus campechanus",
+    "commonName": "Red snapper",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Lutjanusidae",
+    "genus": "Lutjanus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Bay of Bengal",
+      "Arabian Sea",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0092",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Echinoidea",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "NT"
+  },
+  {
+    "id": "SPECIES_0093",
+    "scientificName": "Caranx ignobilis",
+    "commonName": "Giant trevally",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Cephalopoda",
+    "order": "Unknown",
+    "family": "Caranxidae",
+    "genus": "Caranx",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0094",
+    "scientificName": "Katsuwonus pelamis",
+    "commonName": "Skipjack tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Katsuwonusidae",
+    "genus": "Katsuwonus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0095",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Indian Ocean",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0096",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Deep sea",
+    "distribution": [
+      "Indian Ocean",
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0097",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Chordata",
+    "class": "Chondrichthyes",
+    "order": "Perciformes",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0098",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Echinodermata",
+    "class": "Asteroidea",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coral reefs",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal"
+    ],
+    "conservationStatus": "VU"
+  },
+  {
+    "id": "SPECIES_0099",
+    "scientificName": "Decapterus russelli",
+    "commonName": "Indian scad",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Arthropoda",
+    "class": "Malacostraca",
+    "order": "Unknown",
+    "family": "Decapterusidae",
+    "genus": "Decapterus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Coastal waters",
+    "distribution": [
+      "Arabian Sea",
+      "Bay of Bengal",
+      "Indian Ocean"
+    ],
+    "conservationStatus": "LC"
+  },
+  {
+    "id": "SPECIES_0100",
+    "scientificName": "Thunnus albacares",
+    "commonName": "Yellowfin tuna",
+    "taxonomicRank": "species",
+    "kingdom": "Animalia",
+    "phylum": "Mollusca",
+    "class": "Bivalvia",
+    "order": "Unknown",
+    "family": "Thunnusidae",
+    "genus": "Thunnus",
+    "description": "Marine fish species found in Indian Ocean waters.",
+    "habitat": "Pelagic",
+    "distribution": [
+      "Arabian Sea"
+    ],
+    "conservationStatus": "LC"
+  }
+]

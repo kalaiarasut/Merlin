@@ -1,0 +1,123 @@
+import express, { Application, Request, Response, NextFunction } from 'express';
+import { createServer } from 'http';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import compression from 'compression';
+import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+import swaggerUi from 'swagger-ui-express';
+import { connectMongoDB, connectPostgreSQL } from './config/database';
+import { errorHandler } from './middleware/errorHandler';
+import { rateLimiter } from './middleware/rateLimiter';
+import logger from './utils/logger';
+import swaggerSpec from './config/swagger';
+import { websocketService } from './utils/websocket';
+
+// Routes
+import authRoutes from './routes/auth';
+import speciesRoutes from './routes/species';
+import oceanographyRoutes from './routes/oceanography';
+import otolithRoutes from './routes/otoliths';
+import ednaRoutes from './routes/edna';
+import ingestionRoutes from './routes/ingestion';
+import analyticsRoutes from './routes/analytics';
+import aiRoutes from './routes/ai';
+import notificationRoutes from './routes/notifications';
+import exportRoutes from './routes/export';
+
+// Load env from multiple candidates to ensure root-level .env is picked up
+const candidateEnvPaths = [
+  path.resolve(process.cwd(), '.env'),            // current working dir
+  path.resolve(process.cwd(), '..', '.env'),     // parent of CWD (workspace root when running from backend)
+  path.resolve(__dirname, '../.env'),            // backend/.env next to src
+  path.resolve(__dirname, '../../.env'),         // workspace root relative to src
+];
+
+// First load default if present
+dotenv.config();
+// Then layer any existing candidate files (later ones override earlier values)
+for (const p of candidateEnvPaths) {
+  if (fs.existsSync(p)) {
+    dotenv.config({ path: p });
+  }
+}
+
+// Optional: log which DB settings are loaded (without password)
+const envInfo = {
+  pgHost: process.env.POSTGRES_HOST,
+  pgPort: process.env.POSTGRES_PORT,
+  pgDB: process.env.POSTGRES_DB,
+  pgUser: process.env.POSTGRES_USER,
+};
+logger.info(`🔧 Env loaded for PostgreSQL: ${JSON.stringify(envInfo)}`);
+
+const app: Application = express();
+const httpServer = createServer(app);
+const PORT = process.env.BACKEND_PORT || 5000;
+
+// Initialize WebSocket
+websocketService.initialize(httpServer);
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true,
+}));
+app.use(compression());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+app.use(rateLimiter);
+
+// API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Health check
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/species', speciesRoutes);
+app.use('/api/oceanography', oceanographyRoutes);
+app.use('/api/otoliths', otolithRoutes);
+app.use('/api/edna', ednaRoutes);
+app.use('/api/ingest', ingestionRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/export', exportRoutes);
+
+// 404 handler
+app.use((req: Request, res: Response) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler
+app.use(errorHandler);
+
+// Database connections and server start
+const startServer = async () => {
+  try {
+    await connectMongoDB();
+    await connectPostgreSQL();
+    
+    httpServer.listen(PORT, () => {
+      logger.info(`🚀 Server running on port ${PORT}`);
+      logger.info(`🔌 WebSocket server ready`);
+      logger.info(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+export { httpServer, websocketService };
+export default app;

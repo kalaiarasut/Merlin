@@ -17,6 +17,7 @@ export interface ISpecies extends Document {
   distribution?: string[];
   images?: string[];
   conservationStatus?: string;
+  jobId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +40,7 @@ const SpeciesSchema = new Schema<ISpecies>(
     distribution: [String],
     images: [String],
     conservationStatus: String,
+    jobId: { type: String, index: true },
   },
   { timestamps: true }
 );

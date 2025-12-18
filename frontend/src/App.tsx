@@ -65,9 +65,4 @@ function App() {
     </ErrorBoundary>
   );
 }
-      </Routes>
-    </Router>
-  );
-}
-
 export default App;

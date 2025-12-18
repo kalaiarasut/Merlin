@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Upload, FileIcon, Loader, CheckCircle2, XCircle, Clock, 
+import {
+  Upload, FileIcon, Loader, CheckCircle2, XCircle, Clock,
   Database, FileText, Image, FileCode, Archive, Trash2,
   RefreshCw, ChevronRight, AlertCircle, Sparkles, Zap,
   AlertTriangle, Info, Eye
@@ -57,7 +57,7 @@ export default function DataIngestion() {
   const deleteMutation = useMutation({
     mutationFn: (jobId: string) => ingestionService.deleteJob(jobId),
     onSuccess: () => {
-      toast.success(`Job deleted successfully`);
+      toast.success(`Job and associated data deleted successfully`);
       queryClient.invalidateQueries({ queryKey: ['ingestion-jobs'] });
       setShowDeleteModal(false);
       setJobToDelete(null);
@@ -101,7 +101,7 @@ export default function DataIngestion() {
     try {
       const result = await ingestionService.analyze(files[0]);
       setAnalysisResult(result);
-      
+
       // Check if detected type matches selected type
       if (result.detectedType !== 'unknown' && result.detectedType !== dataType && result.confidence > 50) {
         setShowConfirmModal(true);
@@ -220,8 +220,8 @@ export default function DataIngestion() {
                 {...getRootProps()}
                 className={cn(
                   "relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-300",
-                  isDragActive 
-                    ? "border-ocean-400 bg-ocean-50 scale-[1.02]" 
+                  isDragActive
+                    ? "border-ocean-400 bg-ocean-50 scale-[1.02]"
                     : "border-gray-200 hover:border-ocean-300 hover:bg-gray-50"
                 )}
               >
@@ -266,9 +266,9 @@ export default function DataIngestion() {
                     <h3 className="font-semibold text-deep-900">
                       Selected Files ({files.length})
                     </h3>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setFiles([])}
                       className="text-abyss-600 hover:text-abyss-700"
                     >
@@ -281,8 +281,8 @@ export default function DataIngestion() {
                       const FileTypeIcon = getFileIcon(file.type);
                       const progress = uploadProgress[file.name];
                       return (
-                        <div 
-                          key={idx} 
+                        <div
+                          key={idx}
                           className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100 group"
                         >
                           <div className="p-2 bg-white rounded-lg shadow-sm">
@@ -339,20 +339,20 @@ export default function DataIngestion() {
               ) : (
                 <div className="space-y-3">
                   {jobs.slice(0, 10).map((job: any) => (
-                    <div 
-                      key={job._id} 
+                    <div
+                      key={job._id}
                       className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-deep-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-gray-100/50 dark:hover:bg-deep-700/50 transition-colors group"
                     >
                       <div className={cn(
                         "p-2 rounded-lg",
                         job.status === 'completed' ? "bg-marine-100 dark:bg-marine-900/30" :
-                        job.status === 'processing' ? "bg-ocean-100 dark:bg-ocean-900/30" :
-                        job.status === 'failed' ? "bg-abyss-100 dark:bg-abyss-900/30" : "bg-gray-100 dark:bg-gray-800"
+                          job.status === 'processing' ? "bg-ocean-100 dark:bg-ocean-900/30" :
+                            job.status === 'failed' ? "bg-abyss-100 dark:bg-abyss-900/30" : "bg-gray-100 dark:bg-gray-800"
                       )}>
                         {job.status === 'completed' ? <CheckCircle2 className="w-5 h-5 text-marine-600 dark:text-marine-400" /> :
-                         job.status === 'processing' ? <Loader className="w-5 h-5 text-ocean-600 dark:text-ocean-400 animate-spin" /> :
-                         job.status === 'failed' ? <XCircle className="w-5 h-5 text-abyss-600 dark:text-abyss-400" /> :
-                         <Clock className="w-5 h-5 text-gray-500" />}
+                          job.status === 'processing' ? <Loader className="w-5 h-5 text-ocean-600 dark:text-ocean-400 animate-spin" /> :
+                            job.status === 'failed' ? <XCircle className="w-5 h-5 text-abyss-600 dark:text-abyss-400" /> :
+                              <Clock className="w-5 h-5 text-gray-500" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -375,8 +375,8 @@ export default function DataIngestion() {
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="icon-sm"
                           onClick={() => confirmDeleteJob(job)}
                           className="opacity-0 group-hover:opacity-100 text-deep-400 hover:text-abyss-600 dark:text-gray-500 dark:hover:text-abyss-400 transition-opacity"
@@ -536,7 +536,7 @@ export default function DataIngestion() {
                 </div>
               </div>
             </div>
-            
+
             {/* Content */}
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-deep-900/50 rounded-xl">
@@ -614,7 +614,7 @@ export default function DataIngestion() {
                   Upload as {dataType}
                 </Button>
               </div>
-              <button 
+              <button
                 onClick={() => setShowConfirmModal(false)}
                 className="w-full mt-3 text-sm text-deep-500 dark:text-gray-400 hover:text-deep-700 dark:hover:text-gray-300"
               >
@@ -646,7 +646,7 @@ export default function DataIngestion() {
                 </div>
               </div>
             </div>
-            
+
             {/* Content */}
             <div className="p-6">
               <div className="p-4 bg-gray-50 dark:bg-deep-900/50 rounded-xl space-y-2">
@@ -676,7 +676,7 @@ export default function DataIngestion() {
                 <div className="flex gap-2">
                   <Info className="w-4 h-4 text-abyss-600 dark:text-abyss-400 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-abyss-700 dark:text-abyss-300">
-                    Deleting this job will remove the job record. Associated data may need to be removed separately.
+                    Deleting this job will remove the job record AND all associated data (Species, Oceanography, eDNA) imported with this job.
                   </p>
                 </div>
               </div>

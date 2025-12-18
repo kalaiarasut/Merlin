@@ -128,9 +128,9 @@ export default {
         "3xl": "2rem",
       },
       boxShadow: {
-        'glow': '0 0 20px rgba(14, 165, 233, 0.15)',
-        'glow-lg': '0 0 40px rgba(14, 165, 233, 0.2)',
-        'inner-glow': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+        'glow': '0 0 10px rgba(14, 165, 233, 0.04)',
+        'glow-lg': '0 0 20px rgba(14, 165, 233, 0.06)',
+        'inner-glow': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.02)',
         'premium': '0 1px 3px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02)',
         'premium-lg': '0 1px 3px rgba(0, 0, 0, 0.05), 0 25px 50px -12px rgba(0, 0, 0, 0.15)',
         'card': '0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05)',
@@ -151,7 +151,7 @@ export default {
         'gradient-ocean-light': 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #bae6fd 100%)',
         'gradient-premium': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        'mesh-gradient': 'radial-gradient(at 40% 20%, hsla(197, 88%, 65%, 0.15) 0px, transparent 50%), radial-gradient(at 80% 0%, hsla(197, 88%, 45%, 0.1) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(197, 88%, 55%, 0.1) 0px, transparent 50%)',
+        'mesh-gradient': 'radial-gradient(at 0% 0%, hsla(197, 88%, 55%, 0.45) 0px, transparent 45%), radial-gradient(at 40% 20%, hsla(197, 88%, 60%, 0.35) 0px, transparent 55%), radial-gradient(at 80% 0%, hsla(197, 88%, 50%, 0.25) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(197, 88%, 55%, 0.3) 0px, transparent 55%)',
         'noise': "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")",
       },
       keyframes: {
@@ -200,8 +200,8 @@ export default {
           "50%": { transform: "translateY(-5px)" },
         },
         "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(14, 165, 233, 0.2)" },
-          "50%": { boxShadow: "0 0 40px rgba(14, 165, 233, 0.4)" },
+          "0%, 100%": { boxShadow: "0 0 12px rgba(14, 165, 233, 0.1)" },
+          "50%": { boxShadow: "0 0 20px rgba(14, 165, 233, 0.2)" },
         },
       },
       animation: {

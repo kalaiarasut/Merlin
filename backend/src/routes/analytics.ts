@@ -49,13 +49,13 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response, next)
     // Get recent activity from ingestion jobs
     const IngestionJob = mongoose.models.IngestionJob;
     let recentActivity: any[] = [];
-    
+
     if (IngestionJob) {
       const recentJobs = await IngestionJob.find()
         .sort({ createdAt: -1 })
         .limit(5)
         .lean();
-      
+
       recentActivity = recentJobs.map((job: any) => ({
         id: job._id?.toString(),
         type: 'ingestion',
@@ -110,19 +110,19 @@ router.post('/correlate', authenticate, async (req: AuthRequest, res: Response) 
           AND o.timestamp::date = occ.occurrence_date::date
         WHERE o.parameter = :parameter OR :parameter IS NULL
         GROUP BY o.parameter
-      `, { 
+      `, {
         replacements: { parameter: parameter || null },
-        type: QueryTypes.SELECT 
+        type: QueryTypes.SELECT
       });
 
-      res.json({ 
+      res.json({
         correlation: result,
         domain1,
         domain2,
-        parameter 
+        parameter
       });
     } else {
-      res.json({ 
+      res.json({
         message: 'Correlation analysis completed',
         results: [],
         domain1,
@@ -153,9 +153,9 @@ router.get('/trends', authenticate, async (req: AuthRequest, res: Response) => {
       GROUP BY period, parameter
       ORDER BY period DESC
       LIMIT 100
-    `, { 
+    `, {
       replacements: { dateFormat },
-      type: QueryTypes.SELECT 
+      type: QueryTypes.SELECT
     }).catch(() => []);
 
     const EdnaSample = getEdnaModel();
@@ -229,7 +229,7 @@ router.get('/species-by-phylum', authenticate, async (req: AuthRequest, res: Res
     ]);
 
     const colors = ['#0ea5e9', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#eab308', '#14b8a6', '#6366f1'];
-    
+
     res.json(distribution.map((item: any, index: number) => ({
       phylum: item._id || 'Unknown',
       count: item.count,
@@ -246,25 +246,25 @@ router.get('/growth', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { months = 6 } = req.query;
     const numMonths = Math.min(parseInt(months as string) || 6, 12);
-    
+
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const results: any[] = [];
-    
+
     const now = new Date();
-    
+
     for (let i = numMonths - 1; i >= 0; i--) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const nextMonth = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      
+
       const [speciesCount, ednaCount] = await Promise.all([
-        Species.countDocuments({ 
-          createdAt: { $gte: monthDate, $lt: nextMonth } 
+        Species.countDocuments({
+          createdAt: { $gte: monthDate, $lt: nextMonth }
         }).catch(() => Math.floor(Math.random() * 100 + 50)),
-        getEdnaModel().countDocuments({ 
-          sampleDate: { $gte: monthDate, $lt: nextMonth } 
+        getEdnaModel().countDocuments({
+          sampleDate: { $gte: monthDate, $lt: nextMonth }
         }).catch(() => Math.floor(Math.random() * 200 + 100))
       ]);
-      
+
       results.push({
         month: monthNames[monthDate.getMonth()],
         species: speciesCount,
@@ -272,7 +272,7 @@ router.get('/growth', authenticate, async (req: AuthRequest, res: Response) => {
         occurrences: Math.floor(speciesCount * 3.5) // Approximate
       });
     }
-    
+
     res.json(results);
   } catch (error) {
     logger.error('Error fetching growth data:', error);
@@ -284,9 +284,9 @@ router.get('/growth', authenticate, async (req: AuthRequest, res: Response) => {
 router.post('/niche-model', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { occurrence_data, environmental_variables, model_type, prediction_resolution } = req.body;
-    
+
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
+
     const response = await fetch(`${AI_SERVICE_URL}/model-niche`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -300,7 +300,7 @@ router.post('/niche-model', authenticate, async (req: AuthRequest, res: Response
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Niche modeling failed');
+      throw new Error((error as any).detail || 'Niche modeling failed');
     }
 
     const result = await response.json();
@@ -315,9 +315,9 @@ router.post('/niche-model', authenticate, async (req: AuthRequest, res: Response
 router.post('/predict-suitability', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { locations, species, env_conditions } = req.body;
-    
+
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
+
     const response = await fetch(`${AI_SERVICE_URL}/predict-habitat-suitability`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -326,7 +326,7 @@ router.post('/predict-suitability', authenticate, async (req: AuthRequest, res: 
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Prediction failed');
+      throw new Error((error as any).detail || 'Prediction failed');
     }
 
     const result = await response.json();
@@ -341,9 +341,9 @@ router.post('/predict-suitability', authenticate, async (req: AuthRequest, res: 
 router.post('/generate-report', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { title, report_type, format, sections, data, abstract, keywords } = req.body;
-    
+
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
+
     const response = await fetch(`${AI_SERVICE_URL}/generate-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -361,7 +361,7 @@ router.post('/generate-report', authenticate, async (req: AuthRequest, res: Resp
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Report generation failed');
+      throw new Error((error as any).detail || 'Report generation failed');
     }
 
     const result = await response.json();
@@ -376,9 +376,9 @@ router.post('/generate-report', authenticate, async (req: AuthRequest, res: Resp
 router.post('/quick-report', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { analysis_type, data, format } = req.body;
-    
+
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-    
+
     const response = await fetch(`${AI_SERVICE_URL}/generate-quick-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -391,7 +391,7 @@ router.post('/quick-report', authenticate, async (req: AuthRequest, res: Respons
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Quick report generation failed');
+      throw new Error((error as any).detail || 'Quick report generation failed');
     }
 
     const result = await response.json();
@@ -406,7 +406,7 @@ router.post('/quick-report', authenticate, async (req: AuthRequest, res: Respons
 router.post('/export', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { format = 'json', domain, filters } = req.body;
-    
+
     let data: any[] = [];
 
     if (domain === 'species') {
@@ -427,7 +427,7 @@ router.post('/export', authenticate, async (req: AuthRequest, res: Response) => 
       const headers = Object.keys(data[0]).join(',');
       const rows = data.map(row => Object.values(row).map(v => `"${v}"`).join(','));
       const csv = [headers, ...rows].join('\n');
-      
+
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename=${domain}_export.csv`);
       return res.send(csv);

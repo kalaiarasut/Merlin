@@ -50,7 +50,7 @@ router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, r
     processFile(req.file.path, req.body.dataType, job._id.toString(), req.user.id).catch((error) => {
       logger.error('File processing error:', error);
     });
-    
+
     res.json({ message: 'File uploaded successfully', jobId: job._id });
   } catch (error) {
     next(error);
@@ -73,7 +73,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
   try {
     logger.info(`🔄 Starting file processing: ${filePath}, type: ${dataType}`);
     await IngestionJob.findByIdAndUpdate(jobId, { status: 'processing', progress: 10 });
-    
+
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);
     }
@@ -137,6 +137,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
             habitat: record.habitat,
             conservationStatus: record.conservationStatus || record.conservation_status,
             distribution: record.distribution ? (Array.isArray(record.distribution) ? record.distribution : [record.distribution]) : [],
+            jobId: jobId,
           };
 
           const result = await Species.updateOne(
@@ -151,12 +152,12 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           } else if (result.modifiedCount && result.modifiedCount > 0) {
             updated += result.modifiedCount;
           }
-          
+
           if (processed % 10 === 0 || processed === data.length) {
             logger.info(`  ✓ Processed ${processed}/${data.length} records (created: ${created}, updated: ${updated})`);
           }
 
-          await IngestionJob.findByIdAndUpdate(jobId, { 
+          await IngestionJob.findByIdAndUpdate(jobId, {
             progress: 30 + Math.floor((processed / data.length) * 60),
             recordsProcessed: processed,
             metadata: { created, updated }
@@ -173,7 +174,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       logger.info('🌊 Processing oceanography data...');
       const { getSequelize } = await import('../config/database');
       const sequelize = getSequelize();
-      
+
       let processed = 0;
       let created = 0;
       let failed = 0;
@@ -190,7 +191,8 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           const timestamp = record.timestamp || record.Timestamp || record.date || record.Date || new Date().toISOString();
           const source = record.source || record.Source || 'Upload';
           const qualityFlag = record.quality_flag || record.quality || record.Quality || 'unknown';
-          const metadata = record.metadata || { region: record.region, id: record.id };
+          const metadata = record.metadata || { region: record.region, id: record.id, jobId: jobId };
+          if (!metadata.jobId) metadata.jobId = jobId;
 
           if (!parameter) {
             logger.warn('Skipping record without parameter:', record);
@@ -221,12 +223,12 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
           processed++;
           created++;
-          
+
           if (processed % 50 === 0 || processed === data.length) {
             logger.info(`  ✓ Processed ${processed}/${data.length} oceanography records`);
           }
 
-          await IngestionJob.findByIdAndUpdate(jobId, { 
+          await IngestionJob.findByIdAndUpdate(jobId, {
             progress: 30 + Math.floor((processed / data.length) * 60),
             recordsProcessed: processed,
             metadata: { created }
@@ -241,7 +243,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       recordsProcessedCount = processed;
     } else if (dataType === 'edna' || dataType === 'eDNA' || dataType === 'Edna') {
       logger.info('🧬 Processing eDNA data...');
-      
+
       // Import the EdnaSample model from edna routes or create it here
       const mongoose = await import('mongoose');
       const ednaSchema = new mongoose.Schema({
@@ -258,6 +260,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
         reads: Number,
         region: String,
         metadata: mongoose.Schema.Types.Mixed,
+        jobId: { type: String, index: true },
         createdAt: { type: Date, default: Date.now },
         updatedAt: { type: Date, default: Date.now }
       });
@@ -272,7 +275,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
         try {
           // Generate ID if not provided
           const recordId = record.id || record.ID || record.sample_id || `EDNA_${Date.now()}_${processed}`;
-          
+
           const ednaData = {
             id: recordId,
             sequence: record.sequence || record.Sequence || '',
@@ -292,6 +295,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
               marker: record.marker,
               gene: record.gene
             },
+            jobId: jobId,
             updatedAt: new Date()
           };
 
@@ -332,10 +336,10 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       logger.info(`✅ ${dataType} import complete: ${data.length} records`);
     }
 
-    await IngestionJob.findByIdAndUpdate(jobId, { 
-      status: 'completed', 
+    await IngestionJob.findByIdAndUpdate(jobId, {
+      status: 'completed',
       progress: 100,
-      recordsProcessed: recordsProcessedCount 
+      recordsProcessed: recordsProcessedCount
     });
 
     // Send notification to user
@@ -351,11 +355,11 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
     }
   } catch (error: any) {
     logger.error(`❌ Processing error for job ${jobId}:`, error);
-    await IngestionJob.findByIdAndUpdate(jobId, { 
-      status: 'failed', 
-      errorMessages: [error.message] 
+    await IngestionJob.findByIdAndUpdate(jobId, {
+      status: 'failed',
+      errorMessages: [error.message]
     }).catch(err => logger.error('Failed to update job status:', err));
-    
+
     // Send failure notification to user
     await notificationService.notifyIngestionFailed(userId, dataType, error.message, jobId);
   }
@@ -377,27 +381,27 @@ function detectDataType(data: any[]): DataTypeDetection {
   const sample = data[0];
   const fields = Object.keys(sample).map(f => f.toLowerCase());
   const sampleFields = Object.keys(sample).slice(0, 10);
-  
+
   // Species indicators
   const speciesFields = ['scientificname', 'scientific_name', 'commonname', 'common_name', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species', 'taxonomicrank', 'taxonomic_rank'];
   const speciesMatches = fields.filter(f => speciesFields.some(sf => f.includes(sf)));
-  
+
   // Oceanography indicators
   const oceanFields = ['temperature', 'salinity', 'depth', 'latitude', 'longitude', 'parameter', 'value', 'unit', 'quality', 'quality_flag', 'dissolved_oxygen', 'chlorophyll', 'ph'];
   const oceanMatches = fields.filter(f => oceanFields.some(of => f.includes(of)));
-  
+
   // eDNA indicators
   const ednaFields = ['sequence', 'primer', 'barcode', 'read', 'sample_id', 'otu', 'asv', 'marker', 'gene', 'amplicon'];
   const ednaMatches = fields.filter(f => ednaFields.some(ef => f.includes(ef)));
-  
+
   // Otolith indicators
   const otolithFields = ['otolith', 'age', 'growth', 'ring', 'increment', 'measurement', 'fish_id', 'specimen'];
   const otolithMatches = fields.filter(f => otolithFields.some(of => f.includes(of)));
-  
+
   // Survey indicators
   const surveyFields = ['station', 'survey', 'transect', 'quadrat', 'plot', 'observer', 'recorded_by', 'sampling'];
   const surveyMatches = fields.filter(f => surveyFields.some(sf => f.includes(sf)));
-  
+
   // Calculate scores
   const scores = [
     { type: 'species', score: speciesMatches.length, matches: speciesMatches },
@@ -406,11 +410,11 @@ function detectDataType(data: any[]): DataTypeDetection {
     { type: 'otolith', score: otolithMatches.length, matches: otolithMatches },
     { type: 'survey', score: surveyMatches.length, matches: surveyMatches },
   ].sort((a, b) => b.score - a.score);
-  
+
   const bestMatch = scores[0];
   const totalFields = fields.length;
   const confidence = totalFields > 0 ? Math.min(100, Math.round((bestMatch.score / Math.min(totalFields, 5)) * 100)) : 0;
-  
+
   return {
     detectedType: bestMatch.score > 0 ? bestMatch.type : 'unknown',
     confidence,
@@ -459,7 +463,7 @@ router.post('/analyze', authenticate, upload.single('file'), async (req: AuthReq
     }
 
     const detection = detectDataType(data);
-    
+
     res.json({
       filename: req.file.originalname,
       fileSize: req.file.size,
@@ -482,7 +486,7 @@ router.post('/extract-metadata', authenticate, upload.single('file'), async (req
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
     const FormData = (await import('form-data')).default;
     const fetch = (await import('node-fetch')).default;
-    
+
     // Create form data to send to AI service
     const formData = new FormData();
     formData.append('file', fs.createReadStream(req.file.path), {
@@ -510,7 +514,7 @@ router.post('/extract-metadata', authenticate, upload.single('file'), async (req
     }
 
     const result = await response.json();
-    
+
     res.json({
       success: true,
       filename: req.file.originalname,
@@ -560,7 +564,7 @@ router.post('/extract-metadata-text', authenticate, async (req: AuthRequest, res
 router.delete('/jobs/:id', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
     const job = await IngestionJob.findOne({ _id: req.params.id, userId: req.user.id });
-    
+
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -571,13 +575,35 @@ router.delete('/jobs/:id', authenticate, async (req: AuthRequest, res: Response,
 
     // Note: In a real application, you'd track which records belong to which job
     // and delete only those records. For now, we just delete the job metadata.
-    
+
+    // Delete associated data
+    if (dataType === 'species') {
+      const result = await Species.deleteMany({ jobId: req.params.id });
+      logger.info(`  ✓ Deleted ${result.deletedCount} associated species records`);
+    } else if (dataType === 'oceanography') {
+      const { getSequelize } = await import('../config/database');
+      const sequelize = getSequelize();
+      await sequelize.query(
+        "DELETE FROM oceanographic_data WHERE metadata->>'jobId' = :jobId",
+        { replacements: { jobId: req.params.id } }
+      );
+      logger.info(`  ✓ Deleted associated oceanography records`);
+    } else if (dataType === 'edna') {
+      // Get model reference (might be registered in previous calls)
+      const mongoose = await import('mongoose');
+      const EdnaSample = mongoose.models.EdnaSample || mongoose.model('EdnaSample', new mongoose.Schema({}, { strict: false }));
+      if (EdnaSample.schema.paths.jobId) {
+        const result = await EdnaSample.deleteMany({ jobId: req.params.id });
+        logger.info(`  ✓ Deleted ${result.deletedCount} associated eDNA records`);
+      }
+    }
+
     await IngestionJob.findByIdAndDelete(req.params.id);
-    
+
     logger.info(`🗑️ Deleted job ${req.params.id} (${dataType}, ${recordsDeleted} records)`);
-    
-    res.json({ 
-      message: 'Job deleted successfully',
+
+    res.json({
+      message: 'Job and associated data deleted successfully',
       jobId: req.params.id,
       dataType,
       recordsDeleted,

@@ -307,7 +307,7 @@ async function exportAsExcel(res: Response, data: Record<string, any[]>): Promis
   for (const [sheetName, records] of Object.entries(data)) {
     if (records.length > 0) {
       // Flatten nested objects for Excel
-      const flatRecords = records.map(flattenObject);
+      const flatRecords = records.map(r => flattenObject(r));
       const worksheet = xlsx.utils.json_to_sheet(flatRecords);
       xlsx.utils.book_append_sheet(workbook, worksheet, sheetName.substring(0, 31)); // Excel sheet name limit
     }

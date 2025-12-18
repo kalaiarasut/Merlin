@@ -18,6 +18,13 @@ export interface ISpecies extends Document {
   images?: string[];
   conservationStatus?: string;
   jobId?: string;
+  aiMetadata?: {
+    extractedTags?: string[];
+    confidence?: number;
+    dataQuality?: string;
+    cleaningApplied?: string[];
+    dataClassification?: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +48,13 @@ const SpeciesSchema = new Schema<ISpecies>(
     images: [String],
     conservationStatus: String,
     jobId: { type: String, index: true },
+    aiMetadata: {
+      extractedTags: [String],
+      confidence: Number,
+      dataQuality: String,
+      cleaningApplied: [String],
+      dataClassification: String,
+    },
   },
   { timestamps: true }
 );

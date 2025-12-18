@@ -358,12 +358,28 @@ export default function DataIngestion() {
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-deep-900 dark:text-gray-100 truncate">{job.filename}</p>
                           {getStatusBadge(job.status)}
+                          {job.status === 'completed' && (
+                            <Badge variant="secondary" className="bg-ocean-100 text-ocean-700 dark:bg-ocean-900/30 dark:text-ocean-400">
+                              <Sparkles className="w-3 h-3 mr-1" />
+                              AI Enhanced
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-xs text-deep-500 dark:text-gray-400 capitalize">{job.dataType}</span>
                           {job.recordsProcessed > 0 && (
                             <span className="text-xs text-deep-500 dark:text-gray-400">
                               {job.recordsProcessed.toLocaleString()} records
+                            </span>
+                          )}
+                          {job.metadata?.created > 0 && (
+                            <span className="text-xs text-marine-600 dark:text-marine-400">
+                              +{job.metadata.created} new
+                            </span>
+                          )}
+                          {job.metadata?.updated > 0 && (
+                            <span className="text-xs text-ocean-600 dark:text-ocean-400">
+                              ↻{job.metadata.updated} updated
                             </span>
                           )}
                           <span className="text-xs text-deep-400 dark:text-gray-500">
@@ -371,7 +387,15 @@ export default function DataIngestion() {
                           </span>
                         </div>
                         {job.status === 'processing' && (
-                          <Progress value={job.progress} size="sm" className="mt-2" animated />
+                          <div className="mt-2">
+                            <Progress value={job.progress} size="sm" animated />
+                            <span className="text-xs text-deep-400 mt-1">
+                              {job.progress <= 30 ? 'Parsing file...' :
+                                job.progress <= 40 ? '🤖 AI metadata extraction...' :
+                                  job.progress <= 50 ? '🧹 AI data cleaning...' :
+                                    'Saving records...'}
+                            </span>
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1">

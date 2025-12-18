@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { StatCard } from '@/components/ui/stat-card';
 import { Select } from '@/components/ui/input';
-import { analyticsService, speciesService, ednaService, otolithService } from '@/services/api';
+import { analyticsService, speciesService, ednaService, otolithService, correlationService } from '@/services/api';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart,
@@ -55,6 +55,17 @@ export default function Analytics() {
   const { data: otolithStats } = useQuery({
     queryKey: ['otolith-stats'],
     queryFn: () => otolithService.getStats(),
+  });
+
+  // Fetch cross-domain correlation data
+  const { data: correlationData, isLoading: correlationLoading } = useQuery({
+    queryKey: ['correlation-summary'],
+    queryFn: () => correlationService.summary(),
+  });
+
+  const { data: speciesEnvCorr } = useQuery({
+    queryKey: ['species-environment-correlation'],
+    queryFn: () => correlationService.speciesEnvironment({}),
   });
 
   // Calculate real stats
@@ -119,8 +130,8 @@ export default function Analytics() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Select 
-            value={timeRange} 
+          <Select
+            value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
             className="w-40"
           >
@@ -213,12 +224,12 @@ export default function Analytics() {
                 <AreaChart data={trendData}>
                   <defs>
                     <linearGradient id="speciesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0891b2" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#0891b2" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#0891b2" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#0891b2" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="ednaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
@@ -314,11 +325,11 @@ export default function Analytics() {
                 <PolarGrid stroke={chartColors.grid} />
                 <PolarAngleAxis dataKey="metric" stroke={chartColors.text} fontSize={11} />
                 <PolarRadiusAxis stroke={chartColors.text} fontSize={10} domain={[0, 100]} />
-                <Radar 
-                  name="Coverage" 
-                  dataKey="value" 
-                  stroke="#0891b2" 
-                  fill="#0891b2" 
+                <Radar
+                  name="Coverage"
+                  dataKey="value"
+                  stroke="#0891b2"
+                  fill="#0891b2"
                   fillOpacity={0.3}
                   strokeWidth={2}
                 />
@@ -406,14 +417,102 @@ export default function Analytics() {
                   <span className="text-2xl font-bold text-deep-900 dark:text-gray-100">{item.value.toLocaleString()}</span>
                   <span className="text-sm text-deep-400 dark:text-gray-500 mb-1">/ {item.total.toLocaleString()}</span>
                 </div>
-                <Progress 
-                  value={Math.min(100, (item.value / item.total) * 100)} 
+                <Progress
+                  value={Math.min(100, (item.value / item.total) * 100)}
                   variant="gradient"
                   size="sm"
                 />
               </div>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Cross-Domain Correlation Insights */}
+      <Card variant="glass">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-ocean-500" />
+                AI-Generated Insights
+              </CardTitle>
+              <CardDescription>Cross-domain correlation analysis powered by AI</CardDescription>
+            </div>
+            <Badge variant="premium">
+              <Zap className="w-3 h-3 mr-1" />
+              Live Analysis
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {correlationLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-ocean-500" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* AI Enhanced Records */}
+              <div className="p-4 bg-gradient-to-br from-ocean-50 to-ocean-100 dark:from-ocean-900/20 dark:to-ocean-800/20 rounded-xl border border-ocean-200 dark:border-ocean-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-4 h-4 text-ocean-600 dark:text-ocean-400" />
+                  <span className="text-sm font-medium text-ocean-700 dark:text-ocean-300">AI Enhanced</span>
+                </div>
+                <div className="text-2xl font-bold text-ocean-900 dark:text-ocean-100">
+                  {correlationData?.species?.aiEnhanced || 0}
+                </div>
+                <p className="text-xs text-ocean-600 dark:text-ocean-400 mt-1">
+                  Records with AI metadata
+                </p>
+              </div>
+
+              {/* Species Families */}
+              <div className="p-4 bg-gradient-to-br from-marine-50 to-marine-100 dark:from-marine-900/20 dark:to-marine-800/20 rounded-xl border border-marine-200 dark:border-marine-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <Fish className="w-4 h-4 text-marine-600 dark:text-marine-400" />
+                  <span className="text-sm font-medium text-marine-700 dark:text-marine-300">Families</span>
+                </div>
+                <div className="text-2xl font-bold text-marine-900 dark:text-marine-100">
+                  {correlationData?.species?.families || speciesEnvCorr?.species?.families?.length || 0}
+                </div>
+                <p className="text-xs text-marine-600 dark:text-marine-400 mt-1">
+                  Unique taxonomic families
+                </p>
+              </div>
+
+              {/* Environmental Parameters */}
+              <div className="p-4 bg-gradient-to-br from-coral-50 to-coral-100 dark:from-coral-900/20 dark:to-coral-800/20 rounded-xl border border-coral-200 dark:border-coral-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <Database className="w-4 h-4 text-coral-600 dark:text-coral-400" />
+                  <span className="text-sm font-medium text-coral-700 dark:text-coral-300">Parameters</span>
+                </div>
+                <div className="text-2xl font-bold text-coral-900 dark:text-coral-100">
+                  {correlationData?.oceanography?.unique_parameters || speciesEnvCorr?.environment?.summary?.parametersAnalyzed || 0}
+                </div>
+                <p className="text-xs text-coral-600 dark:text-coral-400 mt-1">
+                  Environmental variables tracked
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Insights List */}
+          {speciesEnvCorr?.insights && speciesEnvCorr.insights.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <h4 className="text-sm font-medium text-deep-700 dark:text-gray-300">Key Findings</h4>
+              {speciesEnvCorr.insights.map((insight: string, index: number) => (
+                <div
+                  key={index}
+                  className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-deep-800 rounded-lg border border-gray-100 dark:border-gray-700"
+                >
+                  <div className="w-6 h-6 rounded-full bg-ocean-100 dark:bg-ocean-900/50 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-bold text-ocean-600 dark:text-ocean-400">{index + 1}</span>
+                  </div>
+                  <p className="text-sm text-deep-600 dark:text-gray-300">{insight}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -464,11 +563,11 @@ export default function Analytics() {
           </div>
           <div className="mt-4 p-4 bg-gray-50 dark:bg-deep-800 rounded-xl border border-gray-100 dark:border-gray-700">
             <p className="text-sm text-deep-500 dark:text-gray-400 font-mono">
-              SELECT species.name, COUNT(*) as observations 
-              FROM species 
-              WHERE created_at &gt; '2024-01-01' 
-              GROUP BY species.phylum 
-              ORDER BY observations DESC 
+              SELECT species.name, COUNT(*) as observations
+              FROM species
+              WHERE created_at &gt; '2024-01-01'
+              GROUP BY species.phylum
+              ORDER BY observations DESC
               LIMIT 10;
             </p>
           </div>

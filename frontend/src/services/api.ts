@@ -84,13 +84,13 @@ export const apiClient = new ApiClient();
 export const authService = {
   login: (email: string, password: string) =>
     apiClient.post<{ user: any; token: string }>('/auth/login', { email, password }),
-  
+
   register: (data: any) =>
     apiClient.post('/auth/register', data),
-  
+
   logout: () =>
     apiClient.post('/auth/logout', {}),
-  
+
   getCurrentUser: () =>
     apiClient.get<any>('/auth/me'),
 };
@@ -99,22 +99,22 @@ export const authService = {
 export const userService = {
   getAll: (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string }) =>
     apiClient.get<{ users: any[]; pagination: any }>('/auth/users', params),
-  
+
   getById: (id: string) =>
     apiClient.get<any>(`/auth/users/${id}`),
-  
+
   update: (id: string, data: { name?: string; email?: string; role?: string; status?: string; organization?: string }) =>
     apiClient.put<any>(`/auth/users/${id}`, data),
-  
+
   delete: (id: string) =>
     apiClient.delete<any>(`/auth/users/${id}`),
-  
+
   resetPassword: (id: string, newPassword: string) =>
     apiClient.post<any>(`/auth/users/${id}/reset-password`, { newPassword }),
-  
+
   getStats: () =>
     apiClient.get<any>('/auth/stats'),
-  
+
   create: (data: { name: string; email: string; password: string; role: string; organization: string }) =>
     apiClient.post('/auth/register', data),
 };
@@ -123,19 +123,19 @@ export const userService = {
 export const speciesService = {
   getAll: (params?: any) =>
     apiClient.get<{ data: any[]; pagination: any }>('/species', params),
-  
+
   getById: (id: string) =>
     apiClient.get<any>(`/species/${id}`),
-  
+
   search: (query: string) =>
     apiClient.get<any[]>('/species/search', { q: query }),
-  
+
   create: (data: any) =>
     apiClient.post('/species', data),
-  
+
   update: (id: string, data: any) =>
     apiClient.put(`/species/${id}`, data),
-  
+
   delete: (id: string) =>
     apiClient.delete(`/species/${id}`),
 };
@@ -144,10 +144,10 @@ export const speciesService = {
 export const oceanographyService = {
   getData: (params?: any) =>
     apiClient.get<{ data: any[]; pagination: any }>('/oceanography', params),
-  
+
   getParameters: () =>
     apiClient.get<any[]>('/oceanography/parameters'),
-  
+
   getTimeRange: () =>
     apiClient.get<{ start_date: string; end_date: string; total_records: number }>('/oceanography/time-range'),
 
@@ -165,10 +165,10 @@ export const oceanographyService = {
 export const otolithService = {
   getAll: (params?: any) =>
     apiClient.get<{ data: any[]; pagination: any }>('/otoliths', params),
-  
+
   getById: (id: string) =>
     apiClient.get<any>(`/otoliths/${id}`),
-  
+
   analyze: (file: File, metadata?: any) => {
     const formData = new FormData();
     formData.append('image', file);
@@ -177,7 +177,7 @@ export const otolithService = {
     }
     return apiClient.upload<any>('/otoliths/analyze', formData);
   },
-  
+
   findSimilar: (id: string) =>
     apiClient.get<any[]>(`/otoliths/${id}/similar`),
 
@@ -195,10 +195,10 @@ export const otolithService = {
 export const ednaService = {
   getAll: (params?: any) =>
     apiClient.get<{ data: any[]; pagination: any }>('/edna', params),
-  
+
   getById: (id: string) =>
     apiClient.get<any>(`/edna/${id}`),
-  
+
   getStats: () =>
     apiClient.get<any>('/edna/stats/summary'),
 
@@ -226,7 +226,7 @@ export const ingestionService = {
     formData.append('dataType', dataType);
     return apiClient.upload<any>('/ingest', formData, onProgress);
   },
-  
+
   analyze: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -241,16 +241,16 @@ export const ingestionService = {
       sampleData: any[];
     }>('/ingest/analyze', formData);
   },
-  
+
   getJobs: () =>
     apiClient.get<any[]>('/ingest/jobs'),
-  
+
   getJobStatus: (jobId: string) =>
     apiClient.get<any>(`/ingest/jobs/${jobId}`),
-  
+
   deleteJob: (jobId: string) =>
     apiClient.delete<{ message: string; jobId: string; dataType: string; recordsDeleted: number }>(`/ingest/jobs/${jobId}`),
-  
+
   // Metadata extraction
   extractMetadata: (file: File) => {
     const formData = new FormData();
@@ -264,7 +264,7 @@ export const ingestionService = {
       confidence: number;
     }>('/ingest/extract-metadata', formData);
   },
-  
+
   extractMetadataText: (content: string, contentType?: string) =>
     apiClient.post<{
       success: boolean;
@@ -279,25 +279,25 @@ export const ingestionService = {
 export const analyticsService = {
   correlate: (params: any) =>
     apiClient.post<any>('/analytics/correlate', params),
-  
+
   getStats: () =>
     apiClient.get<any>('/analytics/stats'),
-  
+
   getTrends: (period?: string) =>
     apiClient.get<any>('/analytics/trends', { period }),
 
   getDistribution: () =>
     apiClient.get<any[]>('/analytics/distribution'),
-  
+
   getSpeciesByPhylum: () =>
     apiClient.get<any[]>('/analytics/species-by-phylum'),
-  
+
   getGrowth: (months?: number) =>
     apiClient.get<any[]>('/analytics/growth', { months }),
-  
+
   export: (format: string, domain: string, filters?: any) =>
     apiClient.post<any>('/analytics/export', { format, domain, filters }),
-  
+
   // Environmental Niche Modeling
   nicheModel: (params: {
     occurrence_data: any[];
@@ -305,13 +305,13 @@ export const analyticsService = {
     model_type?: string;
     prediction_resolution?: number;
   }) => apiClient.post<any>('/analytics/niche-model', params),
-  
+
   predictSuitability: (params: {
     locations: Array<{ lat: number; lon: number }>;
     species: string;
     env_conditions?: Record<string, number>;
   }) => apiClient.post<any>('/analytics/predict-suitability', params),
-  
+
   // Report Generation
   generateReport: (params: {
     title: string;
@@ -322,7 +322,7 @@ export const analyticsService = {
     abstract?: string;
     keywords?: string[];
   }) => apiClient.post<any>('/analytics/generate-report', params),
-  
+
   quickReport: (params: {
     analysis_type: string;
     data: any;
@@ -330,17 +330,61 @@ export const analyticsService = {
   }) => apiClient.post<any>('/analytics/quick-report', params),
 };
 
+// Correlation service - Cross-domain analysis
+export const correlationService = {
+  // Correlate species with environmental data
+  speciesEnvironment: (params?: {
+    species?: string;
+    parameter?: string;
+    minDepth?: number;
+    maxDepth?: number;
+    startDate?: string;
+    endDate?: string;
+  }) => apiClient.get<{
+    species: { count: number; families: string[]; conservationStatuses: Record<string, number> };
+    environment: { parameters: any[]; summary: any };
+    insights: string[];
+  }>('/correlation/species-environment', params),
+
+  // Get biodiversity hotspots
+  biodiversityHotspots: (gridSize?: number) =>
+    apiClient.get<{
+      gridSize: number;
+      hotspots: Array<{ region: string; speciesCount: number; diversityIndex: number; species: string[] }>;
+      environmentalGrids: number;
+      speciesRegions: number;
+    }>('/correlation/biodiversity-hotspots', { gridSize }),
+
+  // Get environmental profile for a species
+  environmentalProfile: (speciesName: string) =>
+    apiClient.get<{
+      species: any;
+      environmentalPreferences: any;
+      distribution: string[];
+      aiMetadata: any;
+    }>(`/correlation/environmental-profile/${encodeURIComponent(speciesName)}`),
+
+  // Get overall data summary
+  summary: () =>
+    apiClient.get<{
+      species: { total: number; families: number; genera: number; aiEnhanced: number };
+      oceanography: any;
+      edna: { totalSamples: number; uniqueSpecies: number };
+      lastUpdated: string;
+    }>('/correlation/summary'),
+};
+
 // AI service
 export const aiService = {
   chat: (message: string, context?: any) =>
     apiClient.post<{ response: string }>('/ai/chat', { message, context }),
-  
+
   classifyFish: (file: File) => {
     const formData = new FormData();
     formData.append('image', file);
     return apiClient.upload<any>('/ai/classify-fish', formData);
   },
-  
+
   extractMetadata: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
@@ -351,27 +395,27 @@ export const aiService = {
 // Notification service
 export const notificationService = {
   getAll: (params?: { page?: number; limit?: number; unreadOnly?: boolean }) =>
-    apiClient.get<{ 
-      notifications: any[]; 
-      unreadCount: number; 
-      pagination: any 
+    apiClient.get<{
+      notifications: any[];
+      unreadCount: number;
+      pagination: any
     }>('/notifications', params),
-  
+
   getUnreadCount: () =>
     apiClient.get<{ count: number }>('/notifications/unread-count'),
-  
+
   markAsRead: (id: string) =>
     apiClient.put<any>(`/notifications/${id}/read`, {}),
-  
+
   markAllAsRead: () =>
     apiClient.put<any>('/notifications/mark-all-read', {}),
-  
+
   delete: (id: string) =>
     apiClient.delete<any>(`/notifications/${id}`),
-  
+
   clearAll: () =>
     apiClient.delete<any>('/notifications'),
-  
+
   create: (data: { title: string; description: string; type?: string; category?: string }) =>
     apiClient.post<any>('/notifications', data),
 };

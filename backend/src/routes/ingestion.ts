@@ -8,6 +8,7 @@ import { IngestionJob } from '../models/IngestionJob';
 import { Species } from '../models/Species';
 import logger from '../utils/logger';
 import notificationService from '../utils/notificationService';
+import aiServiceClient from '../utils/aiServiceClient';
 
 const router = Router();
 
@@ -108,6 +109,27 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
     recordsProcessedCount = data.length;
     await IngestionJob.findByIdAndUpdate(jobId, { progress: 30, recordsTotal: data.length });
 
+    // AI-powered metadata extraction
+    logger.info('🤖 Extracting metadata using AI...');
+    const metadataResult = await aiServiceClient.extractMetadata(filePath);
+    await IngestionJob.findByIdAndUpdate(jobId, { progress: 40 });
+
+    // AI-powered data cleaning and standardization
+    logger.info('🧹 Cleaning and standardizing data using AI...');
+    const cleaningResult = await aiServiceClient.cleanData(data, {
+      remove_duplicates: true,
+      standardize: true,
+      normalize_formats: true,
+    });
+
+    // Use cleaned data if AI processing succeeded
+    if (cleaningResult.success && cleaningResult.cleaned_data.length > 0) {
+      data = cleaningResult.cleaned_data;
+      logger.info(`✨ AI cleaning applied: ${cleaningResult.summary.duplicates_removed} duplicates removed, ${cleaningResult.summary.values_standardized} values standardized`);
+    }
+
+    await IngestionJob.findByIdAndUpdate(jobId, { progress: 50 });
+
     // Insert data based on dataType
     if (dataType === 'species' || dataType === 'Species') {
       logger.info('🐟 Processing species data...');
@@ -138,6 +160,13 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
             conservationStatus: record.conservationStatus || record.conservation_status,
             distribution: record.distribution ? (Array.isArray(record.distribution) ? record.distribution : [record.distribution]) : [],
             jobId: jobId,
+            aiMetadata: {
+              extractedTags: metadataResult.auto_tags || [],
+              confidence: metadataResult.confidence || 0,
+              dataQuality: cleaningResult.success ? 'cleaned' : 'raw',
+              cleaningApplied: cleaningResult.corrections?.map(c => c.reason) || [],
+              dataClassification: metadataResult.data_classification || 'unknown',
+            },
           };
 
           const result = await Species.updateOne(
@@ -193,6 +222,14 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           const qualityFlag = record.quality_flag || record.quality || record.Quality || 'unknown';
           const metadata = record.metadata || { region: record.region, id: record.id, jobId: jobId };
           if (!metadata.jobId) metadata.jobId = jobId;
+
+          // Add AI metadata to oceanography records
+          metadata.aiMetadata = {
+            extractedTags: metadataResult.auto_tags || [],
+            confidence: metadataResult.confidence || 0,
+            dataQuality: cleaningResult.success ? 'cleaned' : 'raw',
+            dataClassification: metadataResult.data_classification || 'unknown',
+          };
 
           if (!parameter) {
             logger.warn('Skipping record without parameter:', record);
@@ -261,6 +298,13 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
         region: String,
         metadata: mongoose.Schema.Types.Mixed,
         jobId: { type: String, index: true },
+        aiMetadata: {
+          extractedTags: [String],
+          confidence: Number,
+          dataQuality: String,
+          cleaningApplied: [String],
+          dataClassification: String,
+        },
         createdAt: { type: Date, default: Date.now },
         updatedAt: { type: Date, default: Date.now }
       });
@@ -296,6 +340,13 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
               gene: record.gene
             },
             jobId: jobId,
+            aiMetadata: {
+              extractedTags: metadataResult.auto_tags || [],
+              confidence: metadataResult.confidence || 0,
+              dataQuality: cleaningResult.success ? 'cleaned' : 'raw',
+              cleaningApplied: cleaningResult.corrections?.map(c => c.reason) || [],
+              dataClassification: metadataResult.data_classification || 'unknown',
+            },
             updatedAt: new Date()
           };
 

@@ -133,9 +133,9 @@ export default {
         'inner-glow': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.02)',
         'premium': '0 1px 3px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02)',
         'premium-lg': '0 1px 3px rgba(0, 0, 0, 0.05), 0 25px 50px -12px rgba(0, 0, 0, 0.15)',
-        'card': '0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.05), 0 12px 24px rgba(0, 0, 0, 0.05)',
-        'card-hover': '0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.05), 0 24px 48px rgba(0, 0, 0, 0.09)',
-        'float': '0 6px 16px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0, 0, 0, 0.06)',
+        'card': '0 0 0 1px rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 8px rgba(0, 0, 0, 0.03)',
+        'card-hover': '0 0 0 1px rgba(0, 0, 0, 0.03), 0 2px 4px rgba(0, 0, 0, 0.05), 0 8px 16px rgba(0, 0, 0, 0.06)',
+        'float': '0 3px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
@@ -151,7 +151,7 @@ export default {
         'gradient-ocean-light': 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #bae6fd 100%)',
         'gradient-premium': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         'gradient-dark': 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        'mesh-gradient': 'radial-gradient(at 0% 0%, hsla(197, 88%, 55%, 0.45) 0px, transparent 45%), radial-gradient(at 40% 20%, hsla(197, 88%, 60%, 0.35) 0px, transparent 55%), radial-gradient(at 80% 0%, hsla(197, 88%, 50%, 0.25) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(197, 88%, 55%, 0.3) 0px, transparent 55%)',
+        'mesh-gradient': 'radial-gradient(at 0% 0%, hsla(200, 95%, 75%, 0.35) 0px, transparent 35%), radial-gradient(at 30% 15%, hsla(195, 90%, 70%, 0.28) 0px, transparent 45%), radial-gradient(at 70% 5%, hsla(185, 85%, 65%, 0.15) 0px, transparent 40%), radial-gradient(at 15% 60%, hsla(200, 90%, 72%, 0.18) 0px, transparent 45%)',
         'noise': "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")",
       },
       keyframes: {

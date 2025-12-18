@@ -26,6 +26,7 @@ import analyticsRoutes from './routes/analytics';
 import aiRoutes from './routes/ai';
 import notificationRoutes from './routes/notifications';
 import exportRoutes from './routes/export';
+import correlationRoutes from './routes/correlation';
 
 // Load env from multiple candidates to ensure root-level .env is picked up
 const candidateEnvPaths = [
@@ -91,6 +92,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/correlation', correlationRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -105,7 +107,7 @@ const startServer = async () => {
   try {
     await connectMongoDB();
     await connectPostgreSQL();
-    
+
     httpServer.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`🔌 WebSocket server ready`);

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import FloatingAIChat from './FloatingAIChat';
 
 export default function Layout() {
   return (
@@ -8,10 +9,10 @@ export default function Layout() {
       {/* Background Pattern */}
       <div className="fixed inset-0 bg-grid dark:bg-grid-dark opacity-[0.02] dark:opacity-[0.05] pointer-events-none" />
       <div className="fixed inset-0 bg-mesh-gradient dark:bg-mesh-gradient-dark pointer-events-none" />
-      
+
       {/* Sidebar */}
       <Sidebar />
-      
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <Header />
@@ -23,6 +24,9 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      {/* Floating AI Chat - Available on all pages */}
+      <FloatingAIChat />
     </div>
   );
 }

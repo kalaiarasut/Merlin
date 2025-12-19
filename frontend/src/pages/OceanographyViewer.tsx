@@ -73,10 +73,30 @@ export default function OceanographyViewer() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([10, 76]); // Indian Ocean
   const [region, setRegion] = useState('indian');
 
-  // Fetch oceanographic data
+  // Filter states
+  const [depthRange, setDepthRange] = useState<[number, number]>([0, 500]);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [selectedSource, setSelectedSource] = useState('');
+
+  // Fetch sources for filter dropdown
+  const { data: sources } = useQuery({
+    queryKey: ['oceanography-sources'],
+    queryFn: () => oceanographyService.getSources(),
+  });
+
+  // Fetch oceanographic data with all filters
   const { data: oceanData, isLoading, refetch } = useQuery({
-    queryKey: ['oceanography-data', selectedParameter],
-    queryFn: () => oceanographyService.getData({ parameter: selectedParameter, limit: 500 }),
+    queryKey: ['oceanography-data', selectedParameter, depthRange, dateRange, selectedSource],
+    queryFn: () => oceanographyService.getData({
+      parameter: selectedParameter,
+      limit: 500,
+      // Only pass depth filters if they're not at default values
+      minDepth: depthRange[0] > 0 ? depthRange[0] : undefined,
+      maxDepth: depthRange[1] < 500 ? depthRange[1] : undefined,
+      startDate: dateRange.start || undefined,
+      endDate: dateRange.end || undefined,
+      source: selectedSource || undefined,
+    }),
   });
 
   // Fetch parameters list
@@ -98,7 +118,23 @@ export default function OceanographyViewer() {
   });
 
   const dataPoints = oceanData?.data || [];
-  const currentStats = stats?.[0] || {};
+
+  // Calculate stats from filtered data (updates dynamically with filters)
+  const currentStats = {
+    count: dataPoints.length,
+    avg_value: dataPoints.length > 0
+      ? dataPoints.reduce((sum: number, p: any) => sum + (parseFloat(p.value) || 0), 0) / dataPoints.length
+      : null,
+    min_value: dataPoints.length > 0
+      ? Math.min(...dataPoints.map((p: any) => parseFloat(p.value) || 0))
+      : null,
+    max_value: dataPoints.length > 0
+      ? Math.max(...dataPoints.map((p: any) => parseFloat(p.value) || 0))
+      : null,
+    avg_depth: dataPoints.length > 0
+      ? dataPoints.reduce((sum: number, p: any) => sum + (parseFloat(p.depth) || 0), 0) / dataPoints.length
+      : null,
+  };
 
   const toggleLayer = (id: string) => {
     setSelectedParameter(id);
@@ -140,7 +176,7 @@ export default function OceanographyViewer() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Select 
+          <Select
             className="w-48"
             value={region}
             onChange={(e) => handleRegionChange(e.target.value)}
@@ -173,8 +209,8 @@ export default function OceanographyViewer() {
         />
         <StatCard
           title="Min / Max"
-          value={currentStats.min_value && currentStats.max_value 
-            ? `${formatNumber(currentStats.min_value, 1)} - ${formatNumber(currentStats.max_value, 1)}` 
+          value={currentStats.min_value && currentStats.max_value
+            ? `${formatNumber(currentStats.min_value, 1)} - ${formatNumber(currentStats.max_value, 1)}`
             : '—'}
           subtitle="Range"
           icon={Droplets}
@@ -199,6 +235,64 @@ export default function OceanographyViewer() {
         />
       </div>
 
+      {/* Horizontal Filters Bar */}
+      <Card variant="glass" className="p-4">
+        <div className="flex flex-wrap items-end gap-6">
+          {/* Depth Range - Left with better styling */}
+          <div className="flex-1 min-w-[280px] max-w-[400px] bg-white/60 rounded-xl p-3 border border-gray-100">
+            <label className="text-xs font-semibold text-deep-700 mb-2 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-ocean-500" />
+              Depth Range: <span className="text-ocean-600">{depthRange[0]}m</span> - <span className="text-ocean-600">{depthRange[1]}m</span>
+            </label>
+            <div className="flex gap-3 items-center">
+              <span className="text-xs text-deep-400 w-8">0m</span>
+              <input type="range" min="0" max="500" value={depthRange[0]}
+                onChange={(e) => setDepthRange([parseInt(e.target.value), depthRange[1]])}
+                className="flex-1 h-2 bg-gradient-to-r from-blue-200 to-ocean-300 rounded-lg appearance-none cursor-pointer accent-ocean-600" />
+              <input type="range" min="0" max="500" value={depthRange[1]}
+                onChange={(e) => setDepthRange([depthRange[0], parseInt(e.target.value)])}
+                className="flex-1 h-2 bg-gradient-to-r from-ocean-300 to-blue-500 rounded-lg appearance-none cursor-pointer accent-ocean-600" />
+              <span className="text-xs text-deep-400 w-12">500m</span>
+            </div>
+          </div>
+
+          {/* Source Filter */}
+          <div>
+            <label className="text-xs font-medium text-deep-600 mb-1 block">Source</label>
+            <select value={selectedSource}
+              onChange={(e) => setSelectedSource(e.target.value)}
+              className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none bg-white min-w-[140px]">
+              <option value="">All Sources</option>
+              {sources?.map((src: any) => (
+                <option key={src.source} value={src.source}>{src.source}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Range - Right */}
+          <div className="flex gap-2 items-center">
+            <div>
+              <label className="text-xs font-medium text-deep-600 mb-1 block">From</label>
+              <input type="date" value={dateRange.start}
+                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-deep-600 mb-1 block">To</label>
+              <input type="date" value={dateRange.end}
+                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none" />
+            </div>
+          </div>
+
+          {/* Clear Button */}
+          <Button variant="outline" size="sm"
+            onClick={() => { setDepthRange([0, 500]); setDateRange({ start: '', end: '' }); setSelectedSource(''); }}>
+            Clear
+          </Button>
+        </div>
+      </Card>
+
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         {/* Map Container */}
         <div className="xl:col-span-3">
@@ -209,7 +303,7 @@ export default function OceanographyViewer() {
                   <Loader className="w-8 h-8 animate-spin text-ocean-500" />
                 </div>
               )}
-              
+
               <MapContainer
                 center={mapCenter}
                 zoom={5}
@@ -221,7 +315,7 @@ export default function OceanographyViewer() {
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 <MapCenterControl center={mapCenter} />
-                
+
                 {dataPoints.map((point: any, idx: number) => (
                   <CircleMarker
                     key={idx}
@@ -304,8 +398,8 @@ export default function OceanographyViewer() {
                   onClick={() => toggleLayer(layer.id)}
                   className={cn(
                     "w-full flex items-center gap-3 p-3 rounded-xl border transition-all",
-                    layer.enabled 
-                      ? "border-ocean-200 bg-ocean-50" 
+                    layer.enabled
+                      ? "border-ocean-200 bg-ocean-50"
                       : "border-gray-100 bg-white hover:bg-gray-50"
                   )}
                 >
@@ -333,6 +427,7 @@ export default function OceanographyViewer() {
               ))}
             </CardContent>
           </Card>
+
 
           {/* Selected Point Info */}
           {selectedPoint && (

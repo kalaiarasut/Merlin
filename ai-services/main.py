@@ -102,10 +102,10 @@ async def chat(request: ChatRequest):
     
     Context can include domain-specific data to enhance responses.
     """
-    from chat.llm_service import MarineLLMService
+    from chat.llm_service import LLMService
     
     try:
-        llm_service = MarineLLMService()
+        llm_service = LLMService()
         result = await llm_service.chat(
             message=request.message,
             context=request.context

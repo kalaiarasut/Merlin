@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { speciesService } from '@/services/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -190,6 +191,7 @@ const conservationStatusColors: Record<string, { bg: string, text: string, label
 };
 
 export default function SpeciesExplorer() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -299,11 +301,11 @@ export default function SpeciesExplorer() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => navigate('/fish-identifier')}>
             <Sparkles className="w-4 h-4 mr-2" />
             AI Identify
           </Button>
-          <Button variant="premium">
+          <Button variant="premium" onClick={() => navigate('/ingestion')}>
             <Fish className="w-4 h-4 mr-2" />
             Add Species
           </Button>

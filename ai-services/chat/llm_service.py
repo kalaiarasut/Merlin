@@ -34,29 +34,32 @@ class ChatMessage:
 class ChatConfig:
     """Configuration for LLM chat"""
     provider: LLMProvider = LLMProvider.OLLAMA
-    model: str = "llama3.2"  # Default Ollama model
+    model: str = "llama3.2:1b"  # Default Ollama model (use the 1b version for speed)
     temperature: float = 0.7
     max_tokens: int = 2048
     ollama_url: str = "http://localhost:11434"
 
 
 # Marine research system prompt
-MARINE_SYSTEM_PROMPT = """You are an expert marine research assistant for the CMLRE (Centre for Marine Living Resources & Ecology) Marine Data Platform. You specialize in:
+MARINE_SYSTEM_PROMPT = """You are a friendly AI assistant for the CMLRE (Centre for Marine Living Resources & Ecology) Marine Data Platform.
 
-1. **Marine Biology**: Fish species identification, taxonomy, life cycles, behavior, and ecology
-2. **Oceanography**: Physical and chemical ocean properties, currents, temperature, salinity
-3. **eDNA Analysis**: Environmental DNA sampling, metabarcoding, species detection from water samples
-4. **Otolith Analysis**: Fish age determination, growth patterns, reading otolith rings
-5. **Biodiversity Assessment**: Species diversity indices (Shannon, Simpson), conservation status
-6. **Species Distribution Modeling**: Environmental niche modeling, habitat suitability
+IMPORTANT: 
+- For casual greetings like "hi", "hello", "hey" - respond naturally and warmly, then briefly mention how you can help with marine research.
+- Do NOT try to interpret greetings as marine data queries.
+- Be conversational and helpful, not robotic.
 
-When answering questions:
-- Provide scientifically accurate information
-- Reference relevant marine biology concepts
-- Suggest data analysis approaches when appropriate
-- Be concise but comprehensive
-- Use proper taxonomic nomenclature when discussing species
-- If asked about data in the platform, explain how to access or analyze it
+You specialize in:
+1. Marine Biology: Fish species, taxonomy, life cycles, ecology
+2. Oceanography: Temperature, salinity, currents, depth
+3. eDNA Analysis: Environmental DNA, metabarcoding, species detection
+4. Otolith Analysis: Fish age determination, growth patterns
+5. Biodiversity: Shannon/Simpson indices, conservation status
+6. Species Distribution: Niche modeling, habitat suitability
+
+When answering:
+- For greetings: Be friendly first, then offer to help
+- For questions: Be accurate, concise, and helpful
+- Suggest relevant platform features when appropriate
 
 You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images."""
 
@@ -78,9 +81,15 @@ class LLMService:
         self.config.ollama_url = os.getenv("OLLAMA_URL", self.config.ollama_url)
         self.config.model = os.getenv("LLM_MODEL", self.config.model)
         
+        # Hard check: If explicitly set to base "llama3.2" but that's not installed/working,
+        # fallback to the specialized 1b version we know is installed
+        if self.config.model == "llama3.2":
+            logger.info("Model 'llama3.2' detected, forcing 'llama3.2:1b' for compatibility")
+            self.config.model = "llama3.2:1b"
+        
         # Determine best available provider
         self._active_provider = self._detect_provider()
-        logger.info(f"LLM Service initialized with provider: {self._active_provider.value}")
+        logger.info(f"LLM Service initialized with provider: {self._active_provider.value}, model: {self.config.model}")
     
     def _detect_provider(self) -> LLMProvider:
         """Detect which LLM provider is available."""
@@ -132,7 +141,10 @@ class LLMService:
             }
             
         except Exception as e:
-            logger.error(f"Chat error: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"Chat error: {type(e).__name__}: {str(e)}")
+            logger.error(f"Traceback: {error_details}")
             # Fall back to smart responses on error
             return {
                 "response": self._generate_fallback_response(message, context),
@@ -182,7 +194,7 @@ class LLMService:
         # Add current message
         messages.append({"role": "user", "content": message})
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:  # Increased timeout for slower models
             response = await client.post(
                 f"{self.config.ollama_url}/api/chat",
                 json={
@@ -261,6 +273,91 @@ class LLMService:
 
 Would you like me to elaborate on any of these aspects?"""
         
+        # Check for specific species questions
+        message_lower = message.lower()
+        
+        # Common marine species knowledge base for fallback
+        species_info = {
+            "yellowfin tuna": {
+                "scientific": "Thunnus albacares",
+                "description": """**Yellowfin Tuna** (*Thunnus albacares*) is one of the largest tuna species.
+
+🐟 **Key Facts:**
+- **Size**: Can reach up to 2.4 meters (7.9 ft) and weigh up to 200 kg (440 lbs)
+- **Lifespan**: 6-7 years
+- **Habitat**: Tropical and subtropical oceans worldwide, typically in the upper 100m of water
+- **Diet**: Fish, squid, and crustaceans
+
+🌊 **Distribution**: Found throughout the Indian Ocean, Pacific Ocean, and Atlantic Ocean in tropical and temperate waters
+
+🎣 **Commercial Importance**: One of the most commercially valuable fish species, used for sashimi, steaks, and canned tuna
+
+📊 **Conservation Status**: Near Threatened (IUCN) - populations have declined due to overfishing
+
+Would you like to explore yellowfin tuna observations in our database?"""
+            },
+            "bluefin tuna": {
+                "scientific": "Thunnus thynnus",
+                "description": """**Atlantic Bluefin Tuna** (*Thunnus thynnus*) is the largest tuna species.
+
+🐟 **Key Facts:**
+- **Size**: Can reach up to 3 meters (10 ft) and weigh up to 680 kg (1,500 lbs)
+- **Lifespan**: Up to 40 years
+- **Habitat**: North Atlantic Ocean and Mediterranean Sea
+- **Diet**: Fish, squid, crustaceans
+
+🌊 **Distribution**: Migrate extensively across the Atlantic Ocean
+
+🎣 **Commercial Importance**: Extremely valuable for sushi/sashimi markets, fetching premium prices
+
+📊 **Conservation Status**: Endangered (IUCN) - heavily overfished
+
+Would you like to explore bluefin tuna data in our database?"""
+            },
+            "mahi mahi": {
+                "scientific": "Coryphaena hippurus",
+                "description": """**Mahi-mahi** (*Coryphaena hippurus*), also known as dolphinfish, is a vibrant, fast-growing fish.
+
+🐟 **Key Facts:**
+- **Size**: Up to 1.4 meters (4.6 ft) and 40 kg (88 lbs)
+- **Lifespan**: 4-5 years
+- **Habitat**: Warm tropical and subtropical waters worldwide
+- **Diet**: Flying fish, crabs, squid, mackerel
+
+🌊 **Distribution**: Found in the Atlantic, Indian, and Pacific oceans
+
+🎣 **Characteristics**: Known for brilliant colors (golden sides, blue-green back) and high dorsal fin
+
+📊 **Conservation Status**: Least Concern (IUCN)
+
+Would you like to explore mahi-mahi observations in our database?"""
+            },
+            "swordfish": {
+                "scientific": "Xiphias gladius",
+                "description": """**Swordfish** (*Xiphias gladius*) is a large, highly migratory fish known for its elongated bill.
+
+🐟 **Key Facts:**
+- **Size**: Up to 4.5 meters (14.8 ft) and 650 kg (1,430 lbs)
+- **Lifespan**: Up to 9 years
+- **Habitat**: Tropical, temperate, and sometimes cold waters
+- **Diet**: Fish, squid, crustaceans
+
+🌊 **Distribution**: Worldwide in Atlantic, Pacific, and Indian Oceans
+
+🎣 **Characteristics**: Uses bill to slash and stun prey, can dive to 550m depth
+
+📊 **Conservation Status**: Least Concern (IUCN)
+
+Would you like to explore swordfish data in our database?"""
+            }
+        }
+        
+        # Try to match species names
+        for species_key, info in species_info.items():
+            if species_key in message_lower:
+                return info["description"]
+        
+        # Generic species response
         return """I can help you explore marine species in several ways:
 
 🐟 **Species Explorer** - Browse our database of 1000+ marine species with:
@@ -274,7 +371,9 @@ Would you like me to elaborate on any of these aspects?"""
 
 🧬 **eDNA Detection** - See which species have been detected via environmental DNA
 
-To get started, navigate to **Species Explorer** in the sidebar, or upload a fish photo to **Fish Identifier**."""
+To get started, navigate to **Species Explorer** in the sidebar, or upload a fish photo to **Fish Identifier**.
+
+💡 **Tip**: You can ask me about specific species like "What is a yellowfin tuna?" or "Tell me about bluefin tuna" for detailed information."""
     
     def _oceanography_response(self, message: str) -> str:
         """Generate oceanography-related response."""

@@ -9,6 +9,7 @@ import { Species } from '../models/Species';
 import logger from '../utils/logger';
 import notificationService from '../utils/notificationService';
 import aiServiceClient from '../utils/aiServiceClient';
+import { lookupSpecies } from '../utils/fishbaseClient';
 
 const router = Router();
 
@@ -146,9 +147,61 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
             continue;
           }
 
+          // Smart validation for conservation status
+          const validConservationCodes = ['LC', 'NT', 'VU', 'EN', 'CR', 'EW', 'EX', 'DD', 'NE'];
+          const locationKeywords = ['ocean', 'sea', 'bengal', 'arabian', 'indian', 'pacific', 'atlantic', 'coastal', 'reef'];
+
+          let rawStatus = record.conservationStatus || record.conservation_status || '';
+          let finalConservationStatus = 'DD'; // Default to Data Deficient
+
+          if (rawStatus) {
+            const upperStatus = String(rawStatus).toUpperCase().trim();
+            // Check if it's a valid IUCN code
+            if (validConservationCodes.includes(upperStatus)) {
+              finalConservationStatus = upperStatus;
+            } else if (locationKeywords.some(kw => String(rawStatus).toLowerCase().includes(kw))) {
+              // Looks like a location - this was likely a data mapping error
+              // Keep it as DD and log warning
+              console.warn(`Conservation status looks like location: "${rawStatus}" - setting to DD`);
+            }
+          }
+
+          // FishBase API lookup to auto-fill missing data
+          let fishbaseHabitat = record.habitat;
+          let fishbaseDistribution = record.distribution ? (Array.isArray(record.distribution) ? record.distribution : [record.distribution]) : [];
+          let fishbaseCommonName = record.commonName || record.common_name;
+
+          // Only call FishBase if we're missing conservation status or habitat
+          if (finalConservationStatus === 'DD' || !record.habitat) {
+            try {
+              const fishbaseResult = await lookupSpecies(record.scientificName);
+              if (fishbaseResult.found) {
+                // Use FishBase conservation status if we don't have a valid one
+                if (finalConservationStatus === 'DD' && fishbaseResult.conservationStatus) {
+                  finalConservationStatus = fishbaseResult.conservationStatus;
+                  logger.info(`FishBase provided conservation status for ${record.scientificName}: ${finalConservationStatus}`);
+                }
+                // Use FishBase habitat if not provided
+                if (!record.habitat && fishbaseResult.habitat) {
+                  fishbaseHabitat = fishbaseResult.habitat;
+                }
+                // Use FishBase distribution if not provided
+                if (fishbaseDistribution.length === 0 && fishbaseResult.distribution) {
+                  fishbaseDistribution = fishbaseResult.distribution;
+                }
+                // Use FishBase common name if not provided
+                if (!fishbaseCommonName && fishbaseResult.commonName) {
+                  fishbaseCommonName = fishbaseResult.commonName;
+                }
+              }
+            } catch (fishbaseError: any) {
+              logger.warn(`FishBase lookup failed for ${record.scientificName}: ${fishbaseError.message}`);
+            }
+          }
+
           const speciesData = {
             scientificName: record.scientificName,
-            commonName: record.commonName || record.common_name,
+            commonName: fishbaseCommonName,
             taxonomicRank: record.taxonomicRank || record.taxonomic_rank || 'species',
             kingdom: record.kingdom || 'Animalia',
             phylum: record.phylum || 'Chordata',
@@ -156,9 +209,9 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
             order: record.order || 'Unknown',
             family: record.family || 'Unknown',
             genus: record.genus || record.scientificName?.split(' ')[0] || 'Unknown',
-            habitat: record.habitat,
-            conservationStatus: record.conservationStatus || record.conservation_status,
-            distribution: record.distribution ? (Array.isArray(record.distribution) ? record.distribution : [record.distribution]) : [],
+            habitat: fishbaseHabitat,
+            conservationStatus: finalConservationStatus,
+            distribution: fishbaseDistribution,
             jobId: jobId,
             aiMetadata: {
               extractedTags: metadataResult.auto_tags || [],
@@ -166,6 +219,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
               dataQuality: cleaningResult.success ? 'cleaned' : 'raw',
               cleaningApplied: cleaningResult.corrections?.map(c => c.reason) || [],
               dataClassification: metadataResult.data_classification || 'unknown',
+              fishbaseEnhanced: finalConservationStatus !== 'DD',
             },
           };
 

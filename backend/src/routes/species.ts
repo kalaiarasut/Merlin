@@ -7,7 +7,7 @@ const router = Router();
 router.get('/', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
     const { page = 1, limit = 20, search, phylum, class: className } = req.query;
-    
+
     const filter: any = {};
     if (search) {
       filter.$or = [
@@ -55,6 +55,36 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response, next) => 
   try {
     const species = await Species.create(req.body);
     res.status(201).json(species);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update species
+router.put('/:id', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const species = await Species.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+    if (!species) {
+      return res.status(404).json({ error: 'Species not found' });
+    }
+    res.json(species);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete species
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const species = await Species.findByIdAndDelete(req.params.id);
+    if (!species) {
+      return res.status(404).json({ error: 'Species not found' });
+    }
+    res.json({ message: 'Species deleted successfully', id: req.params.id });
   } catch (error) {
     next(error);
   }

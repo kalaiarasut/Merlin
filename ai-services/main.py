@@ -1386,11 +1386,11 @@ async def generate_report(request: ReportGenerationRequest):
                 ))
         
         # Auto-generate sections based on report type and data
-        elif request.data:
+        elif request.data and not request.use_llm:
             sections = _auto_generate_sections(request.report_type, request.data)
         
         # USE LLM FOR INTELLIGENT REPORT GENERATION
-        if not sections and request.use_llm:
+        if request.use_llm:
             try:
                 # Get LLM-generated content
                 llm_content = await _generate_llm_report_content(

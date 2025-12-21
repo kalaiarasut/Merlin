@@ -64,6 +64,126 @@ When answering:
 You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images."""
 
 
+def get_dynamic_system_prompt() -> str:
+    """Get system prompt with REAL database context from MongoDB Atlas AND PostgreSQL."""
+    db_context = ""
+    
+    try:
+        # Import database connector
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from database import get_all_species, get_species_analytics, get_oceanographic_summary
+        
+        # ============================================
+        # MongoDB Atlas - Species Data
+        # ============================================
+        species_list = get_all_species()
+        
+        if species_list:
+            count = len(species_list)
+            db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas) ===\n"
+            for sp in sorted(species_list, key=lambda x: x.get('scientificName', '')):
+                sci = sp.get('scientificName', 'Unknown')
+                common = sp.get('commonName', '')
+                habitat = sp.get('habitat', '')
+                status = sp.get('conservationStatus', '')
+                db_context += f"- {sci} | {common} | Habitat: {habitat} | Status: {status}\n"
+            
+            # Get analytics for complex questions
+            analytics = get_species_analytics()
+            
+            db_context += f"\n=== ANALYTICS DATA ===\n"
+            
+            if analytics.get('habitat_distribution'):
+                db_context += "Habitat Distribution:\n"
+                for h, c in sorted(analytics['habitat_distribution'].items(), key=lambda x: -x[1]):
+                    db_context += f"  - {h}: {c} species\n"
+            
+            if analytics.get('depth_zones'):
+                db_context += "\nDepth Zones:\n"
+                for z, c in sorted(analytics['depth_zones'].items(), key=lambda x: -x[1]):
+                    db_context += f"  - {z}: {c} species\n"
+            
+            if analytics.get('geographic_distribution'):
+                db_context += "\nGeographic Distribution:\n"
+                for r, c in sorted(analytics['geographic_distribution'].items(), key=lambda x: -x[1]):
+                    db_context += f"  - {r}: {c} species\n"
+            
+            if analytics.get('insights'):
+                db_context += "\nKey Insights:\n"
+                for insight in analytics['insights']:
+                    db_context += f"  • {insight}\n"
+        
+        # ============================================
+        # PostgreSQL - Oceanographic Data
+        # ============================================
+        try:
+            ocean_summary = get_oceanographic_summary()
+            
+            if ocean_summary.get('connected'):
+                db_context += f"\n=== OCEANOGRAPHIC DATA (PostgreSQL) ===\n"
+                db_context += f"Total Records: {ocean_summary.get('record_count', 0)}\n"
+                
+                if ocean_summary.get('parameters'):
+                    db_context += "Available Parameters:\n"
+                    for param in ocean_summary['parameters'][:10]:  # Limit to 10
+                        db_context += f"  - {param}\n"
+                
+                # Get additional oceanographic context if available
+                try:
+                    from database import get_oceanographic_stats
+                    stats = get_oceanographic_stats()
+                    if stats:
+                        db_context += "\nOceanographic Statistics:\n"
+                        if stats.get('temperature_range'):
+                            db_context += f"  - Temperature: {stats['temperature_range']}\n"
+                        if stats.get('salinity_range'):
+                            db_context += f"  - Salinity: {stats['salinity_range']}\n"
+                        if stats.get('depth_range'):
+                            db_context += f"  - Depth: {stats['depth_range']}\n"
+                        if stats.get('locations'):
+                            db_context += f"  - Locations: {len(stats['locations'])} sampling stations\n"
+                except:
+                    pass  # Optional stats function
+            else:
+                db_context += "\n=== OCEANOGRAPHIC DATA ===\nPostgreSQL: Not connected\n"
+        except Exception as e:
+            db_context += f"\n=== OCEANOGRAPHIC DATA ===\nPostgreSQL: Error - {str(e)[:50]}\n"
+        
+        # ============================================
+        # Query Rules for LLM
+        # ============================================
+        db_context += f"\n=== QUERY RULES ===\n"
+        if species_list:
+            db_context += f"1. Our SPECIES database has EXACTLY {len(species_list)} species (MongoDB Atlas).\n"
+        db_context += f"2. For 'starting with X' questions, check SCIENTIFIC NAME first letter.\n"
+        db_context += f"3. For depth questions, use the Depth Zones data above.\n"
+        db_context += f"4. For region questions, use Geographic Distribution data.\n"
+        db_context += f"5. For temperature/salinity/oceanographic questions, use PostgreSQL data.\n"
+        db_context += f"6. Give EXACT numbers from the data - don't estimate.\n"
+            
+    except Exception as e:
+        # Fallback to static file
+        import json
+        from pathlib import Path
+        possible_paths = [
+            Path(__file__).parent.parent.parent / "database" / "seeds" / "species.json",
+        ]
+        for db_path in possible_paths:
+            if db_path.exists():
+                try:
+                    with open(db_path, 'r') as f:
+                        data = json.load(f)
+                    unique = {sp.get('scientificName'): sp.get('commonName') for sp in data if sp.get('scientificName')}
+                    db_context = f"\n\nDatabase contains {len(unique)} species (from backup file).\n"
+                    break
+                except:
+                    pass
+    
+    return MARINE_SYSTEM_PROMPT + db_context
+
+
 class LLMService:
     """
     LLM Chat Service for marine research queries.
@@ -111,7 +231,8 @@ class LLMService:
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        conversation_history: Optional[List[ChatMessage]] = None
+        conversation_history: Optional[List[ChatMessage]] = None,
+        allow_fallback: bool = True
     ) -> Dict[str, Any]:
         """
         Process a chat message and return a response.
@@ -131,6 +252,8 @@ class LLMService:
             if self._active_provider == LLMProvider.OLLAMA:
                 response = await self._chat_ollama(enhanced_message, conversation_history)
             else:
+                if not allow_fallback:
+                    raise Exception("LLM provider (Ollama) is unavailable and fallback is disabled.")
                 response = self._generate_fallback_response(message, context)
             
             return {
@@ -145,6 +268,10 @@ class LLMService:
             error_details = traceback.format_exc()
             logger.error(f"Chat error: {type(e).__name__}: {str(e)}")
             logger.error(f"Traceback: {error_details}")
+            
+            if not allow_fallback:
+                raise e
+                
             # Fall back to smart responses on error
             return {
                 "response": self._generate_fallback_response(message, context),
@@ -184,7 +311,8 @@ class LLMService:
         history: Optional[List[ChatMessage]] = None
     ) -> str:
         """Chat using Ollama local LLM."""
-        messages = [{"role": "system", "content": MARINE_SYSTEM_PROMPT}]
+        # Use dynamic prompt with real database context
+        messages = [{"role": "system", "content": get_dynamic_system_prompt()}]
         
         # Add conversation history
         if history:
@@ -194,7 +322,7 @@ class LLMService:
         # Add current message
         messages.append({"role": "user", "content": message})
         
-        async with httpx.AsyncClient(timeout=180.0) as client:  # Increased timeout for slower models
+        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minute timeout for slower hardware
             response = await client.post(
                 f"{self.config.ollama_url}/api/chat",
                 json={

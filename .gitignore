@@ -82,6 +82,29 @@ coverage/
 ai-services/models/weights/*
 !ai-services/models/.gitkeep
 
+# Training Data (large datasets)
+ai-services/classification/training_data/
+ai-services/classification/training_data_v2/
+ai-services/training_data/
+training_data/
+training_data_v2/
+*.zip
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+__pycache__/
+
+# Colab files
+sample_data/
+
+# Model outputs
+ai-services/classification/models/*.pth
+!ai-services/classification/models/.gitkeep
+
+# Downloaded images
+ai-services/classification/downloaded_images/
+
 # Temporary files
 tmp/
 temp/
@@ -91,3 +114,28 @@ temp/
 # OS
 Thumbs.db
 .DS_Store
+
+# Test Reports
+test_*.html
+*_report.html
+
+# Temporary Scripts
+ai-services/test_db.py
+
+# Generated Reports
+ai-services/reports/*
+!ai-services/reports/.gitkeep
+
+# Verification Scripts
+ai-services/verify_*.py
+
+# Download Scripts
+ai-services/classification/download_*.py
+
+# Training Notebooks (Colab/Jupyter)
+ai-services/classification/*.ipynb
+
+# Generated Training Files
+ai-services/classification/species_catalog.json
+ai-services/classification/MODEL_TRAINING_HISTORY.md
+ai-services/classification/species_trainer.py

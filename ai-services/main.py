@@ -22,6 +22,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ====================================
+# Real Database Query Functions
+# ====================================
+
+def get_real_species_from_database() -> List[Dict]:
+    """Query the actual species database (species.json)"""
+    import json
+    from pathlib import Path
+    
+    # Try multiple possible locations
+    possible_paths = [
+        Path(__file__).parent.parent / "database" / "seeds" / "species.json",
+        Path("../database/seeds/species.json"),
+        Path("database/seeds/species.json"),
+    ]
+    
+    for db_path in possible_paths:
+        if db_path.exists():
+            try:
+                with open(db_path, 'r') as f:
+                    data = json.load(f)
+                
+                # Get unique species
+                unique_species = {}
+                for sp in data:
+                    sci_name = sp.get('scientificName', '')
+                    if sci_name and sci_name not in unique_species:
+                        unique_species[sci_name] = {
+                            'scientificName': sci_name,
+                            'commonName': sp.get('commonName', ''),
+                            'family': sp.get('family', ''),
+                            'habitat': sp.get('habitat', ''),
+                            'conservationStatus': sp.get('conservationStatus', ''),
+                            'distribution': sp.get('distribution', [])
+                        }
+                
+                return list(unique_species.values())
+            except Exception as e:
+                print(f"Error reading species database: {e}")
+    
+    return []
+
+
+def get_database_summary() -> str:
+    """Get a summary of the real database for AI context"""
+    species_list = get_real_species_from_database()
+    if not species_list:
+        return "Database not available."
+    
+    summary = f"The CMLRE Marine Database contains {len(species_list)} unique species:\n"
+    for sp in species_list:
+        summary += f"- {sp['commonName']} ({sp['scientificName']}) - {sp['habitat']}, Status: {sp['conservationStatus']}\n"
+    
+    return summary
+
 # Pydantic models
 class ChatRequest(BaseModel):
     message: str
@@ -84,6 +140,15 @@ async def root():
             "utilities": {
                 "POST /clean-data": "AI-powered data cleaning",
                 "POST /correlate": "Cross-domain correlation analysis"
+            },
+            "classification_v2": {
+                "POST /classify-fish-v2": "Hierarchical fish classification (Indian Ocean)",
+                "GET /species-catalog": "Get species catalog",
+                "POST /add-species": "Add new species to catalog",
+                "POST /training/add-images": "Add training images",
+                "POST /training/train": "Train model from scratch",
+                "POST /training/fine-tune": "Fine-tune with new species",
+                "GET /training/status": "Get training data status"
             }
         }
     }
@@ -159,6 +224,188 @@ async def classify_fish(image: UploadFile = File(...)):
             status_code=500,
             detail=f"Classification failed: {str(e)}"
         )
+
+
+# ============================================
+# INDIAN OCEAN FISH CLASSIFICATION V2
+# Hierarchical classifier with trainable model
+# ============================================
+
+class AddSpeciesRequest(BaseModel):
+    scientific_name: str
+    common_name: str
+    habitat: str  # pelagic, demersal, reef, coastal, deep_sea
+    family: str
+
+
+@app.post("/classify-fish-v2")
+async def classify_fish_v2(image: UploadFile = File(...)):
+    """
+    Hierarchical Fish Classification for Indian Ocean Species
+    
+    Uses a locally-trained deep learning model with:
+    - Habitat classification (pelagic, reef, coastal, etc.)
+    - Family classification (Scombridae, Carangidae, etc.)
+    - Species identification
+    - Unknown species detection (confidence-based)
+    
+    Model is trainable - new species can be added by admin.
+    """
+    from classification.fish_classifier import get_classifier
+    
+    # Validate file type
+    allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp']
+    if image.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: JPEG, PNG, WebP, BMP"
+        )
+    
+    try:
+        # Read image data
+        image_data = await image.read()
+        
+        # Classify using hierarchical model
+        classifier = get_classifier()
+        result = classifier.classify(image_data)
+        
+        return result.to_dict()
+        
+    except Exception as e:
+        import traceback
+        print(f"Classification v2 error: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Classification failed: {str(e)}"
+        )
+
+
+@app.get("/species-catalog")
+async def get_species_catalog():
+    """
+    Get the species catalog for classification
+    
+    Returns all species in the training catalog with:
+    - Scientific and common names
+    - Habitat and family
+    - Training image count
+    """
+    from classification.fish_classifier import get_species_catalog
+    
+    try:
+        return get_species_catalog()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/add-species")
+async def add_species(request: AddSpeciesRequest):
+    """
+    Add a new species to the classification catalog
+    
+    After adding, upload training images via /training/add-images
+    Then retrain with /training/fine-tune
+    """
+    from classification.fish_classifier import add_species as catalog_add_species
+    
+    try:
+        success = catalog_add_species(
+            scientific_name=request.scientific_name,
+            common_name=request.common_name,
+            habitat=request.habitat,
+            family=request.family
+        )
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Species {request.scientific_name} added to catalog",
+                "next_step": "Upload training images via POST /training/add-images"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Species {request.scientific_name} already exists in catalog"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/add-images")
+async def add_training_images(
+    scientific_name: str = Form(...),
+    images: List[UploadFile] = File(...)
+):
+    """
+    Add training images for a species
+    
+    Minimum 30 images recommended for reliable classification.
+    Images will be preprocessed and stored for training.
+    """
+    from classification.species_trainer import add_species_images
+    
+    try:
+        # Read all image data
+        image_data = []
+        for img in images:
+            data = await img.read()
+            image_data.append(data)
+        
+        result = add_species_images(scientific_name, image_data)
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/train")
+async def train_model_endpoint():
+    """
+    Train the classification model from scratch
+    
+    This is a long-running operation (may take 30+ minutes).
+    Use /training/fine-tune for faster updates with new species.
+    """
+    from classification.species_trainer import train_model
+    
+    try:
+        result = train_model()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/fine-tune")
+async def fine_tune_model_endpoint():
+    """
+    Fine-tune the model with new species
+    
+    Faster than full training - only updates classification heads.
+    Use after adding new species and their training images.
+    """
+    from classification.species_trainer import fine_tune_model
+    
+    try:
+        result = fine_tune_model()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/training/status")
+async def get_training_status_endpoint():
+    """
+    Get the current training data status
+    
+    Shows which species have enough training images
+    and which need more data before training.
+    """
+    from classification.species_trainer import get_training_status
+    
+    try:
+        return get_training_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze-otolith")
 async def analyze_otolith(image: UploadFile = File(...)):
@@ -914,6 +1161,147 @@ class ReportGenerationRequest(BaseModel):
     keywords: List[str] = []
     sections: List[ReportSectionInput] = []
     data: Optional[Dict[str, Any]] = None  # Raw data for auto-generation
+    use_llm: bool = True  # NEW: whether to use LLM for intelligent generation
+
+
+async def _generate_llm_report_content(title: str, abstract: str, report_type: str) -> Dict[str, Any]:
+    """
+    Use LLM to generate intelligent report content based on user query.
+    Queries both MongoDB and PostgreSQL for relevant data.
+    """
+    from chat.llm_service import LLMService
+    import logging
+    
+    llm_service = LLMService()
+    
+    # Construct the query for the LLM
+    query = f"""Generate a report about: {title}
+
+Additional context: {abstract if abstract else 'None provided'}
+Report type: {report_type}
+
+Based on the database information provided in your context, please:
+1. List the relevant species/data that match the user's request
+2. Provide key findings
+3. Give a brief analysis
+
+If the user asks for species "starting with X" or "ending with X", filter the species list accordingly by SCIENTIFIC NAME.
+If the user asks about a specific habitat or family, filter by that.
+ONLY list species that match the criteria from the database context provided to you.
+
+Format your response EXACTLY as:
+SPECIES LIST:
+- Genus species (Common Name) - Family - Habitat
+
+KEY FINDINGS:
+- Finding 1
+- Finding 2
+- Finding 3
+
+ANALYSIS:
+Your brief analytical paragraph here.
+"""
+    
+    try:
+        # Call the LLM
+        logging.info(f"Calling LLM for report: {title}")
+        response = await llm_service.chat(query, allow_fallback=False)
+        
+        # Ensure response is a string
+        if not isinstance(response, str):
+            if isinstance(response, dict):
+                response = response.get('response', str(response))
+            else:
+                response = str(response)
+        
+        logging.info(f"LLM response length: {len(response)} chars")
+        logging.info(f"LLM response preview: {response[:500] if len(response) > 500 else response}")
+        
+        # Parse the response
+        content = {
+            'llm_response': response,
+            'species_list': [],
+            'key_findings': [],
+            'analysis': response  # Default to full response as analysis
+        }
+        
+        # Try to parse sections from LLM response
+        response_upper = response.upper()
+        
+        if 'SPECIES LIST:' in response_upper or 'SPECIES:' in response_upper:
+            try:
+                # Find where species list starts
+                start_idx = response_upper.find('SPECIES LIST:')
+                if start_idx == -1:
+                    start_idx = response_upper.find('SPECIES:')
+                    start_len = len('SPECIES:')
+                else:
+                    start_len = len('SPECIES LIST:')
+                
+                # Find where it ends (next section or end)
+                end_markers = ['KEY FINDINGS:', 'ANALYSIS:', 'FINDINGS:', 'CONCLUSION:']
+                end_idx = len(response)
+                for marker in end_markers:
+                    idx = response_upper.find(marker, start_idx + start_len)
+                    if idx != -1 and idx < end_idx:
+                        end_idx = idx
+                
+                species_section = response[start_idx + start_len:end_idx]
+                species_lines = [line.strip().lstrip('- •*').strip() 
+                               for line in species_section.strip().split('\n') 
+                               if line.strip() and len(line.strip()) > 3 and line.strip() not in ['-', '*', '•']]
+                content['species_list'] = species_lines[:50]
+                logging.info(f"Parsed {len(content['species_list'])} species")
+            except Exception as e:
+                logging.error(f"Error parsing species list: {e}")
+        
+        if 'KEY FINDINGS:' in response_upper or 'FINDINGS:' in response_upper:
+            try:
+                start_idx = response_upper.find('KEY FINDINGS:')
+                if start_idx == -1:
+                    start_idx = response_upper.find('FINDINGS:')
+                    start_len = len('FINDINGS:')
+                else:
+                    start_len = len('KEY FINDINGS:')
+                
+                end_markers = ['ANALYSIS:', 'CONCLUSION:', 'SUMMARY:']
+                end_idx = len(response)
+                for marker in end_markers:
+                    idx = response_upper.find(marker, start_idx + start_len)
+                    if idx != -1 and idx < end_idx:
+                        end_idx = idx
+                
+                findings_section = response[start_idx + start_len:end_idx]
+                findings_lines = [line.strip().lstrip('- •*0123456789.').strip() 
+                                for line in findings_section.strip().split('\n') 
+                                if line.strip() and len(line.strip()) > 5]
+                content['key_findings'] = findings_lines[:10]
+                logging.info(f"Parsed {len(content['key_findings'])} findings")
+            except Exception as e:
+                logging.error(f"Error parsing findings: {e}")
+        
+        if 'ANALYSIS:' in response_upper:
+            try:
+                start_idx = response_upper.find('ANALYSIS:')
+                content['analysis'] = response[start_idx + len('ANALYSIS:'):].strip()
+            except:
+                pass
+        
+        # If no structured content was found, use the full response
+        if not content['species_list'] and not content['key_findings']:
+            content['key_findings'] = ["AI Response (unstructured format - see analysis below)"]
+            content['analysis'] = response
+        
+        return content
+        
+    except Exception as e:
+        import logging
+        logging.error(f"LLM report generation error: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        # Re-raise exception to be handled by caller
+        raise e
+
 
 
 @app.post("/generate-report")
@@ -1001,15 +1389,59 @@ async def generate_report(request: ReportGenerationRequest):
         elif request.data:
             sections = _auto_generate_sections(request.report_type, request.data)
         
-        # Default section if nothing provided
-        if not sections:
-            sections = [
-                ReportSection(
-                    title="Summary",
-                    content="Report generated by CMLRE Marine Data Platform.",
-                    key_findings=["No specific data provided"]
+        # USE LLM FOR INTELLIGENT REPORT GENERATION
+        if not sections and request.use_llm:
+            try:
+                # Get LLM-generated content
+                llm_content = await _generate_llm_report_content(
+                    title=request.title,
+                    abstract=request.abstract,
+                    report_type=request.report_type
                 )
-            ]
+                
+                # Build section from LLM response
+                species_rows = []
+                for species_line in llm_content.get('species_list', []):
+                    # Try to parse species info
+                    parts = species_line.split(' - ') if ' - ' in species_line else [species_line, '', '', '']
+                    if len(parts) >= 1:
+                        species_rows.append([
+                            parts[0] if len(parts) > 0 else '',
+                            parts[1] if len(parts) > 1 else '',
+                            parts[2] if len(parts) > 2 else '',
+                            parts[3] if len(parts) > 3 else ''
+                        ])
+                
+                sections.append(ReportSection(
+                    title=f"AI-Generated Analysis: {request.title}",
+                    content=llm_content.get('analysis', 'No analysis available.'),
+                    level=1,
+                    tables=[TableConfig(
+                        title="Species Found",
+                        headers=["Species", "Details", "Habitat", "Family"],
+                        rows=species_rows
+                    )] if species_rows else [],
+                    key_findings=llm_content.get('key_findings', [])
+                ))
+                
+            except Exception as e:
+                import logging
+                logging.error(f"LLM report generation error: {e}")
+                # RAISE ERROR instead of generating failure report
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"LLM Unavailable: Unified report generation requires the AI service. Error: {str(e)}"
+                )
+        
+        # NO FALLBACK - Only show LLM-generated content
+        # If LLM was not used or no sections, show appropriate message
+        if not sections:
+            sections.append(ReportSection(
+                title="No Report Generated",
+                content="The report could not be generated. Please ensure the AI service is running and try again.",
+                level=1,
+                key_findings=["AI service may be unavailable", "Please restart Ollama and the AI service"]
+            ))
         
         # Map format string to enum
         format_map = {
@@ -1058,6 +1490,191 @@ async def generate_report(request: ReportGenerationRequest):
             status_code=500,
             detail=f"Report generation failed: {str(e)}"
         )
+
+
+async def _generate_llm_sections(title: str, abstract: str, report_type: str, keywords: List[str]) -> List:
+    """Generate report sections using LLM based on title and abstract."""
+    from analytics.report_generator import ReportSection
+    import httpx
+    
+    sections = []
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    
+    # Get REAL database context for AI
+    db_context = get_database_summary()
+    
+    # Build context with real database info
+    context = f"""Title: {title}
+Abstract: {abstract}
+Keywords: {', '.join(keywords) if keywords else 'marine research'}
+
+IMPORTANT - Our actual database contains:
+{db_context}"""
+    
+    prompts_by_type = {
+        "species_analysis": f"""Write a brief scientific report about the following species study.
+
+{context}
+
+Write 3 paragraphs:
+1. Species overview and importance
+2. Distribution, habitat and ecology  
+3. Population status and conservation
+
+Be specific and scientific.""",
+
+        "biodiversity": f"""Write a brief biodiversity analysis report.
+
+{context}
+
+Write 3 paragraphs:
+1. Overview of biodiversity patterns observed
+2. Species composition and community structure
+3. Conservation implications and recommendations
+
+Be specific with metrics and observations.""",
+
+        "edna_analysis": f"""Write a brief eDNA analysis report.
+
+{context}
+
+Write 3 paragraphs:
+1. eDNA methodology and sampling approach
+2. Species detection results
+3. Biodiversity assessment and conclusions""",
+
+        "niche_model": f"""Write a brief species distribution modeling report.
+
+{context}
+
+Write 3 paragraphs:
+1. Modeling approach and environmental variables
+2. Predicted habitat suitability
+3. Conservation applications"""
+    }
+    
+    # Get actual species data from catalog for enhanced reports
+    species_list = ""
+    try:
+        from classification import FishClassifier
+        classifier = FishClassifier()
+        catalog = classifier.catalog.get_all_species()
+        if catalog:
+            species_list = "\n\nAvailable species in database:\n"
+            for sp in catalog:
+                species_list += f"- {sp.common_name} ({sp.scientific_name}) - {sp.habitat}, {sp.family}\n"
+    except:
+        pass
+    
+    # Add species data to context if available
+    if species_list:
+        context += species_list
+    
+    prompt = prompts_by_type.get(report_type, f"""Write a brief research report.
+
+{context}
+
+Write 3 paragraphs covering the main aspects of this research.""")
+
+    try:
+        # Longer timeout for LLM response
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": "llama3.2:1b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.7, "num_predict": 500}
+                }
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                llm_response = result.get("response", "").strip()
+                
+                if llm_response and len(llm_response) > 50:
+                    # Split response into paragraphs
+                    paragraphs = [p.strip() for p in llm_response.split('\n\n') if p.strip()]
+                    
+                    # Create sections from paragraphs
+                    section_titles = {
+                        "species_analysis": ["Species Overview", "Distribution and Habitat", "Population Status"],
+                        "biodiversity": ["Biodiversity Overview", "Species Composition", "Conservation Implications"],
+                        "edna_analysis": ["Methodology", "Species Detection", "Biodiversity Assessment"],
+                        "niche_model": ["Modeling Approach", "Habitat Suitability", "Conservation Applications"]
+                    }
+                    
+                    titles = section_titles.get(report_type, ["Overview", "Analysis", "Conclusions"])
+                    
+                    for i, paragraph in enumerate(paragraphs[:3]):
+                        section_title = titles[i] if i < len(titles) else f"Section {i+1}"
+                        # Clean up paragraph
+                        clean_para = paragraph.replace('1.', '').replace('2.', '').replace('3.', '').strip()
+                        if clean_para:
+                            sections.append(ReportSection(
+                                title=section_title,
+                                content=clean_para,
+                                level=1
+                            ))
+                    
+                    # If we got content, add key findings
+                    if sections:
+                        sections[-1].key_findings = [
+                            f"Analysis based on: {title}",
+                            f"Report type: {report_type.replace('_', ' ').title()}",
+                            "Generated using AI-powered analysis"
+                        ]
+                        
+    except Exception as e:
+        import logging
+        logging.error(f"LLM generation error: {e}")
+    
+    # Fallback if LLM didn't produce content
+    if not sections:
+        sections.append(ReportSection(
+            title="Executive Summary",
+            content=f"This report examines: {title}. {abstract}" if abstract else f"Research report on: {title}",
+            level=1,
+            key_findings=[
+                f"Subject: {title}",
+                f"Report type: {report_type.replace('_', ' ').title()}",
+                "Detailed analysis available with connected data sources"
+            ]
+        ))
+    
+    # Add species catalog section if relevant
+    if any(word in title.lower() + abstract.lower() for word in ['species', 'database', 'list', 'catalog', 'all']):
+        try:
+            from classification import FishClassifier
+            from analytics.report_generator import TableConfig
+            classifier = FishClassifier()
+            catalog = classifier.catalog.get_all_species()
+            if catalog:
+                species_data = []
+                for sp in catalog:
+                    species_data.append([sp.common_name, sp.scientific_name, sp.habitat.title(), sp.family])
+                
+                sections.append(ReportSection(
+                    title="Species Catalog",
+                    content=f"The database contains {len(catalog)} marine species from the Indian Ocean region.",
+                    level=1,
+                    tables=[TableConfig(
+                        title="Marine Species Database",
+                        headers=["Common Name", "Scientific Name", "Habitat", "Family"],
+                        rows=species_data
+                    )],
+                    key_findings=[
+                        f"Total species: {len(catalog)}",
+                        f"Families represented: {len(set(sp.family for sp in catalog))}",
+                        f"Habitats covered: Pelagic, Reef, Coastal, Demersal"
+                    ]
+                ))
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to add species catalog: {e}")
+    
+    return sections
 
 
 def _auto_generate_sections(report_type: str, data: Dict[str, Any]) -> List:

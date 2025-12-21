@@ -603,7 +603,7 @@ class MetadataTagger:
         
         return {k: v for k, v in obis.items() if v}
     
-    def _extract_exif(self, image: Image.Image) -> Dict[str, Any]:
+    def _extract_exif(self, image: Any) -> Dict[str, Any]:
         """Extract EXIF metadata from image."""
         try:
             exif = image._getexif()

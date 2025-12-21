@@ -196,7 +196,7 @@ class ReportGenerator:
         ))
         
         self.styles.add(ParagraphStyle(
-            name='BodyText',
+            name='ReportBody',
             parent=self.styles['Normal'],
             fontSize=10,
             leading=14,
@@ -355,7 +355,7 @@ class ReportGenerator:
         if metadata.abstract:
             story.append(Spacer(1, 0.5*inch))
             story.append(Paragraph("<b>Abstract</b>", self.styles['SubHeading']))
-            story.append(Paragraph(metadata.abstract, self.styles['BodyText']))
+            story.append(Paragraph(metadata.abstract, self.styles['ReportBody']))
         
         story.append(PageBreak())
         
@@ -378,7 +378,7 @@ class ReportGenerator:
             
             # Content text
             if section.content:
-                story.append(Paragraph(section.content, self.styles['BodyText']))
+                story.append(Paragraph(section.content, self.styles['ReportBody']))
                 story.append(Spacer(1, 0.1*inch))
             
             # Key findings
@@ -390,7 +390,7 @@ class ReportGenerator:
             
             # Bullet points
             if section.bullet_points:
-                items = [ListItem(Paragraph(bp, self.styles['BodyText'])) 
+                items = [ListItem(Paragraph(bp, self.styles['ReportBody'])) 
                         for bp in section.bullet_points]
                 story.append(ListFlowable(items, bulletType='bullet'))
                 story.append(Spacer(1, 0.1*inch))

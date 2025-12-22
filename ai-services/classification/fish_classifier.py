@@ -525,9 +525,23 @@ def classify_image_bytes(image_bytes: bytes) -> Dict:
 
 
 def get_species_catalog() -> Dict:
-    """Get species catalog summary - convenience function"""
+    """Get species catalog summary - convenience function with Redis caching"""
+    from utils.redis_cache import cache_get, cache_set
+    
+    cache_key = "species_catalog"
+    
+    # Try cache first
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+    
     classifier = get_classifier()
-    return classifier.get_catalog_summary()
+    result = classifier.get_catalog_summary()
+    
+    # Cache the result (5 minutes)
+    cache_set(cache_key, result, ttl_seconds=300)
+    
+    return result
 
 
 def add_species(scientific_name: str, common_name: str, habitat: str, family: str) -> bool:

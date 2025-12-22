@@ -96,16 +96,31 @@ class FishBaseService:
         """
         Search for a species by scientific name.
         
+        Uses a two-tier cache:
+        1. Redis (L1) - fast, 24 hour TTL
+        2. File (L2) - persistent, 30 day TTL
+        
         Args:
             scientific_name: e.g., "Thunnus albacares"
             
         Returns:
             Species data dict or None if not found
         """
-        # Check cache first
-        cached = self._load_from_cache(scientific_name)
-        if cached:
-            return cached
+        from utils.redis_cache import cache_get, cache_set
+        
+        # L1: Check Redis cache first (fastest)
+        redis_key = f"fishbase:{scientific_name.lower().replace(' ', '_')}"
+        cached_redis = cache_get(redis_key)
+        if cached_redis:
+            logger.debug(f"FishBase Redis cache hit: {scientific_name}")
+            return cached_redis
+        
+        # L2: Check file cache
+        cached_file = self._load_from_cache(scientific_name)
+        if cached_file:
+            # Populate Redis for next time
+            cache_set(redis_key, cached_file, ttl_seconds=86400)  # 24 hours
+            return cached_file
         
         # Try to fetch from API
         try:
@@ -139,14 +154,16 @@ class FishBaseService:
                     enriched = await self._fetch_species_details(client, spec_code)
                     species_data.update(enriched)
                 
-                # Cache the result
-                self._save_to_cache(scientific_name, species_data)
+                # Cache the result in both tiers
+                self._save_to_cache(scientific_name, species_data)  # L2: File
+                cache_set(redis_key, species_data, ttl_seconds=86400)  # L1: Redis (24 hours)
                 
                 return species_data
                 
         except Exception as e:
             logger.error(f"Error fetching {scientific_name} from FishBase: {e}")
             return None
+
     
     async def _fetch_species_details(
         self, 

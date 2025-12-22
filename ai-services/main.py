@@ -27,10 +27,22 @@ app.add_middleware(
 # Real Database Query Functions
 # ====================================
 
+# Redis cache TTL constants
+SPECIES_CACHE_TTL = 300  # 5 minutes
+DB_SUMMARY_CACHE_TTL = 120  # 2 minutes
+
 def get_real_species_from_database() -> List[Dict]:
-    """Query the actual species database (species.json)"""
+    """Query the actual species database (species.json) with Redis caching"""
+    from utils.redis_cache import cache_get, cache_set
     import json
     from pathlib import Path
+    
+    cache_key = "species_database"
+    
+    # Try cache first
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
     
     # Try multiple possible locations
     possible_paths = [
@@ -59,7 +71,12 @@ def get_real_species_from_database() -> List[Dict]:
                             'distribution': sp.get('distribution', [])
                         }
                 
-                return list(unique_species.values())
+                result = list(unique_species.values())
+                
+                # Cache the result
+                cache_set(cache_key, result, ttl_seconds=SPECIES_CACHE_TTL)
+                
+                return result
             except Exception as e:
                 print(f"Error reading species database: {e}")
     
@@ -67,7 +84,16 @@ def get_real_species_from_database() -> List[Dict]:
 
 
 def get_database_summary() -> str:
-    """Get a summary of the real database for AI context"""
+    """Get a summary of the real database for AI context with Redis caching"""
+    from utils.redis_cache import cache_get, cache_set
+    
+    cache_key = "database_summary"
+    
+    # Try cache first
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+    
     species_list = get_real_species_from_database()
     if not species_list:
         return "Database not available."
@@ -75,6 +101,9 @@ def get_database_summary() -> str:
     summary = f"The CMLRE Marine Database contains {len(species_list)} unique species:\n"
     for sp in species_list:
         summary += f"- {sp['commonName']} ({sp['scientificName']}) - {sp['habitat']}, Status: {sp['conservationStatus']}\n"
+    
+    # Cache the result
+    cache_set(cache_key, summary, ttl_seconds=DB_SUMMARY_CACHE_TTL)
     
     return summary
 
@@ -502,8 +531,12 @@ async def analyze_otolith_age(
     
     Returns comprehensive age estimation with confidence scoring,
     growth pattern analysis, and fish size estimation.
+    
+    Results are cached by image hash for 1 hour - identical images return instantly.
     """
     from otolith.otolith_analyzer import OtolithAnalyzer
+    from utils.redis_cache import cache_get, cache_set
+    import hashlib
     
     # Validate file type
     allowed_types = ['image/jpeg', 'image/png', 'image/tiff']
@@ -513,13 +546,26 @@ async def analyze_otolith_age(
             detail=f"Invalid file type. Allowed: {allowed_types}"
         )
     
+    # Read image content for hashing and processing
+    image_content = await image.read()
+    await image.seek(0)  # Reset for later use
+    
+    # Generate cache key from image hash + method + species
+    image_hash = hashlib.md5(image_content).hexdigest()
+    cache_key = f"otolith:{image_hash}:{method}:{species or 'none'}"
+    
+    # Check cache first
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+    
     # Save uploaded file temporarily
     temp_dir = tempfile.mkdtemp()
     temp_path = os.path.join(temp_dir, image.filename)
     
     try:
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
+            buffer.write(image_content)
         
         # Initialize analyzer and run analysis with specified method
         analyzer = OtolithAnalyzer()
@@ -532,7 +578,7 @@ async def analyze_otolith_age(
                 species
             )
         
-        return {
+        response = {
             "success": True,
             "estimated_age": results["age_estimation"]["estimated_age"],
             "confidence": results["age_estimation"]["confidence"],
@@ -546,6 +592,11 @@ async def analyze_otolith_age(
             "center": results["center"],
             "analysis_methods": results["analysis_methods"]
         }
+        
+        # Cache the result (1 hour TTL)
+        cache_set(cache_key, response, ttl_seconds=3600)
+        
+        return response
         
     except Exception as e:
         import traceback
@@ -1073,8 +1124,27 @@ async def predict_habitat_suitability(request: NichePredictionRequest):
     - Assessing potential sampling sites
     - Evaluating restoration locations
     - Climate change impact predictions
+    
+    Results cached for 1 hour based on species + locations + conditions.
     """
     from analytics.niche_modeler import EnvironmentalNicheModeler
+    from utils.redis_cache import cache_get, cache_set
+    import hashlib
+    import json
+    
+    # Generate cache key from request parameters
+    cache_data = {
+        "species": request.species,
+        "locations": sorted([f"{l.get('lat', l.get('latitude', 0))}_{l.get('lon', l.get('longitude', 0))}" for l in request.locations]),
+        "env_conditions": request.env_conditions
+    }
+    cache_hash = hashlib.md5(json.dumps(cache_data, sort_keys=True).encode()).hexdigest()
+    cache_key = f"niche:{request.species}:{cache_hash}"
+    
+    # Check cache first
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
     
     try:
         modeler = EnvironmentalNicheModeler()
@@ -1103,7 +1173,7 @@ async def predict_habitat_suitability(request: NichePredictionRequest):
         # Summary statistics
         scores = [p['suitability'] for p in predictions]
         
-        return {
+        response = {
             "success": True,
             "species": request.species,
             "predictions": predictions,
@@ -1115,6 +1185,11 @@ async def predict_habitat_suitability(request: NichePredictionRequest):
                 "unsuitable_count": sum(1 for s in scores if s < 0.3)
             }
         }
+        
+        # Cache the result (1 hour TTL)
+        cache_set(cache_key, response, ttl_seconds=3600)
+        
+        return response
         
     except Exception as e:
         raise HTTPException(

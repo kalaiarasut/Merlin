@@ -5,6 +5,7 @@ import { apiClient } from '../services/api';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Microscope } from 'lucide-react';
 
 interface OtolithRecord {
   _id: string;
@@ -224,8 +225,12 @@ const OtolithAnalysis: React.FC = () => {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Otolith Analysis</h1>
-        <p className="mt-2 text-gray-600">
+        <div className="flex items-center gap-2 mb-1">
+          <Microscope className="w-5 h-5 text-ocean-500" />
+          <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">Age Estimation</span>
+        </div>
+        <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">Otolith Analysis</h1>
+        <p className="mt-2 text-gray-600 dark:text-gray-400">
           Advanced otolith image analysis with state-of-the-art age estimation using multi-algorithm ensemble detection
         </p>
       </div>
@@ -239,8 +244,8 @@ const OtolithAnalysis: React.FC = () => {
           <CardContent>
             <div
               {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'}`}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors dark:border-gray-700
+                ${isDragActive ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
             >
               <input {...getInputProps()} />
               {previewUrl ? (
@@ -250,17 +255,17 @@ const OtolithAnalysis: React.FC = () => {
                     alt="Otolith preview"
                     className="max-h-64 mx-auto rounded-lg shadow-md"
                   />
-                  <p className="text-sm text-gray-500">{selectedFile?.name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{selectedFile?.name}</p>
                 </div>
               ) : (
                 <div>
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <p className="mt-2 text-sm text-gray-600">
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                     {isDragActive ? 'Drop the image here' : 'Drag & drop an otolith image, or click to select'}
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">PNG, JPG, TIFF up to 50MB</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">PNG, JPG, TIFF up to 50MB</p>
                 </div>
               )}
             </div>
@@ -284,7 +289,7 @@ const OtolithAnalysis: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                
+
                 {/* Analysis Method Selector */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
@@ -511,8 +516,8 @@ const OtolithAnalysis: React.FC = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-900">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sample ID</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Species</th>
@@ -522,14 +527,14 @@ const OtolithAnalysis: React.FC = () => {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-950 dark:divide-gray-800">
                   {otoliths.map((otolith) => (
                     <tr
                       key={otolith._id}
-                      className={`hover:bg-gray-50 cursor-pointer ${selectedOtolith?._id === otolith._id ? 'bg-blue-50' : ''}`}
+                      className={`hover:bg-gray-50 cursor-pointer transition-colors dark:hover:bg-gray-800 ${selectedOtolith?._id === otolith._id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
                       onClick={() => setSelectedOtolith(otolith)}
                     >
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{otolith.sampleId}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{otolith.sampleId}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {otolith.speciesName || otolith.speciesId || '-'}
                       </td>

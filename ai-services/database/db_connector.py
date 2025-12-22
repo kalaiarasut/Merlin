@@ -25,9 +25,10 @@ _mongo_db = None
 
 
 def get_mongodb():
-    """Get MongoDB connection (lazy initialization)."""
+    """Get MongoDB connection (lazy initialization with optimized settings)."""
     global _mongo_client, _mongo_db
     
+    # Return cached connection if available
     if _mongo_db is not None:
         return _mongo_db
     
@@ -39,11 +40,20 @@ def get_mongodb():
             logger.warning("MONGODB_URI not found in environment")
             return None
         
-        _mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        # Create client with optimized timeout settings
+        _mongo_client = MongoClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=3000,  # 3 second server selection timeout
+            connectTimeoutMS=3000,           # 3 second connect timeout
+            socketTimeoutMS=5000,            # 5 second socket timeout
+            maxPoolSize=10,                  # Connection pooling
+            minPoolSize=1,
+            retryWrites=True,
+            retryReads=True
+        )
         
-        # Test connection
-        _mongo_client.admin.command('ping')
-        
+        # Skip ping - just get database directly (ping adds 5-7 seconds)
+        # The first actual query will verify the connection
         _mongo_db = _mongo_client.get_default_database()
         logger.info(f"✅ MongoDB connected: {_mongo_db.name}")
         return _mongo_db
@@ -87,11 +97,12 @@ def get_postgresql():
         import psycopg2
         
         _pg_connection = psycopg2.connect(
-            host=os.getenv("POSTGRES_HOST", "localhost"),
+            host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
             port=os.getenv("POSTGRES_PORT", "5432"),
             database=os.getenv("POSTGRES_DB", "cmlre_marine"),
             user=os.getenv("POSTGRES_USER", "postgres"),
-            password=os.getenv("POSTGRES_PASSWORD", "admin")
+            password=os.getenv("POSTGRES_PASSWORD", "admin"),
+            connect_timeout=5  # 5 second timeout
         )
         
         # Use autocommit to avoid transaction issues
@@ -131,6 +142,10 @@ def get_all_species() -> List[Dict]:
             'habitat': 1,
             'conservationStatus': 1,
             'distribution': 1,
+            'diet': 1,
+            'characteristics': 1,
+            'morphology': 1,
+            'description': 1,
             '_id': 0
         }))
         

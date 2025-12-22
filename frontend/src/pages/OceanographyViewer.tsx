@@ -168,10 +168,10 @@ export default function OceanographyViewer() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Map className="w-5 h-5 text-ocean-500" />
-            <span className="text-sm font-medium text-ocean-600">GIS Platform</span>
+            <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">GIS Platform</span>
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900">Oceanography Viewer</h1>
-          <p className="text-deep-500 mt-1">
+          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900 dark:text-white">Oceanography Viewer</h1>
+          <p className="text-deep-500 dark:text-gray-400 mt-1">
             Interactive maps with real-time oceanographic parameters
           </p>
         </div>
@@ -261,7 +261,7 @@ export default function OceanographyViewer() {
             <label className="text-xs font-medium text-deep-600 mb-1 block">Source</label>
             <select value={selectedSource}
               onChange={(e) => setSelectedSource(e.target.value)}
-              className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none bg-white min-w-[140px]">
+              className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none bg-white min-w-[140px] dark:bg-gray-900 dark:border-gray-700 dark:text-white">
               <option value="">All Sources</option>
               {sources?.map((src: any) => (
                 <option key={src.source} value={src.source}>{src.source}</option>
@@ -275,13 +275,13 @@ export default function OceanographyViewer() {
               <label className="text-xs font-medium text-deep-600 mb-1 block">From</label>
               <input type="date" value={dateRange.start}
                 onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none" />
+                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none dark:bg-gray-900 dark:border-gray-700 dark:text-white" />
             </div>
             <div>
               <label className="text-xs font-medium text-deep-600 mb-1 block">To</label>
               <input type="date" value={dateRange.end}
                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none" />
+                className="h-9 px-3 text-sm rounded-lg border border-gray-200 focus:border-ocean-400 focus:outline-none dark:bg-gray-900 dark:border-gray-700 dark:text-white" />
             </div>
           </div>
 

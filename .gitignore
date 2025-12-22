@@ -119,8 +119,11 @@ Thumbs.db
 test_*.html
 *_report.html
 
-# Temporary Scripts
-ai-services/test_db.py
+# Test Scripts
+ai-services/test_*.py
+
+# Output Files
+ai-services/*_output.txt
 
 # Generated Reports
 ai-services/reports/*
@@ -139,3 +142,6 @@ ai-services/classification/*.ipynb
 ai-services/classification/species_catalog.json
 ai-services/classification/MODEL_TRAINING_HISTORY.md
 ai-services/classification/species_trainer.py
+
+# New Test Directory
+ai-services/tests/

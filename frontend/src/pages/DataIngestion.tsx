@@ -186,10 +186,10 @@ export default function DataIngestion() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Database className="w-5 h-5 text-ocean-500" />
-            <span className="text-sm font-medium text-ocean-600">Data Pipeline</span>
+            <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">Data Pipeline</span>
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900">Data Ingestion</h1>
-          <p className="text-deep-500 mt-1">
+          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900 dark:text-white">Data Ingestion</h1>
+          <p className="text-deep-500 dark:text-gray-400 mt-1">
             Upload and process marine datasets with intelligent validation
           </p>
         </div>
@@ -497,12 +497,12 @@ export default function DataIngestion() {
           <Card variant="glass">
             <CardContent className="p-4">
               <div className="flex gap-3">
-                <div className="p-2 rounded-lg bg-ocean-100">
-                  <Sparkles className="w-5 h-5 text-ocean-600" />
+                <div className="p-2 rounded-lg bg-ocean-100 dark:bg-ocean-900/30">
+                  <Sparkles className="w-5 h-5 text-ocean-600 dark:text-ocean-400" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-semibold text-deep-900">AI-Powered Processing</h4>
-                  <p className="text-xs text-deep-500 mt-1">
+                  <h4 className="text-sm font-semibold text-deep-900 dark:text-white">AI-Powered Processing</h4>
+                  <p className="text-xs text-deep-500 dark:text-gray-400 mt-1">
                     Our system automatically validates, cleans, and enriches your data using machine learning.
                   </p>
                 </div>

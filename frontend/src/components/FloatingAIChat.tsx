@@ -291,7 +291,7 @@ export default function FloatingAIChat() {
 
                 {showHistory ? (
                     /* Chat History Panel */
-                    <CardContent className="flex-1 overflow-y-auto p-2 bg-gray-50">
+                    <CardContent className="flex-1 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-900">
                         <div className="space-y-1">
                             {chats.map((chat) => (
                                 <div
@@ -299,8 +299,8 @@ export default function FloatingAIChat() {
                                     className={cn(
                                         "group flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors",
                                         chat.id === activeChatId
-                                            ? "bg-ocean-100 border border-ocean-200"
-                                            : "hover:bg-gray-100"
+                                            ? "bg-ocean-100 border border-ocean-200 dark:bg-ocean-900/30 dark:border-ocean-800"
+                                            : "hover:bg-gray-100 dark:hover:bg-gray-800"
                                     )}
                                     onClick={() => {
                                         setActiveChatId(chat.id);
@@ -309,10 +309,10 @@ export default function FloatingAIChat() {
                                 >
                                     <MessageCircle className="w-4 h-4 text-ocean-500 flex-shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-800 truncate">
+                                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
                                             {chat.title}
                                         </p>
-                                        <p className="text-xs text-gray-500">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
                                             {formatTime(chat.updatedAt)} · {chat.messages.length} messages
                                         </p>
                                     </div>
@@ -333,7 +333,7 @@ export default function FloatingAIChat() {
                 ) : (
                     <>
                         {/* Messages */}
-                        <CardContent className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50">
+                        <CardContent className="flex-1 overflow-y-auto p-3 space-y-3 bg-gray-50 dark:bg-gray-900">
                             {activeChat?.messages.map((message) => (
                                 <div
                                     key={message.id}
@@ -352,7 +352,7 @@ export default function FloatingAIChat() {
                                             "max-w-[80%] rounded-lg px-3 py-2 text-sm",
                                             message.role === 'user'
                                                 ? "bg-ocean-500 text-white"
-                                                : "bg-white border border-gray-200 text-gray-800"
+                                                : "bg-white border border-gray-200 text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                                         )}
                                     >
                                         {message.content}
@@ -369,7 +369,7 @@ export default function FloatingAIChat() {
                                     <div className="w-7 h-7 rounded-full bg-ocean-100 flex items-center justify-center">
                                         <Bot className="w-4 h-4 text-ocean-600" />
                                     </div>
-                                    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 dark:bg-gray-800 dark:border-gray-700">
                                         <Loader2 className="w-4 h-4 animate-spin text-ocean-500" />
                                     </div>
                                 </div>
@@ -378,7 +378,7 @@ export default function FloatingAIChat() {
                         </CardContent>
 
                         {/* Input */}
-                        <div className="p-3 border-t bg-white flex-shrink-0">
+                        <div className="p-3 border-t bg-white dark:bg-gray-950 dark:border-gray-800 flex-shrink-0">
                             <div className="flex gap-2">
                                 <input
                                     type="text"
@@ -386,7 +386,7 @@ export default function FloatingAIChat() {
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyPress={handleKeyPress}
                                     placeholder="Ask about species, data..."
-                                    className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-ocean-400"
+                                    className="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white dark:placeholder-gray-500"
                                     disabled={isLoading}
                                 />
                                 <Button

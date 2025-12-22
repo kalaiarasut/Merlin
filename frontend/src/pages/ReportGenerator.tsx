@@ -48,6 +48,7 @@ export default function ReportGenerator() {
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
+  const [lastGeneratedFormat, setLastGeneratedFormat] = useState<string | null>(null);
 
   // Fetch data for auto-population
   const { data: biodiversityData } = useQuery({
@@ -71,6 +72,7 @@ export default function ReportGenerator() {
         format,
         abstract,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+        use_llm: true,  // Enable AI-powered report generation
         sections: sections.map(s => ({
           title: s.title,
           content: s.content,
@@ -91,6 +93,7 @@ export default function ReportGenerator() {
       if (data.content) {
         setGeneratedReport(data.content);
         setPreviewMode(true);
+        setLastGeneratedFormat(format);  // Track which format was generated
       }
     },
   });
@@ -102,6 +105,7 @@ export default function ReportGenerator() {
         analysis_type: reportType,
         data: getAutoData(),
         format,
+        use_llm: true,  // Enable AI-powered report generation
       });
       return response;
     },
@@ -109,6 +113,7 @@ export default function ReportGenerator() {
       if (data.content) {
         setGeneratedReport(data.content);
         setPreviewMode(true);
+        setLastGeneratedFormat(format);  // Track which format was generated
       }
     },
   });
@@ -168,8 +173,8 @@ export default function ReportGenerator() {
 
   // Add finding to section
   const addFinding = (sectionId: string) => {
-    setSections(sections.map(s => 
-      s.id === sectionId 
+    setSections(sections.map(s =>
+      s.id === sectionId
         ? { ...s, key_findings: [...s.key_findings, ''] }
         : s
     ));
@@ -177,8 +182,8 @@ export default function ReportGenerator() {
 
   // Update finding
   const updateFinding = (sectionId: string, index: number, value: string) => {
-    setSections(sections.map(s => 
-      s.id === sectionId 
+    setSections(sections.map(s =>
+      s.id === sectionId
         ? { ...s, key_findings: s.key_findings.map((f, i) => i === index ? value : f) }
         : s
     ));
@@ -186,16 +191,19 @@ export default function ReportGenerator() {
 
   // Download generated report
   const downloadReport = () => {
-    if (!generatedReport) return;
-    
-    const blob = format === 'pdf' 
+    if (!generatedReport || !lastGeneratedFormat) return;
+
+    // Use lastGeneratedFormat since that's the actual format of the generated content
+    const downloadFormat = lastGeneratedFormat;
+
+    const blob = downloadFormat === 'pdf'
       ? new Blob([atob(generatedReport)], { type: 'application/pdf' })
-      : new Blob([generatedReport], { type: format === 'html' ? 'text/html' : 'text/plain' });
-    
+      : new Blob([generatedReport], { type: downloadFormat === 'html' ? 'text/html' : 'text/plain' });
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${title || 'report'}.${format === 'markdown' ? 'md' : format}`;
+    a.download = `${title || 'report'}.${downloadFormat === 'markdown' ? 'md' : downloadFormat}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -215,8 +223,8 @@ export default function ReportGenerator() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => quickReportMutation.mutate()}
             disabled={quickReportMutation.isPending}
           >
@@ -227,7 +235,7 @@ export default function ReportGenerator() {
             )}
             Quick Report
           </Button>
-          <Button 
+          <Button
             variant="premium"
             onClick={() => generateMutation.mutate()}
             disabled={generateMutation.isPending}
@@ -284,7 +292,7 @@ export default function ReportGenerator() {
             <CardHeader>
               <CardTitle className="text-lg">Output Format</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 {FORMAT_OPTIONS.map((fmt) => {
                   const Icon = fmt.icon;
@@ -305,6 +313,23 @@ export default function ReportGenerator() {
                   );
                 })}
               </div>
+
+              {/* Show regenerate button when format changed after report generation */}
+              {generatedReport && lastGeneratedFormat && format !== lastGeneratedFormat && (
+                <Button
+                  variant="premium"
+                  className="w-full"
+                  onClick={() => generateMutation.mutate()}
+                  disabled={generateMutation.isPending}
+                >
+                  {generateMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileText className="w-4 h-4 mr-2" />
+                  )}
+                  Regenerate as {FORMAT_OPTIONS.find(f => f.value === format)?.label}
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -328,7 +353,7 @@ export default function ReportGenerator() {
                   className="mt-1"
                 />
               </div>
-              
+
               <div>
                 <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
                   Abstract / Summary
@@ -341,7 +366,7 @@ export default function ReportGenerator() {
                   rows={3}
                 />
               </div>
-              
+
               <div>
                 <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
                   Keywords
@@ -393,20 +418,20 @@ export default function ReportGenerator() {
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
                       </div>
-                      
+
                       <Input
                         value={section.title}
                         onChange={(e) => updateSection(section.id, { title: e.target.value })}
                         placeholder="Section Title"
                       />
-                      
+
                       <Textarea
                         value={section.content}
                         onChange={(e) => updateSection(section.id, { content: e.target.value })}
                         placeholder="Section content..."
                         rows={3}
                       />
-                      
+
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-medium text-deep-500">Key Findings</span>
@@ -433,8 +458,8 @@ export default function ReportGenerator() {
                         <span className="text-xs font-medium text-deep-500">Include Chart</span>
                         <Select
                           value={section.chart_type || 'none'}
-                          onChange={(e) => updateSection(section.id, { 
-                            chart_type: e.target.value as any 
+                          onChange={(e) => updateSection(section.id, {
+                            chart_type: e.target.value as any
                           })}
                           className="mt-1"
                         >
@@ -452,8 +477,8 @@ export default function ReportGenerator() {
             </Card>
           )}
 
-          {/* Preview / Generated Report */}
-          {generatedReport && previewMode && (
+          {/* Preview / Generated Report - Hide when regenerating */}
+          {generatedReport && previewMode && !generateMutation.isPending && !quickReportMutation.isPending && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -461,6 +486,11 @@ export default function ReportGenerator() {
                     <CardTitle className="text-lg flex items-center gap-2">
                       <CheckCircle className="w-5 h-5 text-green-500" />
                       Report Generated
+                      {lastGeneratedFormat && (
+                        <span className="text-sm font-normal text-deep-500 dark:text-gray-400">
+                          ({FORMAT_OPTIONS.find(f => f.value === lastGeneratedFormat)?.label})
+                        </span>
+                      )}
                     </CardTitle>
                     <CardDescription>
                       Your report is ready for download
@@ -478,7 +508,8 @@ export default function ReportGenerator() {
                 </div>
               </CardHeader>
               <CardContent>
-                {format === 'html' && (
+                {/* Use lastGeneratedFormat for rendering preview (actual content format) */}
+                {lastGeneratedFormat === 'html' && (
                   <div className="border rounded-lg overflow-hidden max-h-[600px] overflow-y-auto">
                     <iframe
                       srcDoc={generatedReport}
@@ -487,25 +518,33 @@ export default function ReportGenerator() {
                     />
                   </div>
                 )}
-                {format === 'markdown' && (
-                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px]">
+                {lastGeneratedFormat === 'markdown' && (
+                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
                     {generatedReport}
                   </pre>
                 )}
-                {format === 'json' && (
-                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px]">
+                {lastGeneratedFormat === 'json' && (
+                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
                     {generatedReport}
                   </pre>
                 )}
-                {format === 'pdf' && (
-                  <div className="text-center py-8">
-                    <FileText className="w-16 h-16 mx-auto mb-4 text-ocean-500" />
-                    <p className="text-deep-600 dark:text-gray-300">
-                      PDF generated successfully
-                    </p>
-                    <p className="text-sm text-deep-500 dark:text-gray-400">
-                      Click download to save the file
-                    </p>
+                {lastGeneratedFormat === 'pdf' && (
+                  <div className="border rounded-lg overflow-hidden h-[600px] bg-gray-100 dark:bg-gray-800">
+                    <object
+                      data={`data:application/pdf;base64,${generatedReport}`}
+                      type="application/pdf"
+                      className="w-full h-full"
+                    >
+                      <div className="text-center py-8">
+                        <FileText className="w-16 h-16 mx-auto mb-4 text-ocean-500" />
+                        <p className="text-deep-600 dark:text-gray-300">
+                          PDF Preview not supported in this browser
+                        </p>
+                        <Button variant="outline" onClick={downloadReport} className="mt-4">
+                          Download PDF
+                        </Button>
+                      </div>
+                    </object>
                   </div>
                 )}
               </CardContent>
@@ -539,8 +578,8 @@ export default function ReportGenerator() {
                   <div>
                     <p className="font-medium">Report generation failed</p>
                     <p className="text-sm opacity-80">
-                      {(generateMutation.error || quickReportMutation.error)?.message || 
-                       'Please try again or contact support'}
+                      {(generateMutation.error || quickReportMutation.error)?.message ||
+                        'Please try again or contact support'}
                     </p>
                   </div>
                 </div>

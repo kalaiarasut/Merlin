@@ -12,7 +12,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="relative">
         {icon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-deep-400">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-deep-400 dark:text-gray-500">
             {icon}
           </div>
         )}
@@ -25,8 +25,12 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             "focus:outline-none focus:border-ocean-400 focus:ring-4 focus:ring-ocean-100",
             "disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-gray-100",
             "file:border-0 file:bg-transparent file:text-sm file:font-medium",
+            // Dark mode
+            "dark:bg-gray-900 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500",
+            "dark:hover:border-gray-600 dark:focus:border-ocean-500 dark:focus:ring-ocean-900/50",
+            "dark:disabled:bg-gray-800",
             icon && "pl-11",
-            error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100",
+            error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100 dark:border-abyss-700",
             className
           )}
           ref={ref}
@@ -51,7 +55,11 @@ const Textarea = React.forwardRef<
         "focus:outline-none focus:border-ocean-400 focus:ring-4 focus:ring-ocean-100",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-gray-100",
         "resize-none",
-        error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100",
+        // Dark mode
+        "dark:bg-gray-900 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500",
+        "dark:hover:border-gray-600 dark:focus:border-ocean-500 dark:focus:ring-ocean-900/50",
+        "dark:disabled:bg-gray-800",
+        error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100 dark:border-abyss-700",
         className
       )}
       ref={ref}
@@ -73,7 +81,11 @@ const Select = React.forwardRef<
         "focus:outline-none focus:border-ocean-400 focus:ring-4 focus:ring-ocean-100",
         "disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-gray-100",
         "bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%3E%3Cpath%20d%3D%22M6%208l4%204%204-4%22%20stroke%3D%22%236B7280%22%20stroke-width%3D%221.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_1rem_center]",
-        error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100",
+        // Dark mode
+        "dark:bg-gray-900 dark:border-gray-700 dark:text-white",
+        "dark:hover:border-gray-600 dark:focus:border-ocean-500 dark:focus:ring-ocean-900/50",
+        "dark:disabled:bg-gray-800",
+        error && "border-abyss-300 focus:border-abyss-400 focus:ring-abyss-100 dark:border-abyss-700",
         className
       )}
       ref={ref}
@@ -86,3 +98,4 @@ const Select = React.forwardRef<
 Select.displayName = "Select"
 
 export { Input, Textarea, Select }
+

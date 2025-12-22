@@ -109,7 +109,7 @@ const calculateGCContent = (sequence: string): number => {
 const parseSequenceFile = (content: string, filename: string): SequenceData[] => {
   const sequences: SequenceData[] = [];
   const isFastq = filename.toLowerCase().endsWith('.fastq') || filename.toLowerCase().endsWith('.fq');
-  
+
   if (isFastq) {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length - 3; i += 4) {
@@ -118,8 +118,8 @@ const parseSequenceFile = (content: string, filename: string): SequenceData[] =>
       const quality = lines[i + 3]?.trim();
       if (header && sequence) {
         const qualityScores = quality ? quality.split('').map(c => c.charCodeAt(0) - 33) : [];
-        const avgQuality = qualityScores.length > 0 
-          ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length 
+        const avgQuality = qualityScores.length > 0
+          ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length
           : undefined;
         sequences.push({
           id: `seq_${sequences.length + 1}`,
@@ -158,39 +158,39 @@ const calculateBiodiversity = (detections: any[]): BiodiversityMetrics => {
   detections.forEach(d => {
     speciesCounts[d._id] = (speciesCounts[d._id] || 0) + d.count;
   });
-  
+
   const counts = Object.values(speciesCounts);
   const total = counts.reduce((a, b) => a + b, 0);
   const S = counts.length; // Species richness
-  
+
   // Shannon Index: H' = -Σ(pi * ln(pi))
   const shannonIndex = counts.reduce((sum, count) => {
     const p = count / total;
     return sum - (p > 0 ? p * Math.log(p) : 0);
   }, 0);
-  
+
   // Simpson Index: D = 1 - Σ(pi^2)
   const simpsonIndex = 1 - counts.reduce((sum, count) => {
     const p = count / total;
     return sum + p * p;
   }, 0);
-  
+
   // Pielou's Evenness: J = H' / ln(S)
   const evenness = S > 1 ? shannonIndex / Math.log(S) : 0;
-  
+
   // Dominance: λ = Σ(pi^2)
   const dominance = counts.reduce((sum, count) => {
     const p = count / total;
     return sum + p * p;
   }, 0);
-  
+
   // Chao1 estimator (simplified)
   const singletons = counts.filter(c => c === 1).length;
   const doubletons = counts.filter(c => c === 2).length;
-  const chao1 = doubletons > 0 
+  const chao1 = doubletons > 0
     ? S + (singletons * singletons) / (2 * doubletons)
     : S + (singletons * (singletons - 1)) / 2;
-  
+
   return {
     shannonIndex,
     simpsonIndex,
@@ -204,7 +204,7 @@ const calculateBiodiversity = (detections: any[]): BiodiversityMetrics => {
 const buildTaxonomyTree = (samples: any[]): TaxonomyNode => {
   // Build a hierarchical taxonomy tree from samples
   const root: TaxonomyNode = { name: 'All Taxa', rank: 'Root', count: 0, confidence: 1, children: [] };
-  
+
   // Group by taxonomy (simulated based on species names)
   const speciesGroups: Record<string, any[]> = {};
   samples.forEach(sample => {
@@ -212,22 +212,22 @@ const buildTaxonomyTree = (samples: any[]): TaxonomyNode => {
     if (!speciesGroups[species]) speciesGroups[species] = [];
     speciesGroups[species].push(sample);
   });
-  
+
   // Simulate taxonomy hierarchy based on species names
   const taxonomyMap: Record<string, TaxonomyNode> = {};
-  
+
   Object.entries(speciesGroups).forEach(([species, sampleList]) => {
     // Extract genus from species name (first word)
     const parts = species.split(' ');
     const genus = parts[0] || 'Unknown';
-    
+
     // Simulated higher taxonomy based on common patterns
     let family = 'Unknown Family';
     let order = 'Unknown Order';
     let classRank = 'Actinopterygii'; // Default to ray-finned fish
     let phylum = 'Chordata';
     let kingdom = 'Animalia';
-    
+
     // Common fish family patterns
     if (genus.endsWith('us') || genus.endsWith('a')) {
       if (['Thunnus', 'Scomber', 'Katsuwonus'].includes(genus)) {
@@ -242,59 +242,59 @@ const buildTaxonomyTree = (samples: any[]): TaxonomyNode => {
         family = 'Delphinidae'; order = 'Cetacea'; classRank = 'Mammalia';
       }
     }
-    
+
     const count = sampleList.length;
     const avgConfidence = sampleList.reduce((sum: number, s: any) => sum + s.confidence, 0) / count;
-    
+
     // Build hierarchy
     if (!taxonomyMap[kingdom]) {
       taxonomyMap[kingdom] = { name: kingdom, rank: 'Kingdom', count: 0, confidence: 0, children: [], color: RANK_COLORS.Kingdom };
       root.children!.push(taxonomyMap[kingdom]);
     }
     taxonomyMap[kingdom].count += count;
-    
+
     const phylumKey = `${kingdom}>${phylum}`;
     if (!taxonomyMap[phylumKey]) {
       taxonomyMap[phylumKey] = { name: phylum, rank: 'Phylum', count: 0, confidence: 0, children: [], color: RANK_COLORS.Phylum };
       taxonomyMap[kingdom].children!.push(taxonomyMap[phylumKey]);
     }
     taxonomyMap[phylumKey].count += count;
-    
+
     const classKey = `${phylumKey}>${classRank}`;
     if (!taxonomyMap[classKey]) {
       taxonomyMap[classKey] = { name: classRank, rank: 'Class', count: 0, confidence: 0, children: [], color: RANK_COLORS.Class };
       taxonomyMap[phylumKey].children!.push(taxonomyMap[classKey]);
     }
     taxonomyMap[classKey].count += count;
-    
+
     const orderKey = `${classKey}>${order}`;
     if (!taxonomyMap[orderKey]) {
       taxonomyMap[orderKey] = { name: order, rank: 'Order', count: 0, confidence: 0, children: [], color: RANK_COLORS.Order };
       taxonomyMap[classKey].children!.push(taxonomyMap[orderKey]);
     }
     taxonomyMap[orderKey].count += count;
-    
+
     const familyKey = `${orderKey}>${family}`;
     if (!taxonomyMap[familyKey]) {
       taxonomyMap[familyKey] = { name: family, rank: 'Family', count: 0, confidence: 0, children: [], color: RANK_COLORS.Family };
       taxonomyMap[orderKey].children!.push(taxonomyMap[familyKey]);
     }
     taxonomyMap[familyKey].count += count;
-    
+
     const genusKey = `${familyKey}>${genus}`;
     if (!taxonomyMap[genusKey]) {
       taxonomyMap[genusKey] = { name: genus, rank: 'Genus', count: 0, confidence: 0, children: [], color: RANK_COLORS.Genus };
       taxonomyMap[familyKey].children!.push(taxonomyMap[genusKey]);
     }
     taxonomyMap[genusKey].count += count;
-    
+
     const speciesKey = `${genusKey}>${species}`;
     if (!taxonomyMap[speciesKey]) {
       taxonomyMap[speciesKey] = { name: species, rank: 'Species', count, confidence: avgConfidence, children: [], color: RANK_COLORS.Species };
       taxonomyMap[genusKey].children!.push(taxonomyMap[speciesKey]);
     }
   });
-  
+
   root.count = samples.length;
   return root;
 };
@@ -312,10 +312,10 @@ const SequenceViewer: React.FC<{
   const [showQuality, setShowQuality] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [viewMode, setViewMode] = useState<'colored' | 'plain'>('colored');
-  
+
   const selectedSeq = sequences[selectedIndex];
   if (!selectedSeq) return null;
-  
+
   const renderSequence = (seq: string) => {
     if (viewMode === 'plain') {
       return <span className="font-mono text-deep-800">{seq}</span>;
@@ -330,7 +330,7 @@ const SequenceViewer: React.FC<{
       </span>
     ));
   };
-  
+
   const renderQuality = (qual: string) => {
     return qual.split('').map((char, i) => {
       const score = char.charCodeAt(0) - 33;
@@ -339,7 +339,7 @@ const SequenceViewer: React.FC<{
         <span
           key={i}
           className="font-mono text-xs"
-          style={{ 
+          style={{
             backgroundColor: `rgba(34, 197, 94, ${intensity})`,
             color: intensity > 0.5 ? 'white' : 'inherit'
           }}
@@ -350,7 +350,7 @@ const SequenceViewer: React.FC<{
       );
     });
   };
-  
+
   return (
     <div className="space-y-4">
       {/* Sequence List */}
@@ -375,7 +375,7 @@ const SequenceViewer: React.FC<{
           </span>
         )}
       </div>
-      
+
       {/* Controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -419,15 +419,15 @@ const SequenceViewer: React.FC<{
           </Button>
         </div>
       </div>
-      
+
       {/* Sequence Header */}
       <div className="p-3 bg-gray-50 rounded-lg">
         <p className="text-xs text-deep-500 mb-1">Header</p>
         <p className="font-mono text-sm text-deep-700 break-all">{selectedSeq.header}</p>
       </div>
-      
+
       {/* Sequence Display */}
-      <div 
+      <div
         className="p-4 bg-gray-50 rounded-lg overflow-auto max-h-64"
         style={{ fontSize: `${12 * zoom}px` }}
       >
@@ -440,7 +440,7 @@ const SequenceViewer: React.FC<{
           </div>
         )}
       </div>
-      
+
       {/* Sequence Stats */}
       <div className="grid grid-cols-4 gap-3">
         <div className="p-2 bg-gray-50 rounded-lg text-center">
@@ -480,7 +480,7 @@ const TaxonomyTreeView: React.FC<{
   const [localExpanded, setLocalExpanded] = useState(depth < 2);
   const isExpanded = expanded ? expanded.has(node.name) : localExpanded;
   const hasChildren = node.children && node.children.length > 0;
-  
+
   const handleToggle = () => {
     if (onToggle) {
       onToggle(node.name);
@@ -488,10 +488,10 @@ const TaxonomyTreeView: React.FC<{
       setLocalExpanded(!localExpanded);
     }
   };
-  
+
   return (
     <div style={{ marginLeft: depth * 16 }}>
-      <div 
+      <div
         className={cn(
           "flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors",
           "hover:bg-gray-100"
@@ -554,11 +554,11 @@ const BiodiversityDashboard: React.FC<{
           </div>
           <p className="text-3xl font-bold text-ocean-900">{metrics.shannonIndex.toFixed(3)}</p>
           <p className="text-xs text-ocean-600 mt-1">
-            {metrics.shannonIndex > 3 ? 'High diversity' : 
-             metrics.shannonIndex > 2 ? 'Moderate diversity' : 'Low diversity'}
+            {metrics.shannonIndex > 3 ? 'High diversity' :
+              metrics.shannonIndex > 2 ? 'Moderate diversity' : 'Low diversity'}
           </p>
         </div>
-        
+
         <div className="p-4 bg-gradient-to-br from-marine-50 to-marine-100 rounded-xl">
           <div className="flex items-center gap-2 mb-2">
             <PieChart className="w-5 h-5 text-marine-600" />
@@ -566,12 +566,12 @@ const BiodiversityDashboard: React.FC<{
           </div>
           <p className="text-3xl font-bold text-marine-900">{metrics.simpsonIndex.toFixed(3)}</p>
           <p className="text-xs text-marine-600 mt-1">
-            {metrics.simpsonIndex > 0.8 ? 'Very even' : 
-             metrics.simpsonIndex > 0.5 ? 'Moderately even' : 'Dominated by few'}
+            {metrics.simpsonIndex > 0.8 ? 'Very even' :
+              metrics.simpsonIndex > 0.5 ? 'Moderately even' : 'Dominated by few'}
           </p>
         </div>
       </div>
-      
+
       {/* Secondary Metrics */}
       <div className="grid grid-cols-4 gap-2">
         <div className="p-3 bg-gray-50 rounded-lg text-center">
@@ -591,7 +591,7 @@ const BiodiversityDashboard: React.FC<{
           <p className="text-xs text-deep-500">Dominance (λ)</p>
         </div>
       </div>
-      
+
       {/* Rank Abundance */}
       <div>
         <h4 className="text-sm font-semibold text-deep-700 mb-2">Rank Abundance Distribution</h4>
@@ -619,7 +619,7 @@ const BiodiversityDashboard: React.FC<{
           <span>Least abundant</span>
         </div>
       </div>
-      
+
       {/* Interpretation */}
       <div className="p-3 bg-ocean-50 rounded-lg">
         <div className="flex gap-2">
@@ -630,8 +630,8 @@ const BiodiversityDashboard: React.FC<{
               {metrics.shannonIndex > 2.5 && metrics.simpsonIndex > 0.7
                 ? "This community shows high biodiversity with good species evenness, indicating a healthy ecosystem."
                 : metrics.shannonIndex > 1.5
-                ? "Moderate biodiversity detected. Some species may be more dominant than others."
-                : "Low biodiversity or high dominance by few species. This could indicate environmental stress or early successional stage."}
+                  ? "Moderate biodiversity detected. Some species may be more dominant than others."
+                  : "Low biodiversity or high dominance by few species. This could indicate environmental stress or early successional stage."}
             </p>
           </div>
         </div>
@@ -646,16 +646,16 @@ const QualityDashboard: React.FC<{
 }> = ({ sequences }) => {
   const metrics = useMemo(() => {
     if (sequences.length === 0) return null;
-    
+
     const withQuality = sequences.filter(s => s.avgQuality !== undefined);
     const avgQScore = withQuality.length > 0
       ? withQuality.reduce((sum, s) => sum + (s.avgQuality || 0), 0) / withQuality.length
       : 0;
-    
+
     const avgGC = sequences.reduce((sum, s) => sum + s.gcContent, 0) / sequences.length;
     const avgLength = sequences.reduce((sum, s) => sum + s.length, 0) / sequences.length;
     const passedQC = withQuality.filter(s => (s.avgQuality || 0) >= 20).length;
-    
+
     // Length distribution
     const lengthBins = [
       { range: '<100', min: 0, max: 100, count: 0 },
@@ -668,7 +668,7 @@ const QualityDashboard: React.FC<{
       const bin = lengthBins.find(b => s.length >= b.min && s.length < b.max);
       if (bin) bin.count++;
     });
-    
+
     return {
       totalReads: sequences.length,
       passedQC,
@@ -679,7 +679,7 @@ const QualityDashboard: React.FC<{
       qualityDistribution: [], // Would need per-base quality
     };
   }, [sequences]);
-  
+
   if (!metrics) {
     return (
       <div className="text-center py-8">
@@ -688,7 +688,7 @@ const QualityDashboard: React.FC<{
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-4">
       {/* Summary Stats */}
@@ -714,7 +714,7 @@ const QualityDashboard: React.FC<{
           <p className="text-xs text-deep-500">Avg Length</p>
         </div>
       </div>
-      
+
       {/* Length Distribution */}
       <div>
         <h4 className="text-sm font-semibold text-deep-700 mb-2">Read Length Distribution</h4>
@@ -726,7 +726,7 @@ const QualityDashboard: React.FC<{
               <div key={bin.range} className="flex items-center gap-2">
                 <span className="text-xs text-deep-500 w-16">{bin.range}bp</span>
                 <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-ocean-400 rounded-full transition-all"
                     style={{ width: `${width}%` }}
                   />
@@ -737,7 +737,7 @@ const QualityDashboard: React.FC<{
           })}
         </div>
       </div>
-      
+
       {/* QC Pass Rate */}
       <div className="p-4 bg-gray-50 rounded-lg">
         <div className="flex justify-between items-center mb-2">
@@ -768,10 +768,10 @@ const ProcessingPipeline: React.FC<{
             idx === currentStep && isRunning
               ? "bg-ocean-50 border border-ocean-200"
               : step.status === 'completed'
-              ? "bg-green-50"
-              : step.status === 'error'
-              ? "bg-red-50"
-              : "bg-gray-50"
+                ? "bg-green-50"
+                : step.status === 'error'
+                  ? "bg-red-50"
+                  : "bg-gray-50"
           )}
         >
           <div className={cn(
@@ -779,10 +779,10 @@ const ProcessingPipeline: React.FC<{
             idx === currentStep && isRunning
               ? "bg-ocean-500"
               : step.status === 'completed'
-              ? "bg-green-500"
-              : step.status === 'error'
-              ? "bg-red-500"
-              : "bg-gray-300"
+                ? "bg-green-500"
+                : step.status === 'error'
+                  ? "bg-red-500"
+                  : "bg-gray-300"
           )}>
             {idx === currentStep && isRunning ? (
               <Loader className="w-4 h-4 animate-spin text-white" />
@@ -800,8 +800,8 @@ const ProcessingPipeline: React.FC<{
               idx === currentStep && isRunning
                 ? "text-ocean-900"
                 : step.status === 'completed'
-                ? "text-green-900"
-                : "text-deep-700"
+                  ? "text-green-900"
+                  : "text-deep-700"
             )}>
               {step.name}
             </p>
@@ -827,14 +827,14 @@ const ProcessingPipeline: React.FC<{
 export default function EdnaManager() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // UI State
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'samples' | 'upload' | 'taxonomy' | 'biodiversity' | 'quality'>('samples');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  
+
   // Upload & Processing State
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedSequences, setUploadedSequences] = useState<SequenceData[]>([]);
@@ -842,17 +842,17 @@ export default function EdnaManager() {
   const [processingSteps, setProcessingSteps] = useState<ProcessingStep[]>(PIPELINE_STEPS);
   const [currentProcessingStep, setCurrentProcessingStep] = useState(-1);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   // Expanded state for taxonomy tree
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['All Taxa', 'Animalia']));
 
   // Fetch eDNA samples
   const { data: samplesData, isLoading: samplesLoading, refetch } = useQuery({
     queryKey: ['edna-samples', searchQuery, methodFilter],
-    queryFn: () => ednaService.getAll({ 
+    queryFn: () => ednaService.getAll({
       species: searchQuery || undefined,
       method: methodFilter || undefined,
-      limit: 100 
+      limit: 100
     }),
   });
 
@@ -875,11 +875,11 @@ export default function EdnaManager() {
   });
 
   const samples = samplesData?.data || [];
-  
+
   // Computed values
   const taxonomyTree = useMemo(() => buildTaxonomyTree(samples), [samples]);
-  const biodiversityMetrics = useMemo(() => 
-    detections && detections.length > 0 ? calculateBiodiversity(detections) : null, 
+  const biodiversityMetrics = useMemo(() =>
+    detections && detections.length > 0 ? calculateBiodiversity(detections) : null,
     [detections]
   );
 
@@ -903,24 +903,24 @@ export default function EdnaManager() {
   // Simulate processing pipeline
   const startProcessing = useCallback(async () => {
     if (uploadedSequences.length === 0) return;
-    
+
     setIsProcessing(true);
     const steps = [...PIPELINE_STEPS].map(s => ({ ...s, status: 'pending' as const }));
     setProcessingSteps(steps);
-    
+
     for (let i = 0; i < steps.length; i++) {
       setCurrentProcessingStep(i);
       steps[i].status = 'running';
       setProcessingSteps([...steps]);
-      
+
       // Simulate processing time
       await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
-      
+
       steps[i].status = 'completed';
       steps[i].details = `Processed ${uploadedSequences.length} sequences`;
       setProcessingSteps([...steps]);
     }
-    
+
     setCurrentProcessingStep(-1);
     setIsProcessing(false);
     queryClient.invalidateQueries({ queryKey: ['edna-samples'] });
@@ -994,10 +994,10 @@ export default function EdnaManager() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Dna className="w-5 h-5 text-ocean-500" />
-            <span className="text-sm font-medium text-ocean-600">Bioinformatics</span>
+            <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">Bioinformatics</span>
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900">eDNA Manager</h1>
-          <p className="text-deep-500 mt-1">
+          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900 dark:text-white">eDNA Manager</h1>
+          <p className="text-deep-500 dark:text-gray-400 mt-1">
             Process and analyze environmental DNA sequences for biodiversity monitoring
           </p>
         </div>
@@ -1106,14 +1106,14 @@ export default function EdnaManager() {
                   <CardDescription>Environmental DNA sequence detections</CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Input 
-                    placeholder="Search species..." 
+                  <Input
+                    placeholder="Search species..."
                     icon={<Search className="w-4 h-4" />}
                     className="w-48"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
-                  <Select 
+                  <Select
                     className="w-32"
                     value={methodFilter}
                     onChange={(e) => setMethodFilter(e.target.value)}
@@ -1288,7 +1288,7 @@ export default function EdnaManager() {
               <CardContent>
                 <div className="space-y-2">
                   {detections?.slice(0, 5).map((detection: any, idx: number) => (
-                    <div 
+                    <div
                       key={idx}
                       className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
                     >
@@ -1306,8 +1306,8 @@ export default function EdnaManager() {
                       </Badge>
                     </div>
                   )) || (
-                    <p className="text-sm text-deep-400 text-center py-4">No detections yet</p>
-                  )}
+                      <p className="text-sm text-deep-400 text-center py-4">No detections yet</p>
+                    )}
                 </div>
               </CardContent>
             </Card>
@@ -1568,7 +1568,7 @@ export default function EdnaManager() {
               <CardContent>
                 <div className="space-y-4">
                   {TAXONOMY_RANKS.map(rank => {
-                    const count = rank === 'Species' 
+                    const count = rank === 'Species'
                       ? (stats?.uniqueSpecies || 0)
                       : Math.ceil((stats?.uniqueSpecies || 0) / (TAXONOMY_RANKS.indexOf(rank) + 1));
                     return (
@@ -1650,7 +1650,7 @@ export default function EdnaManager() {
                 <div>
                   <p className="text-sm font-medium text-deep-800">Shannon Index (H')</p>
                   <p className="text-xs text-deep-500 mt-1">
-                    Measures species diversity considering both abundance and evenness. 
+                    Measures species diversity considering both abundance and evenness.
                     Higher values indicate greater diversity. Typical range: 1.5-3.5
                   </p>
                 </div>
@@ -1671,7 +1671,7 @@ export default function EdnaManager() {
                 <div>
                   <p className="text-sm font-medium text-deep-800">Pielou's Evenness (J)</p>
                   <p className="text-xs text-deep-500 mt-1">
-                    How evenly individuals are distributed among species. 
+                    How evenly individuals are distributed among species.
                     Range 0-1, with 1 being perfectly even.
                   </p>
                 </div>

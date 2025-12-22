@@ -118,20 +118,20 @@ export default function FishIdentifier() {
         <div className="flex items-start gap-3">
           <Sparkles className="h-5 w-5 text-cyan-600 dark:text-cyan-400 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-cyan-900 dark:text-cyan-100">Powered by Fishial.AI Recognition™</h3>
+            <h3 className="font-semibold text-cyan-900 dark:text-cyan-100">Custom Trained Indian Ocean Model</h3>
             <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
-              World's largest open-source fish identification model, trained on 2.6M+ curated images.
-              Supports 639 species worldwide including Indo-Pacific marine fish for sustainable fisheries management.
+              Hierarchical deep learning classifier optimized for Indian Ocean species with habitat, family, and species-level identification.
+              Unknown species are automatically flagged for expert review.
             </p>
             <div className="flex flex-wrap gap-2 mt-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200">
-                639 Species
+                15+ Indian Ocean Species
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200">
-                2.6M+ Training Images
+                Hierarchical Classification
               </span>
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200">
-                Model V9 (May 2025)
+                EfficientNet-B0 Backbone
               </span>
             </div>
           </div>
@@ -254,8 +254,8 @@ export default function FishIdentifier() {
                 <div className="absolute inset-0 bg-coral-500/20 rounded-full animate-ping" />
                 <Loader2 className="h-12 w-12 text-coral-500 animate-spin relative" />
               </div>
-              <p className="mt-4 text-deep-600 dark:text-gray-400">Analyzing image with Fishial.AI...</p>
-              <p className="text-sm text-deep-500 dark:text-gray-500 mt-1">Identifying species from 639 possibilities</p>
+              <p className="mt-4 text-deep-600 dark:text-gray-400">Analyzing image with custom model...</p>
+              <p className="text-sm text-deep-500 dark:text-gray-500 mt-1">Hierarchical classification in progress</p>
             </div>
           )}
 
@@ -397,33 +397,25 @@ export default function FishIdentifier() {
 
       {/* Supported Species Info */}
       <div className="bg-white dark:bg-deep-800 rounded-xl shadow-sm border border-gray-200 dark:border-deep-700 p-6">
-        <h3 className="font-semibold text-deep-900 dark:text-white mb-4">About Fishial.AI Recognition™</h3>
+        <h3 className="font-semibold text-deep-900 dark:text-white mb-4">About Our Custom Model</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <p className="text-2xl font-bold text-coral-500">639</p>
-            <p className="text-sm text-deep-600 dark:text-gray-400">Fish Species (Model V9)</p>
+            <p className="text-2xl font-bold text-coral-500">15+</p>
+            <p className="text-sm text-deep-600 dark:text-gray-400">Indian Ocean Species</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-teal-500">2.6M+</p>
-            <p className="text-sm text-deep-600 dark:text-gray-400">Curated Training Images</p>
+            <p className="text-2xl font-bold text-teal-500">Hierarchical</p>
+            <p className="text-sm text-deep-600 dark:text-gray-400">Classification System</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-cyan-500">Open Source</p>
-            <p className="text-sm text-deep-600 dark:text-gray-400">MIT License</p>
+            <p className="text-2xl font-bold text-cyan-500">Trainable</p>
+            <p className="text-sm text-deep-600 dark:text-gray-400">Add New Species</p>
           </div>
         </div>
         <p className="text-sm text-deep-500 dark:text-gray-500 mt-4">
-          Fishial.AI is the world's largest open-source fish identification system, developed by The Wye Foundation.
-          It includes many Indo-Pacific species relevant to Indian waters including snappers, groupers, trevally, tuna, and more.
+          Our custom-trained model uses a hierarchical approach (Habitat → Family → Species) with EfficientNet-B0 backbone.
+          It specializes in major Indian Ocean species including tunas, snappers, groupers, trevally, and more. Unknown species are automatically flagged for expert review.
         </p>
-        <a 
-          href="https://docs.fishial.ai/api/specieslist" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 mt-2"
-        >
-          View full species list →
-        </a>
       </div>
     </div>
   );

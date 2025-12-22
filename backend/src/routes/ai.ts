@@ -9,7 +9,10 @@ import logger from '../utils/logger';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+// HARDCODED to bypass .env loading issues - was: process.env.AI_SERVICE_URL || 'http://localhost:8000'
+const AI_SERVICE_URL = 'http://127.0.0.1:8000';
+logger.info(`AI Service URL configured as: ${AI_SERVICE_URL}`);
+// Reload trigger: force nodemon reload at 18:50
 
 // Helper function to generate context-aware responses when AI service is unavailable
 const generateLocalResponse = async (message: string): Promise<string> => {
@@ -61,20 +64,34 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
 
     try {
       // Try to call AI service
+      logger.info(`Calling Python AI service at ${AI_SERVICE_URL}/chat with message: "${message.substring(0, 50)}..."`);
+      const startTime = Date.now();
+
       const response = await axios.post(`${AI_SERVICE_URL}/chat`, {
         message,
         context,
-      }, { timeout: 120000 }); // 120 seconds for LLM response
+      }, { timeout: 300000 }); // 300 seconds (5 mins) for LLM response
+
+      const elapsed = Date.now() - startTime;
+      logger.info(`Python AI service responded in ${elapsed}ms`);
 
       res.json(response.data);
-    } catch (aiError) {
+    } catch (aiError: any) {
       // Fallback to local response generation
       logger.warn('AI service unavailable, using local fallback');
-      const localResponse = await generateLocalResponse(message);
+      logger.error(`AI service error details: ${aiError.message}`);
+      if (aiError.code) logger.error(`Error code: ${aiError.code}`);
+      if (aiError.response) {
+        logger.error(`Response status: ${aiError.response.status}`);
+        logger.error(`Response data: ${JSON.stringify(aiError.response.data)}`);
+      }
+
+      const warningPrefix = "⚠️ **Both Gemini and Ollama are facing issues.** (Offline Mode)\n\nCould not generate a response.";
+      const errorSuffix = `\n\n**System Error (Backend):** ${aiError.message}`;
 
       res.json({
-        response: localResponse,
-        confidence: 0.7,
+        response: warningPrefix + errorSuffix,
+        confidence: 0.0,
         source: 'local-fallback'
       });
     }

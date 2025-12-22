@@ -293,10 +293,10 @@ export default function SpeciesExplorer() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Fish className="w-5 h-5 text-ocean-500" />
-            <span className="text-sm font-medium text-ocean-600">Marine Database</span>
+            <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">Marine Database</span>
           </div>
-          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900">Species Explorer</h1>
-          <p className="text-deep-500 mt-1">
+          <h1 className="text-3xl lg:text-4xl font-bold text-deep-900 dark:text-white">Species Explorer</h1>
+          <p className="text-deep-500 dark:text-gray-400 mt-1">
             Browse and discover {data?.pagination?.total?.toLocaleString() || 'thousands of'} marine species in our database
           </p>
         </div>
@@ -324,7 +324,7 @@ export default function SpeciesExplorer() {
                 placeholder="Search by scientific name, common name, or taxonomy..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full h-12 pl-12 pr-4 rounded-xl border-2 border-gray-200 bg-white text-sm placeholder:text-deep-400 focus:outline-none focus:border-ocean-400 focus:ring-4 focus:ring-ocean-100 transition-all"
+                className="w-full h-12 pl-12 pr-4 rounded-xl border-2 border-gray-200 bg-white text-sm placeholder:text-deep-400 focus:outline-none focus:border-ocean-400 focus:ring-4 focus:ring-ocean-100 transition-all dark:bg-gray-900 dark:border-gray-700 dark:text-white dark:placeholder:text-gray-500 dark:focus:ring-ocean-900/50"
               />
               {search && (
                 <button
@@ -354,12 +354,12 @@ export default function SpeciesExplorer() {
               )}
             </Button>
 
-            <div className="flex rounded-xl border-2 border-gray-200 overflow-hidden">
+            <div className="flex rounded-xl border-2 border-gray-200 dark:border-gray-700 overflow-hidden">
               <button
                 onClick={() => setViewMode('grid')}
                 className={cn(
                   "p-3 transition-colors",
-                  viewMode === 'grid' ? 'bg-ocean-500 text-white' : 'bg-white text-deep-500 hover:bg-gray-50'
+                  viewMode === 'grid' ? 'bg-ocean-500 text-white' : 'bg-white text-deep-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800'
                 )}
               >
                 <Grid3X3 className="w-4 h-4" />
@@ -367,8 +367,8 @@ export default function SpeciesExplorer() {
               <button
                 onClick={() => setViewMode('list')}
                 className={cn(
-                  "p-3 transition-colors border-l-2 border-gray-200",
-                  viewMode === 'list' ? 'bg-ocean-500 text-white' : 'bg-white text-deep-500 hover:bg-gray-50'
+                  "p-3 transition-colors border-l-2 border-gray-200 dark:border-gray-700",
+                  viewMode === 'list' ? 'bg-ocean-500 text-white' : 'bg-white text-deep-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800'
                 )}
               >
                 <List className="w-4 h-4" />
@@ -382,11 +382,11 @@ export default function SpeciesExplorer() {
           <div className="mt-4 pt-4 border-t border-gray-200 animate-fade-in-down">
             <div className="flex flex-wrap gap-4">
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-deep-700 mb-2">Phylum</label>
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Phylum</label>
                 <select
                   value={filters.phylum}
                   onChange={(e) => setFilters({ ...filters, phylum: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400"
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
                 >
                   <option value="">All Phyla</option>
                   <option value="Chordata">Chordata</option>
@@ -397,11 +397,11 @@ export default function SpeciesExplorer() {
                 </select>
               </div>
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-deep-700 mb-2">Habitat</label>
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Habitat</label>
                 <select
                   value={filters.habitat}
                   onChange={(e) => setFilters({ ...filters, habitat: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400"
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
                 >
                   <option value="">All Habitats</option>
                   <option value="Pelagic">Pelagic</option>
@@ -412,11 +412,11 @@ export default function SpeciesExplorer() {
                 </select>
               </div>
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-deep-700 mb-2">Conservation Status</label>
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Conservation Status</label>
                 <select
                   value={filters.conservationStatus}
                   onChange={(e) => setFilters({ ...filters, conservationStatus: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400"
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
                 >
                   <option value="">All Statuses</option>
                   <option value="LC">Least Concern</option>
@@ -453,11 +453,11 @@ export default function SpeciesExplorer() {
         </div>
       ) : error ? (
         <Card variant="default" className="p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-abyss-100 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-abyss-100 dark:bg-abyss-900/30 flex items-center justify-center">
             <Fish className="w-8 h-8 text-abyss-500" />
           </div>
-          <h3 className="text-lg font-semibold text-deep-900 mb-2">Error Loading Species</h3>
-          <p className="text-deep-500 mb-4">
+          <h3 className="text-lg font-semibold text-deep-900 dark:text-white mb-2">Error Loading Species</h3>
+          <p className="text-deep-500 dark:text-gray-400 mb-4">
             {error instanceof Error ? error.message : 'An unexpected error occurred'}
           </p>
           <Button variant="outline" onClick={() => window.location.reload()}>
@@ -466,11 +466,11 @@ export default function SpeciesExplorer() {
         </Card>
       ) : !data?.data || data.data.length === 0 ? (
         <Card variant="default" className="p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-ocean-100 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-ocean-100 dark:bg-ocean-900/30 flex items-center justify-center">
             <Search className="w-8 h-8 text-ocean-500" />
           </div>
-          <h3 className="text-lg font-semibold text-deep-900 mb-2">No Species Found</h3>
-          <p className="text-deep-500 mb-4">
+          <h3 className="text-lg font-semibold text-deep-900 dark:text-white mb-2">No Species Found</h3>
+          <p className="text-deep-500 dark:text-gray-400 mb-4">
             Try adjusting your search or filters to find what you're looking for
           </p>
           <Button variant="outline" onClick={() => { setSearch(''); clearFilters(); }}>
@@ -481,9 +481,9 @@ export default function SpeciesExplorer() {
         <>
           {/* Results Count */}
           <div className="flex items-center justify-between">
-            <p className="text-sm text-deep-500">
-              Showing <span className="font-semibold text-deep-700">{data.data.length}</span> of{' '}
-              <span className="font-semibold text-deep-700">{data.pagination?.total?.toLocaleString()}</span> species
+            <p className="text-sm text-deep-500 dark:text-gray-400">
+              Showing <span className="font-semibold text-deep-700 dark:text-gray-200">{data.data.length}</span> of{' '}
+              <span className="font-semibold text-deep-700 dark:text-gray-200">{data.pagination?.total?.toLocaleString()}</span> species
             </p>
           </div>
 
@@ -521,37 +521,37 @@ export default function SpeciesExplorer() {
                   </div>
 
                   <CardContent className="p-5">
-                    <h3 className="text-lg font-semibold text-deep-900 group-hover:text-ocean-600 transition-colors truncate">
+                    <h3 className="text-lg font-semibold text-deep-900 dark:text-white group-hover:text-ocean-600 transition-colors truncate">
                       {species.scientificName}
                     </h3>
-                    <p className="text-sm text-deep-500 mb-3">
+                    <p className="text-sm text-deep-500 dark:text-gray-400 mb-3">
                       {species.commonName || 'Common name not available'}
                     </p>
 
                     <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-deep-600">
+                      <div className="flex items-center gap-2 text-deep-600 dark:text-gray-300">
                         <Layers className="w-4 h-4 text-ocean-400" />
                         <span>{species.family || 'Unknown'}</span>
-                        <span className="text-deep-300">•</span>
+                        <span className="text-deep-300 dark:text-gray-500">•</span>
                         <span>{species.order || 'Unknown'}</span>
                       </div>
 
                       {species.habitat && (
-                        <div className="flex items-center gap-2 text-deep-600">
+                        <div className="flex items-center gap-2 text-deep-600 dark:text-gray-300">
                           <Globe2 className="w-4 h-4 text-marine-400" />
                           <span className="truncate">{species.habitat}</span>
                         </div>
                       )}
 
                       {species.distribution && species.distribution.length > 0 && (
-                        <div className="flex items-center gap-2 text-deep-600">
+                        <div className="flex items-center gap-2 text-deep-600 dark:text-gray-300">
                           <MapPin className="w-4 h-4 text-coral-400" />
                           <span className="truncate">{parseDistribution(species.distribution).slice(0, 2).join(', ')}</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
                       <Badge variant="secondary" size="sm">
                         {species.phylum || 'Unknown'}
                       </Badge>
@@ -655,7 +655,7 @@ export default function SpeciesExplorer() {
                         "w-10 h-10 rounded-lg text-sm font-medium transition-all",
                         page === pageNum
                           ? "bg-ocean-500 text-white shadow-lg shadow-ocean-500/25"
-                          : "text-deep-600 hover:bg-gray-100"
+                          : "text-deep-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                       )}
                     >
                       {pageNum}
@@ -671,7 +671,7 @@ export default function SpeciesExplorer() {
                         "w-10 h-10 rounded-lg text-sm font-medium transition-all",
                         page === data.pagination.pages
                           ? "bg-ocean-500 text-white"
-                          : "text-deep-600 hover:bg-gray-100"
+                          : "text-deep-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                       )}
                     >
                       {data.pagination.pages}

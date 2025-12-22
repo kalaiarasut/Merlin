@@ -321,12 +321,14 @@ export const analyticsService = {
     data?: any;
     abstract?: string;
     keywords?: string[];
+    use_llm?: boolean;
   }) => apiClient.post<any>('/analytics/generate-report', params),
 
   quickReport: (params: {
     analysis_type: string;
     data: any;
     format?: string;
+    use_llm?: boolean;
   }) => apiClient.post<any>('/analytics/quick-report', params),
 };
 
@@ -379,10 +381,53 @@ export const aiService = {
   chat: (message: string, context?: any) =>
     apiClient.post<{ response: string }>('/ai/chat', { message, context }),
 
-  classifyFish: (file: File) => {
+  classifyFish: async (file: File) => {
     const formData = new FormData();
     formData.append('image', file);
-    return apiClient.upload<any>('/ai/classify-fish', formData);
+    const response = await apiClient.upload<any>('/ai/classify-fish', formData);
+
+    // Get FishBase data if available
+    const fb = response.fishbase || {};
+
+    // Build description from FishBase data
+    let description = response.message || '';
+    if (fb.dangerous) {
+      description += `\n⚠️ Danger to humans: ${fb.danger_description || fb.dangerous}`;
+    }
+    if (fb.diet?.main_food) {
+      description += `\n🍽️ Diet: ${fb.diet.main_food}`;
+    }
+    if (fb.depth?.min || fb.depth?.max) {
+      description += `\n📏 Depth: ${fb.depth.min || '?'} - ${fb.depth.max || '?'} meters`;
+    }
+    if (fb.behavior?.schooling) {
+      description += `\n🐟 Behavior: ${fb.behavior.schooling}`;
+    }
+    if (fb.importance) {
+      description += `\n💼 Commercial importance: ${fb.importance}`;
+    }
+    if (fb.vulnerability) {
+      description += `\n🛡️ Vulnerability index: ${fb.vulnerability}`;
+    }
+
+    // Map backend response to frontend interface
+    return {
+      species: response.common_name || response.species || 'Unknown',
+      scientificName: response.scientific_name || response.species || 'Unknown',
+      confidence: response.overall_confidence || response.species_confidence || 0,
+      family: response.family || 'Unknown',
+      commonNames: response.common_name ? [response.common_name] : [],
+      conservationStatus: fb.vulnerability ? `Vulnerability: ${fb.vulnerability}` : undefined,
+      habitat: response.habitat || fb.habitat_details?.description || undefined,
+      description: description.trim() || undefined,
+      alternatives: response.top_predictions?.slice(1)?.map((p: any) => ({
+        species: p.species,
+        scientificName: p.species,
+        confidence: p.confidence
+      })) || [],
+      // Additional FishBase data
+      fishbase: fb
+    };
   },
 
   extractMetadata: (file: File) => {

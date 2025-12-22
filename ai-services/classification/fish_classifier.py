@@ -202,28 +202,53 @@ class HierarchicalClassifier(nn.Module):
     """
     Hierarchical fish classifier using EfficientNet backbone
     Classifies: Habitat → Family → Species
+    
+    Architecture must match the trained model (V2, 84.8% accuracy)
+    Checkpoint layer shapes:
+      - habitat_classifier: Linear (512 → 5)
+      - family_classifier: Sequential (517 → 256 → 9) with layers at 0 and 3
+      - species_classifier: Sequential (521 → 256 → 15) with layers at 0 and 3
     """
     
     def __init__(self, num_habitats: int, num_families: int, num_species: int):
         super().__init__()
         
-        # Use EfficientNet-B0 as backbone (efficient and accurate)
+        # Use EfficientNet-B0 as backbone
         self.backbone = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
         backbone_out = self.backbone.classifier[1].in_features
-        self.backbone.classifier = nn.Identity()  # Remove original classifier
+        self.backbone.classifier = nn.Identity()
         
-        # Shared feature extraction
+        # Shared feature extraction (MUST match checkpoint structure)
+        # Checkpoint shows: shared_fc.0 = Linear, shared_fc.1 = BatchNorm1d
         self.feature_dim = 512
         self.shared_fc = nn.Sequential(
-            nn.Linear(backbone_out, self.feature_dim),
-            nn.ReLU(),
-            nn.Dropout(0.3)
+            nn.Linear(backbone_out, self.feature_dim),  # index 0
+            nn.BatchNorm1d(self.feature_dim)            # index 1
         )
         
-        # Hierarchical classifiers
-        self.habitat_classifier = nn.Linear(self.feature_dim, num_habitats)
-        self.family_classifier = nn.Linear(self.feature_dim + num_habitats, num_families)
-        self.species_classifier = nn.Linear(self.feature_dim + num_families, num_species)
+        # Hierarchical classifiers (MUST match trained model architecture)
+        hidden_dim = 256
+        
+        # habitat_classifier: Simple Linear (512 → num_habitats)
+        self.habitat_classifier = nn.Sequential(
+            nn.Linear(self.feature_dim, num_habitats)
+        )
+        
+        # family_classifier: Sequential (512+num_habitats → 256 → num_families)
+        self.family_classifier = nn.Sequential(
+            nn.Linear(self.feature_dim + num_habitats, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(hidden_dim, num_families)
+        )
+        
+        # species_classifier: Sequential (512+num_families → 256 → num_species)
+        self.species_classifier = nn.Sequential(
+            nn.Linear(self.feature_dim + num_families, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(hidden_dim, num_species)
+        )
         
         self.num_habitats = num_habitats
         self.num_families = num_families

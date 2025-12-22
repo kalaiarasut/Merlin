@@ -113,9 +113,6 @@ async def root():
             "chat": {
                 "POST /chat": "Natural language queries"
             },
-            "classification": {
-                "POST /classify-fish": "Fish species identification via Fishial.AI"
-            },
             "otolith": {
                 "POST /analyze-otolith": "Otolith shape analysis",
                 "POST /analyze-otolith-age": "Age estimation from otolith images"
@@ -153,6 +150,57 @@ async def root():
         }
     }
 
+
+# ====================================
+# AI System Status Endpoint
+# ====================================
+
+@app.get("/ai/status")
+async def get_ai_status():
+    """
+    Get AI system status including connectivity and provider information.
+    
+    Returns:
+        - internet: Whether internet is available
+        - ollama: Whether Ollama is running
+        - tavily: Whether Tavily (web search) is configured
+        - fishbase: Whether FishBase API is accessible
+        - active_provider: Current LLM provider being used
+        - mode: Current operation mode (offline/online)
+    """
+    from utils.connectivity import get_cached_status
+    
+    try:
+        status = await get_cached_status(max_age_seconds=30)
+        return {
+            "success": True,
+            **status.to_dict(),
+            "providers": {
+                "ollama": {
+                    "name": "Ollama (Local)",
+                    "available": status.ollama,
+                    "description": "Local LLM - 100% Private"
+                }
+            },
+            "data_sources": {
+                "database": True,
+                "fishbase": status.fishbase,
+                "tavily": status.tavily
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "internet": False,
+            "ollama": False,
+            "tavily": False,
+            "fishbase": False,
+            "active_provider": "fallback",
+            "mode": "offline"
+        }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -167,10 +215,10 @@ async def chat(request: ChatRequest):
     
     Context can include domain-specific data to enhance responses.
     """
-    from chat.llm_service import LLMService
+    from chat.llm_service import get_llm_service
     
     try:
-        llm_service = LLMService()
+        llm_service = get_llm_service()
         result = await llm_service.chat(
             message=request.message,
             context=request.context
@@ -189,42 +237,6 @@ async def chat(request: ChatRequest):
             confidence=0.0
         )
 
-@app.post("/classify-fish")
-async def classify_fish(image: UploadFile = File(...)):
-    """
-    Fish species classification using Fishial.AI Recognition™
-    
-    Powered by the world's largest open-source fish identification model.
-    Supports 639 species worldwide (Model V9).
-    
-    API: https://fishial.ai
-    """
-    from classification.fishial_classifier import classify_fish_image
-    
-    # Validate file type
-    allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp']
-    if image.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid file type. Allowed: JPEG, PNG, WebP, BMP"
-        )
-    
-    try:
-        # Read image data
-        image_data = await image.read()
-        
-        # Classify using Fishial.AI
-        result = await classify_fish_image(image_data, image.filename or "image.jpg")
-        
-        return result
-        
-    except Exception as e:
-        import traceback
-        raise HTTPException(
-            status_code=500,
-            detail=f"Classification failed: {str(e)}"
-        )
-
 
 # ============================================
 # INDIAN OCEAN FISH CLASSIFICATION V2
@@ -238,8 +250,9 @@ class AddSpeciesRequest(BaseModel):
     family: str
 
 
+@app.post("/classify-fish")
 @app.post("/classify-fish-v2")
-async def classify_fish_v2(image: UploadFile = File(...)):
+async def classify_fish(image: UploadFile = File(...)):
     """
     Hierarchical Fish Classification for Indian Ocean Species
     
@@ -249,9 +262,13 @@ async def classify_fish_v2(image: UploadFile = File(...)):
     - Species identification
     - Unknown species detection (confidence-based)
     
-    Model is trainable - new species can be added by admin.
+    Enriched with FishBase data for:
+    - Biology, ecology, diet, depth range
+    - Danger to humans, commercial importance
+    - Behavior, reproduction
     """
     from classification.fish_classifier import get_classifier
+    from integrations.fishbase_service import get_fishbase_service
     
     # Validate file type
     allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp']
@@ -268,8 +285,36 @@ async def classify_fish_v2(image: UploadFile = File(...)):
         # Classify using hierarchical model
         classifier = get_classifier()
         result = classifier.classify(image_data)
+        response = result.to_dict()
         
-        return result.to_dict()
+        # Enrich with FishBase data if species was identified
+        if response.get("status") == "identified" and response.get("scientific_name"):
+            try:
+                fishbase = get_fishbase_service()
+                species_data = await fishbase.search_species(response["scientific_name"])
+                
+                if species_data:
+                    enriched = fishbase.format_species_info(species_data)
+                    
+                    # Add FishBase enrichment to response
+                    response["fishbase"] = {
+                        "depth": enriched.get("depth"),
+                        "diet": enriched.get("diet"),
+                        "habitat_details": enriched.get("habitat"),
+                        "behavior": enriched.get("behavior"),
+                        "reproduction": enriched.get("reproduction"),
+                        "vulnerability": enriched.get("vulnerability"),
+                        "importance": enriched.get("importance"),
+                        # Danger to humans (from raw FishBase data)
+                        "dangerous": species_data.get("Dangerous"),
+                        "danger_description": species_data.get("DangerousSp"),
+                    }
+            except Exception as e:
+                import logging
+                logging.warning(f"FishBase enrichment failed: {e}")
+                # Continue without enrichment
+        
+        return response
         
     except Exception as e:
         import traceback
@@ -1168,51 +1213,31 @@ async def _generate_llm_report_content(title: str, abstract: str, report_type: s
     """
     Use LLM to generate intelligent report content based on user query.
     Queries both MongoDB and PostgreSQL for relevant data.
+    Uses the same LLM service as the /chat endpoint for consistency.
     """
-    from chat.llm_service import LLMService
+    from chat.llm_service import get_llm_service
     import logging
     
-    llm_service = LLMService()
+    # Use the same singleton as /chat endpoint
+    llm_service = get_llm_service()
     
-    # Construct the query for the LLM
-    query = f"""Generate a report about: {title}
-
-Additional context: {abstract if abstract else 'None provided'}
-Report type: {report_type}
-
-Based on the database information provided in your context, please:
-1. List the relevant species/data that match the user's request
-2. Provide key findings
-3. Give a brief analysis
-
-If the user asks for species "starting with X" or "ending with X", filter the species list accordingly by SCIENTIFIC NAME.
-If the user asks about a specific habitat or family, filter by that.
-ONLY list species that match the criteria from the database context provided to you.
-
-Format your response EXACTLY as:
-SPECIES LIST:
-- Genus species (Common Name) - Family - Habitat
-
-KEY FINDINGS:
-- Finding 1
-- Finding 2
-- Finding 3
-
-ANALYSIS:
-Your brief analytical paragraph here.
-"""
+    # Pass the user's request directly - don't force extra content
+    # The LLM should just answer what the user asked
+    user_request = abstract if abstract else title
     
+    query = f"""{user_request}
+
+(Report title: {title}, Type: {report_type})
+
+Please answer the above request directly. Only provide additional analysis if the request asks for it."""
+
     try:
-        # Call the LLM
+        # Call the LLM using the same pattern as /chat endpoint
         logging.info(f"Calling LLM for report: {title}")
-        response = await llm_service.chat(query, allow_fallback=False)
+        result = await llm_service.chat(message=query)
         
-        # Ensure response is a string
-        if not isinstance(response, str):
-            if isinstance(response, dict):
-                response = response.get('response', str(response))
-            else:
-                response = str(response)
+        # Extract response from result dict
+        response = result.get('response', str(result)) if isinstance(result, dict) else str(result)
         
         logging.info(f"LLM response length: {len(response)} chars")
         logging.info(f"LLM response preview: {response[:500] if len(response) > 500 else response}")
@@ -1287,10 +1312,54 @@ Your brief analytical paragraph here.
             except:
                 pass
         
-        # If no structured content was found, use the full response
+        # If no structured content was found, use the full response as analysis
+        # Don't add placeholder key findings - just show the content
         if not content['species_list'] and not content['key_findings']:
-            content['key_findings'] = ["AI Response (unstructured format - see analysis below)"]
             content['analysis'] = response
+        
+        # === FISHBASE ENRICHMENT ===
+        # If we have species and internet is available, enrich with FishBase data
+        if content['species_list']:
+            try:
+                from utils.connectivity import check_fishbase
+                from integrations.fishbase_service import get_fishbase_service
+                
+                # Check if FishBase is available
+                fishbase_available = await check_fishbase()
+                
+                if fishbase_available:
+                    logging.info("FishBase available - enriching species data")
+                    fishbase = get_fishbase_service()
+                    enriched_species = []
+                    
+                    for species_line in content['species_list'][:10]:  # Limit to first 10 to avoid slow responses
+                        # Try to extract scientific name from the line
+                        # Format is typically: "Genus species (Common Name) - Family - Habitat"
+                        sci_name = species_line.split('(')[0].strip().split(' - ')[0].strip()
+                        
+                        if sci_name and ' ' in sci_name:  # Looks like "Genus species"
+                            try:
+                                summary = await fishbase.get_species_summary(sci_name)
+                                if summary and "No detailed data" not in summary:
+                                    enriched_species.append(f"{species_line}\n   📊 FishBase: {summary[:200]}...")
+                                else:
+                                    enriched_species.append(species_line)
+                            except Exception as e:
+                                logging.debug(f"FishBase lookup failed for {sci_name}: {e}")
+                                enriched_species.append(species_line)
+                        else:
+                            enriched_species.append(species_line)
+                    
+                    # Replace species list with enriched version
+                    content['species_list'] = enriched_species + content['species_list'][10:]
+                    content['fishbase_enriched'] = True
+                    logging.info(f"Enriched {len(enriched_species)} species with FishBase data")
+                else:
+                    content['fishbase_enriched'] = False
+                    logging.info("FishBase not available - using basic species data")
+            except Exception as e:
+                logging.warning(f"FishBase enrichment failed: {e}")
+                content['fishbase_enriched'] = False
         
         return content
         

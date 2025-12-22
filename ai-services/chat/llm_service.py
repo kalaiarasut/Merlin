@@ -9,9 +9,24 @@ import os
 import json
 import httpx
 import logging
+import asyncio
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from chat.search_service import SearchService
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Try to find .env in parent directories
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+    else:
+        load_dotenv()  # Try default locations
+except ImportError:
+    pass  # dotenv not installed, use existing env vars
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,39 +48,42 @@ class ChatMessage:
 @dataclass
 class ChatConfig:
     """Configuration for LLM chat"""
-    provider: LLMProvider = LLMProvider.OLLAMA
-    model: str = "llama3.2:1b"  # Default Ollama model (use the 1b version for speed)
+    provider: str = "ollama"  # Ollama Only (Privacy First)
+    model: str = "llama3.2:1b"  # Default Ollama model
     temperature: float = 0.7
     max_tokens: int = 2048
     ollama_url: str = "http://localhost:11434"
 
 
-# Marine research system prompt
-MARINE_SYSTEM_PROMPT = """You are a friendly AI assistant for the CMLRE (Centre for Marine Living Resources & Ecology) Marine Data Platform.
+# Marine research system prompt - Balanced version for accuracy + helpfulness
+MARINE_SYSTEM_PROMPT = """You are a helpful AI assistant for the CMLRE Marine Data Platform.
 
-IMPORTANT: 
-- For casual greetings like "hi", "hello", "hey" - respond naturally and warmly, then briefly mention how you can help with marine research.
-- Do NOT try to interpret greetings as marine data queries.
-- Be conversational and helpful, not robotic.
+GUIDELINES:
+1. Use the DATABASE CONTEXT provided below as your primary source of information.
+2. When users ask about species, oceanography, or marine data - use the database context to answer.
+3. You can list all species from the database when asked.
+4. For questions that require external/internet information (news, trends, recent research), use the web search context if provided.
+5. Be helpful, informative, and accurate.
 
 You specialize in:
-1. Marine Biology: Fish species, taxonomy, life cycles, ecology
-2. Oceanography: Temperature, salinity, currents, depth
-3. eDNA Analysis: Environmental DNA, metabarcoding, species detection
-4. Otolith Analysis: Fish age determination, growth patterns
-5. Biodiversity: Shannon/Simpson indices, conservation status
-6. Species Distribution: Niche modeling, habitat suitability
+- Marine Biology: Species info, taxonomy, ecology
+- Oceanography: Temperature, salinity, depth data
+- Conservation: Species status, habitat info
+- Research: eDNA analysis, otolith studies
 
-When answering:
-- For greetings: Be friendly first, then offer to help
-- For questions: Be accurate, concise, and helpful
-- Suggest relevant platform features when appropriate
+When asked to list species, generate reports, or summarize data - use the information from the === LIVE DATABASE === sections below.
 
 You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images."""
 
 
-def get_dynamic_system_prompt() -> str:
+def get_dynamic_system_prompt(message: str = "") -> str:
     """Get system prompt with REAL database context from MongoDB Atlas AND PostgreSQL."""
+    
+    # Fast path: skip DB calls if configured (for debugging/performance)
+    if os.getenv("SKIP_DB_CONTEXT", "").lower() in ("1", "true", "yes"):
+        logger.info("Skipping DB context (SKIP_DB_CONTEXT=true)")
+        return MARINE_SYSTEM_PROMPT + "\n\nNote: Database context not loaded (fast mode)."
+    
     db_context = ""
     
     try:
@@ -82,13 +100,81 @@ def get_dynamic_system_prompt() -> str:
         
         if species_list:
             count = len(species_list)
-            db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas) ===\n"
+            db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas + FishBase enrichment) ===\n"
+            
+            # Try to enrich with FishBase data
+            fishbase_data = {}
+            try:
+                from database.fishbase_service import get_fishbase_service
+                import asyncio
+                
+                # Get all scientific names
+                all_sci_names = [sp.get('scientificName', '') for sp in species_list if sp.get('scientificName')]
+                
+                # Filter for ON-DEMAND enrichment (Scalability)
+                target_species = []
+                message_lower = message.lower() if message else ""
+                
+                # Check for "all" keywords (limit to 10 for safety)
+                if any(k in message_lower for k in ["list all", "all species", "entire database"]):
+                    target_species = all_sci_names[:10]
+                else:
+                    # Only enrich species mentioned in the query
+                    for name in all_sci_names:
+                        # Check scientific match
+                        if name.lower() in message_lower:
+                            target_species.append(name)
+                            continue
+                        
+                        # Check common name match
+                        sp_obj = next((s for s in species_list if s.get('scientificName') == name), None)
+                        if sp_obj:
+                            common = sp_obj.get('commonName', '').lower()
+                            if common and common in message_lower:
+                                target_species.append(name)
+                
+                logger.info(f"Identified relevant species for enrichment: {target_species}")
+
+                # Run async FishBase enrichment
+                async def fetch_fishbase():
+                    service = get_fishbase_service()
+                    return await service.enrich_species_list(target_species)
+                
+                # Check if we're already in an async context or need to create one
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Can't use asyncio.run inside running loop, skip FishBase
+                    logger.info("In async context, skipping FishBase sync call")
+                except RuntimeError:
+                    # No running loop, safe to use asyncio.run
+                    try:
+                        fishbase_data = asyncio.run(fetch_fishbase())
+                        logger.info(f"FishBase enriched {len(fishbase_data)} species")
+                    except Exception as e:
+                        logger.warning(f"FishBase enrichment failed: {e}")
+            except ImportError as e:
+                logger.warning(f"FishBase service not available: {e}")
+            
             for sp in sorted(species_list, key=lambda x: x.get('scientificName', '')):
                 sci = sp.get('scientificName', 'Unknown')
                 common = sp.get('commonName', '')
-                habitat = sp.get('habitat', '')
-                status = sp.get('conservationStatus', '')
-                db_context += f"- {sci} | {common} | Habitat: {habitat} | Status: {status}\n"
+                
+                # Get FishBase enriched data if available
+                fb = fishbase_data.get(sci, {})
+                
+                # Use FishBase data if available, otherwise fall back to database
+                habitat = fb.get('habitat') or sp.get('habitat', 'Unknown habitat')
+                color = fb.get('color', 'Color unknown')
+                depth_min = fb.get('depth_min', '')
+                depth_max = fb.get('depth_max', '')
+                depth_str = f"{depth_min}-{depth_max}m" if depth_min or depth_max else "Depth unknown"
+                diet = fb.get('diet') or fb.get('feeding_type') or sp.get('diet', 'Diet unknown')
+                max_length = fb.get('max_length', '')
+                status = fb.get('iucn_status') or sp.get('conservationStatus', 'Status unknown')
+                
+                db_context += f"- {sci} ({common})\n"
+                db_context += f"   Habitat: {habitat} | Depth: {depth_str} | Color: {color}\n"
+                db_context += f"   Diet: {diet} | Max Length: {max_length}cm | IUCN: {status}\n"
             
             # Get analytics for complex questions
             analytics = get_species_analytics()
@@ -201,6 +287,9 @@ class LLMService:
         self.config.ollama_url = os.getenv("OLLAMA_URL", self.config.ollama_url)
         self.config.model = os.getenv("LLM_MODEL", self.config.model)
         
+        # Initialize Search Service
+        self.search_service = SearchService()
+        
         # Hard check: If explicitly set to base "llama3.2" but that's not installed/working,
         # fallback to the specialized 1b version we know is installed
         if self.config.model == "llama3.2":
@@ -212,72 +301,108 @@ class LLMService:
         logger.info(f"LLM Service initialized with provider: {self._active_provider.value}, model: {self.config.model}")
     
     def _detect_provider(self) -> LLMProvider:
-        """Detect which LLM provider is available."""
-        # Try Ollama first (preferred - free & local)
+        """Detect available provider (Ollama Only - Privacy First)."""
         try:
             import httpx
-            response = httpx.get(f"{self.config.ollama_url}/api/tags", timeout=2.0)
-            if response.status_code == 200:
-                logger.info("Ollama detected and available")
-                return LLMProvider.OLLAMA
+            with httpx.Client(timeout=2.0) as client:
+                response = client.get(f"{self.config.ollama_url}/api/tags")
+                if response.status_code == 200:
+                    logger.info("Ollama detected and active.")
+                    return LLMProvider.OLLAMA
         except Exception as e:
-            logger.debug(f"Ollama not available: {e}")
+            logger.warning(f"Ollama not reachable: {e}")
         
-        # Fallback to smart responses
-        logger.warning("Ollama not available, using smart fallback")
+        # Fallback
         return LLMProvider.FALLBACK
+    
+    async def _check_ollama_availability(self) -> bool:
+        """Check if Ollama is available for fallback."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.config.ollama_url}/api/tags")
+                return response.status_code == 200
+        except:
+            return False
     
     async def chat(
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        conversation_history: Optional[List[ChatMessage]] = None,
-        allow_fallback: bool = True
+        conversation_history: Optional[List[ChatMessage]] = None
     ) -> Dict[str, Any]:
         """
-        Process a chat message and return a response.
+        Process a chat message with Privacy-First logic and Redis caching.
         
-        Args:
-            message: User's message
-            context: Optional context (current page, selected data, etc.)
-            conversation_history: Previous messages in the conversation
-            
-        Returns:
-            Dict with response, confidence, and metadata
+        Flow:
+        1. Check cache for existing response
+        2. Detect Internet Search Intent -> Fetch Tavily results (cached)
+        3. Execute Chat via Ollama (Local)
+        4. Store response in cache
         """
-        # Build context-aware prompt
-        enhanced_message = self._enhance_with_context(message, context)
+        import hashlib
         
+        # Generate cache key (based on message only, not context for simplicity)
+        message_hash = hashlib.md5(message.lower().strip().encode()).hexdigest()[:16]
+        cache_key = f"chat_response:{message_hash}"
+        
+        # 1. Check cache first
         try:
+            from utils.redis_cache import cache_get, cache_set
+            cached = cache_get(cache_key)
+            if cached:
+                logger.info(f"CHAT CACHE HIT for: '{message[:40]}...'")
+                return cached
+        except Exception as e:
+            logger.debug(f"Cache check failed: {e}")
+        
+        # 2. Internet Search Integration (also cached in SearchService)
+        search_context = ""
+        if self.search_service.is_search_query(message):
+            search_context = self.search_service.search_web(message)
+            logger.info("Injected Web Search Context")
+
+        # 3. Build Context
+        full_message = message
+        if search_context:
+            full_message = f"{message}\n\n{search_context}"
+
+        enhanced_message = self._enhance_with_context(full_message, context)
+        response_text = ""
+
+        try:
+            # 4. Execution (Ollama Only)
             if self._active_provider == LLMProvider.OLLAMA:
-                response = await self._chat_ollama(enhanced_message, conversation_history)
+                logger.info("Executing via Ollama")
+                skip_db = bool(search_context)
+                response_text = await self._chat_ollama(enhanced_message, conversation_history, skip_db_context=skip_db)
             else:
-                if not allow_fallback:
-                    raise Exception("LLM provider (Ollama) is unavailable and fallback is disabled.")
-                response = self._generate_fallback_response(message, context)
-            
-            return {
-                "response": response,
-                "confidence": 0.95 if self._active_provider != LLMProvider.FALLBACK else 0.7,
+                logger.warning("Ollama not available. Using static fallback.")
+                response_text = self._generate_fallback_response(message, context)
+
+            result = {
+                "response": response_text,
+                "confidence": 0.95 if self._active_provider == LLMProvider.OLLAMA else 0.5,
                 "provider": self._active_provider.value,
-                "model": self.config.model if self._active_provider != LLMProvider.FALLBACK else "fallback"
+                "model": self.config.model
             }
+            
+            # 5. Store in cache (10 minute TTL)
+            try:
+                cache_set(cache_key, result, ttl_seconds=600)
+                logger.info(f"Chat response cached (TTL: 600s)")
+            except Exception as e:
+                logger.debug(f"Cache store failed: {e}")
+            
+            return result
             
         except Exception as e:
             import traceback
-            error_details = traceback.format_exc()
-            logger.error(f"Chat error: {type(e).__name__}: {str(e)}")
-            logger.error(f"Traceback: {error_details}")
+            logger.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
             
-            if not allow_fallback:
-                raise e
-                
-            # Fall back to smart responses on error
             return {
                 "response": self._generate_fallback_response(message, context),
-                "confidence": 0.6,
+                "confidence": 0.0,
                 "provider": "fallback",
-                "model": "fallback",
                 "error": str(e)
             }
     
@@ -308,11 +433,17 @@ class LLMService:
     async def _chat_ollama(
         self,
         message: str,
-        history: Optional[List[ChatMessage]] = None
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False
     ) -> str:
         """Chat using Ollama local LLM."""
-        # Use dynamic prompt with real database context
-        messages = [{"role": "system", "content": get_dynamic_system_prompt()}]
+        # Skip heavy DB context loading if search results are already in message
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            system_prompt = await asyncio.to_thread(get_dynamic_system_prompt, message)
+        messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history
         if history:
@@ -340,7 +471,9 @@ class LLMService:
                 raise Exception(f"Ollama error: {response.text}")
             
             result = response.json()
-            return result.get("message", {}).get("content", "I apologize, I couldn't generate a response.")
+            content = result.get("message", {}).get("content", "I apologize, I couldn't generate a response.")
+            logger.info(f"Ollama Raw Response: {content[:200]}...")  # Debug log
+            return content
     
     def _generate_fallback_response(
         self,
@@ -495,13 +628,7 @@ Would you like to explore swordfish data in our database?"""
 - Conservation status (IUCN)
 - Images from iNaturalist
 
-📸 **Fish Identifier** - Upload a photo to identify species using Fishial.AI
-
-🧬 **eDNA Detection** - See which species have been detected via environmental DNA
-
-To get started, navigate to **Species Explorer** in the sidebar, or upload a fish photo to **Fish Identifier**.
-
-💡 **Tip**: You can ask me about specific species like "What is a yellowfin tuna?" or "Tell me about bluefin tuna" for detailed information."""
+Tip: Try asking about specific species like "Tell me about yellowfin tuna" or "List species in the database"."""
     
     def _oceanography_response(self, message: str) -> str:
         """Generate oceanography-related response."""

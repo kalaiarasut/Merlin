@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/input';
@@ -8,7 +9,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Send, Mic, Paperclip, Bot, User, Copy, ThumbsUp,
   ThumbsDown, Lightbulb, ChevronRight, Brain, Loader,
-  Plus, Trash2, MessageCircle, History, ChevronLeft
+  Plus, Trash2, MessageCircle, History, ChevronLeft,
+  Wifi, WifiOff, Sparkles, Database, Globe, HelpCircle, ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiService } from '@/services/api';
@@ -135,7 +137,22 @@ export default function AIAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [frequentPrompts, setFrequentPrompts] = useState<{ text: string; count: number }[]>([]);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch AI system status
+  const { data: aiStatus } = useQuery({
+    queryKey: ['ai-status'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('http://localhost:8000/ai/status');
+        return response.json();
+      } catch {
+        return { internet: false, ollama: false, gemini: false, fishbase: false, active_provider: 'offline', mode: 'offline' };
+      }
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
 
   const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
 
@@ -298,13 +315,20 @@ export default function AIAssistant() {
               <Brain className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-deep-900">AI Research Assistant</h1>
-              <p className="text-sm text-deep-500">Powered by advanced marine language models</p>
+              <h1 className="text-2xl font-bold text-deep-900 dark:text-white">AI Research Assistant</h1>
+              <p className="text-sm text-deep-500 dark:text-gray-400">Powered by advanced marine language models</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="success" dot>Online</Badge>
             <Badge variant="outline" className="text-xs">llama3.2:1b</Badge>
+            <button
+              onClick={() => setShowHowItWorks(!showHowItWorks)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="How It Works"
+            >
+              <HelpCircle className="w-5 h-5 text-deep-600" />
+            </button>
             <button
               onClick={handleNewChat}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -324,6 +348,151 @@ export default function AIAssistant() {
             </button>
           </div>
         </div>
+
+        {/* AI Status Bar */}
+        <div className="mb-4 flex items-center gap-4 p-3 bg-gradient-to-r from-ocean-50 to-marine-50 dark:from-gray-900 dark:to-gray-800 rounded-xl border border-ocean-100 dark:border-gray-700 dark:text-gray-300">
+          <div className="flex items-center gap-2">
+            {aiStatus?.internet ? (
+              <Wifi className="w-4 h-4 text-green-500" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-gray-400" />
+            )}
+            <span className="text-sm font-medium">
+              {aiStatus?.internet ? 'Online' : 'Offline'}
+            </span>
+          </div>
+          <div className="h-4 w-px bg-gray-300" />
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-ocean-500" />
+            <span className="text-sm">
+              Provider: <span className="font-medium capitalize">{aiStatus?.active_provider || 'Ollama'}</span>
+            </span>
+          </div>
+          <div className="h-4 w-px bg-gray-300" />
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-marine-500" />
+            <span className="text-sm">Local DB</span>
+            {aiStatus?.fishbase && (
+              <>
+                <span className="text-gray-400">+</span>
+                <Globe className="w-4 h-4 text-coral-500" />
+                <span className="text-sm">FishBase</span>
+              </>
+            )}
+          </div>
+          {aiStatus?.gemini && (
+            <>
+              <div className="h-4 w-px bg-gray-300" />
+              <div className="flex items-center gap-1">
+                <Sparkles className="w-4 h-4 text-purple-500" />
+                <span className="text-sm text-purple-600 font-medium">Gemini Active</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* How It Works Panel */}
+        {showHowItWorks && (
+          <Card variant="glass" className="mb-4 animate-in slide-in-from-top-2">
+            <CardHeader className="py-3 cursor-pointer" onClick={() => setShowHowItWorks(false)}>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <HelpCircle className="w-4 h-4 text-ocean-500" />
+                  How the AI System Works
+                </CardTitle>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <WifiOff className="w-8 h-8 mx-auto mb-2 text-gray-500" />
+                  <h4 className="font-medium text-sm">Offline Mode</h4>
+                  <p className="text-xs text-gray-500 mt-1">Ollama (Local) + Your Database</p>
+                  <Badge variant="outline" className="mt-2 text-xs">Always Available</Badge>
+                </div>
+                <div className="p-4 bg-ocean-50 rounded-xl border border-ocean-200">
+                  <Wifi className="w-8 h-8 mx-auto mb-2 text-ocean-500" />
+                  <h4 className="font-medium text-sm">Online Mode</h4>
+                  <p className="text-xs text-gray-500 mt-1">Ollama + FishBase API</p>
+                  <Badge variant="secondary" className="mt-2 text-xs">Enhanced Data</Badge>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+                  <Sparkles className="w-8 h-8 mx-auto mb-2 text-purple-500" />
+                  <h4 className="font-medium text-sm">Premium Mode</h4>
+                  <p className="text-xs text-gray-500 mt-1">Gemini + Web Search</p>
+                  <Badge className="mt-2 text-xs bg-purple-500">Best Quality</Badge>
+                </div>
+              </div>
+
+              {/* Visual Flowchart */}
+              <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
+                <h5 className="text-xs font-semibold text-gray-700 mb-3 text-center">Decision Flow</h5>
+                <div className="flex flex-col items-center gap-2 text-xs">
+                  {/* Start */}
+                  <div className="px-3 py-1.5 bg-ocean-100 text-ocean-700 rounded-full font-medium">
+                    Your Query
+                  </div>
+                  <div className="w-px h-4 bg-gray-300" />
+
+                  {/* First Decision */}
+                  <div className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg border border-yellow-300">
+                    Is Internet Online?
+                  </div>
+
+                  {/* Branches */}
+                  <div className="flex items-start gap-8 mt-1">
+                    {/* No Branch - Offline */}
+                    <div className="flex flex-col items-center">
+                      <span className="text-red-500 text-xs font-medium">No</span>
+                      <div className="w-px h-3 bg-gray-300" />
+                      <div className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg border">
+                        <WifiOff className="w-3 h-3 inline mr-1" />
+                        Ollama + Local DB
+                      </div>
+                    </div>
+
+                    {/* Yes Branch */}
+                    <div className="flex flex-col items-center">
+                      <span className="text-green-500 text-xs font-medium">Yes</span>
+                      <div className="w-px h-3 bg-gray-300" />
+                      <div className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg border border-yellow-300">
+                        Gemini API Key Set?
+                      </div>
+                      <div className="flex items-start gap-6 mt-2">
+                        {/* No Gemini */}
+                        <div className="flex flex-col items-center">
+                          <span className="text-red-500 text-xs">No</span>
+                          <div className="w-px h-2 bg-gray-300" />
+                          <div className="px-2 py-1 bg-ocean-100 text-ocean-700 rounded-lg border text-xs">
+                            <Wifi className="w-3 h-3 inline mr-1" />
+                            Ollama + FishBase
+                          </div>
+                        </div>
+                        {/* Yes Gemini */}
+                        <div className="flex flex-col items-center">
+                          <span className="text-green-500 text-xs">Yes</span>
+                          <div className="w-px h-2 bg-gray-300" />
+                          <div className="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg border text-xs">
+                            <Sparkles className="w-3 h-3 inline mr-1" />
+                            Gemini + Web
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-600">
+                  <strong>Current:</strong> {aiStatus?.gemini ? '🟣 Premium Mode (Gemini)' :
+                    aiStatus?.internet ? '🔵 Online Mode (Ollama + FishBase)' : '⚪ Offline Mode (Local Only)'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* History Panel (Overlay like floating chat) */}
         {showHistory && (
@@ -406,12 +575,12 @@ export default function AIAssistant() {
                   <div className={cn(
                     "inline-block p-4 rounded-2xl text-left",
                     message.role === 'assistant'
-                      ? "bg-gray-50 border border-gray-100"
+                      ? "bg-gray-50 border border-gray-100 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                       : "bg-ocean-500 text-white"
                   )}>
                     <div className={cn(
                       "prose prose-sm max-w-none",
-                      message.role === 'user' && "prose-invert"
+                      message.role === 'user' ? "prose-invert" : "dark:prose-invert"
                     )}>
                       {message.content.split('\n').map((line, i) => (
                         <p key={i} className={cn(
@@ -461,8 +630,7 @@ export default function AIAssistant() {
             <div ref={messagesEndRef} />
           </CardContent>
 
-          {/* Input Area */}
-          <div className="border-t border-gray-100 p-4">
+          <div className="border-t border-gray-100 dark:border-gray-800 p-4">
             <div className="flex items-end gap-3">
               <div className="flex-1 relative">
                 <Textarea
@@ -470,7 +638,7 @@ export default function AIAssistant() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask about species, oceanography, eDNA, or generate reports..."
-                  className="min-h-[60px] max-h-[200px] pr-24 resize-none"
+                  className="min-h-[60px] max-h-[200px] pr-24 resize-none dark:bg-gray-900 dark:border-gray-700 dark:text-white dark:placeholder-gray-500"
                   rows={1}
                 />
                 <div className="absolute right-2 bottom-2 flex items-center gap-1">

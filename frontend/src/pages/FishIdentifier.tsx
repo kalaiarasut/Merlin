@@ -1,9 +1,21 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useMutation } from '@tanstack/react-query';
-import { Upload, Fish, Camera, Loader2, CheckCircle, AlertCircle, Info, Sparkles, X } from 'lucide-react';
+import { Upload, Fish, Camera, Loader2, CheckCircle, AlertCircle, Info, Sparkles, X, Waves, Utensils, Heart, Shield, Anchor, Activity } from 'lucide-react';
 import { aiService } from '@/services/api';
 import { cn } from '@/lib/utils';
+
+interface FishBaseData {
+  depth?: string;
+  diet?: string;
+  habitat_details?: string;
+  behavior?: string;
+  reproduction?: string;
+  vulnerability?: string;
+  importance?: string;
+  dangerous?: string;
+  danger_description?: string;
+}
 
 interface ClassificationResult {
   species: string;
@@ -14,6 +26,7 @@ interface ClassificationResult {
   conservationStatus?: string;
   habitat?: string;
   description?: string;
+  fishbase?: FishBaseData;
   alternatives?: Array<{
     species: string;
     scientificName: string;
@@ -303,7 +316,7 @@ export default function FishIdentifier() {
                       className={cn(
                         'h-full transition-all duration-500 rounded-full',
                         result.confidence >= 0.8 ? 'bg-green-500' :
-                        result.confidence >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'
+                          result.confidence >= 0.5 ? 'bg-yellow-500' : 'bg-red-500'
                       )}
                       style={{ width: `${result.confidence * 100}%` }}
                     />
@@ -325,38 +338,136 @@ export default function FishIdentifier() {
                 </div>
               </div>
 
-              {/* Common Names */}
-              {result.commonNames && result.commonNames.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Common Names</p>
-                  <div className="flex flex-wrap gap-2">
-                    {result.commonNames.map((name, idx) => (
-                      <span
-                        key={idx}
-                        className="px-3 py-1 bg-gray-100 dark:bg-deep-700 text-deep-700 dark:text-gray-300 rounded-full text-sm"
-                      >
-                        {name}
-                      </span>
-                    ))}
+              {/* Unified FishBase Data Section */}
+              <div className="bg-gradient-to-br from-ocean-50 to-blue-50 dark:from-gray-800 dark:to-gray-900 rounded-xl p-5 border border-ocean-200 dark:border-gray-700 shadow-sm">
+                <p className="text-base font-bold text-ocean-700 dark:text-ocean-400 mb-4 flex items-center gap-2">
+                  <Waves className="h-5 w-5" />
+                  FishBase Data
+                </p>
+
+                {/* Quick Stats Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+                  {/* Common Names */}
+                  {result.commonNames && result.commonNames.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm col-span-2">
+                      <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                        <Fish className="h-3 w-3" /> Common Names
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.commonNames.map((name, idx) => (
+                          <span key={idx} className="px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-medium">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Habitat */}
+                  {result.habitat && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Waves className="h-3 w-3" /> Habitat
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium capitalize">{result.habitat}</p>
+                    </div>
+                  )}
+
+                  {/* Depth */}
+                  {result.fishbase?.depth && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Anchor className="h-3 w-3" /> Depth
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium">{result.fishbase.depth}</p>
+                    </div>
+                  )}
+
+                  {/* Diet */}
+                  {result.fishbase?.diet && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Utensils className="h-3 w-3" /> Diet
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium">{result.fishbase.diet}</p>
+                    </div>
+                  )}
+
+                  {/* Behavior */}
+                  {result.fishbase?.behavior && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Activity className="h-3 w-3" /> Behavior
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium">{result.fishbase.behavior}</p>
+                    </div>
+                  )}
+
+                  {/* Reproduction */}
+                  {result.fishbase?.reproduction && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-pink-600 dark:text-pink-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Heart className="h-3 w-3" /> Reproduction
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium">{result.fishbase.reproduction}</p>
+                    </div>
+                  )}
+
+                  {/* Commercial */}
+                  {result.fishbase?.importance && (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Fish className="h-3 w-3" /> Commercial
+                      </p>
+                      <p className="text-sm text-deep-700 dark:text-gray-300 font-medium">{result.fishbase.importance}</p>
+                    </div>
+                  )}
+
+                  {/* Danger */}
+                  {result.fishbase?.dangerous && (
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 shadow-sm">
+                      <p className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" /> Danger
+                      </p>
+                      <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+                        {result.fishbase.dangerous}
+                        {result.fishbase.danger_description && ` - ${result.fishbase.danger_description}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Species Overview / Description */}
+                {result.description && (
+                  <div className="border-t border-ocean-200 dark:border-gray-700 pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {result.description.split('\n\n').map((section, idx) => {
+                        const lines = section.split('\n');
+                        const title = lines[0];
+                        const content = lines.slice(1).join(' ').trim();
+
+                        if (title.includes(':') && content) {
+                          return (
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+                              <p className="text-xs font-semibold text-ocean-600 dark:text-ocean-400 uppercase tracking-wide mb-1">
+                                {title.replace(':', '')}
+                              </p>
+                              <p className="text-sm text-deep-600 dark:text-gray-300 leading-relaxed">
+                                {content}
+                              </p>
+                            </div>
+                          );
+                        }
+                        return section.trim() ? (
+                          <p key={idx} className="text-sm text-deep-600 dark:text-gray-300 leading-relaxed col-span-full">
+                            {section}
+                          </p>
+                        ) : null;
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Habitat */}
-              {result.habitat && (
-                <div>
-                  <p className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Habitat</p>
-                  <p className="text-deep-600 dark:text-gray-400 text-sm">{result.habitat}</p>
-                </div>
-              )}
-
-              {/* Description */}
-              {result.description && (
-                <div>
-                  <p className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Description</p>
-                  <p className="text-deep-600 dark:text-gray-400 text-sm">{result.description}</p>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Alternative Predictions */}
               {result.alternatives && result.alternatives.length > 0 && (

@@ -56,7 +56,7 @@ const generateLocalResponse = async (message: string): Promise<string> => {
 
 router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
-    const { message, context } = req.body;
+    const { message, context, requestId } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -70,7 +70,8 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
       const response = await axios.post(`${AI_SERVICE_URL}/chat`, {
         message,
         context,
-      }, { timeout: 300000 }); // 300 seconds (5 mins) for LLM response
+        request_id: requestId,  // Forward to Python for progress tracking
+      }, { timeout: 600000 }); // 600 seconds (10 mins) for LLM + FishBase enrichment
 
       const elapsed = Date.now() - startTime;
       logger.info(`Python AI service responded in ${elapsed}ms`);
@@ -94,6 +95,48 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
         confidence: 0.0,
         source: 'local-fallback'
       });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Streaming chat endpoint - proxies SSE from Python
+router.post('/chat/stream', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const { message, context, requestId } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+      const response = await axios({
+        method: 'post',
+        url: `${AI_SERVICE_URL}/chat/stream`,
+        data: { message, context, request_id: requestId },
+        responseType: 'stream',
+        timeout: 600000
+      });
+
+      // Pipe the stream from Python to client
+      response.data.pipe(res);
+
+      response.data.on('error', (err: Error) => {
+        logger.error(`Streaming error: ${err.message}`);
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+      });
+
+    } catch (aiError: any) {
+      logger.error(`Streaming AI service error: ${aiError.message}`);
+      res.write(`data: ${JSON.stringify({ error: 'AI service unavailable' })}\n\n`);
+      res.end();
     }
   } catch (error) {
     next(error);

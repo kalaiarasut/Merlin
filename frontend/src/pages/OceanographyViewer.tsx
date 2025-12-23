@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +68,7 @@ function MapCenterControl({ center }: { center: [number, number] }) {
 }
 
 export default function OceanographyViewer() {
+  const navigate = useNavigate();
   const [layers, setLayers] = useState(MAP_LAYERS);
   const [selectedParameter, setSelectedParameter] = useState('temperature');
   const [selectedPoint, setSelectedPoint] = useState<any>(null);
@@ -190,7 +192,7 @@ export default function OceanographyViewer() {
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => navigate('/reports')}>
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>

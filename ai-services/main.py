@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -21,6 +22,63 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ====================================
+# Startup: Preemptive FishBase Caching
+# ====================================
+
+@app.on_event("startup")
+async def preemptive_cache_fishbase():
+    """
+    Background task to preemptively cache FishBase data for all species on startup.
+    This ensures first query is instant.
+    """
+    import asyncio
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Skip if disabled
+    if os.getenv("SKIP_PREEMPTIVE_CACHE", "").lower() in ("1", "true", "yes"):
+        logger.info("Preemptive FishBase caching disabled (SKIP_PREEMPTIVE_CACHE=true)")
+        return
+    
+    async def cache_in_background():
+        try:
+            await asyncio.sleep(5)  # Wait for app to fully start
+            logger.info("Starting preemptive FishBase caching...")
+            
+            # Get all species
+            species_list = get_real_species_from_database()
+            if not species_list:
+                logger.warning("No species found for preemptive caching")
+                return
+            
+            all_sci_names = [sp.get('scientificName', '') for sp in species_list if sp.get('scientificName')]
+            
+            # Import FishBase service
+            from database.fishbase_service import get_fishbase_service
+            service = get_fishbase_service()
+            
+            # Cache in parallel (no progress tracking - background task)
+            cached_count = 0
+            for name in all_sci_names:
+                if name in service._cache:
+                    cached_count += 1
+                    continue
+                try:
+                    await service.get_species_info(name)
+                    cached_count += 1
+                except Exception as e:
+                    logger.debug(f"Failed to cache {name}: {e}")
+            
+            logger.info(f"Preemptive FishBase caching complete: {cached_count}/{len(all_sci_names)} species cached")
+        except Exception as e:
+            logger.warning(f"Preemptive caching failed: {e}")
+    
+    # Run in background (non-blocking)
+    asyncio.create_task(cache_in_background())
 
 
 # ====================================
@@ -111,6 +169,7 @@ def get_database_summary() -> str:
 class ChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
+    request_id: Optional[str] = None  # For progress tracking
 
 class ChatResponse(BaseModel):
     response: str
@@ -250,7 +309,8 @@ async def chat(request: ChatRequest):
         llm_service = get_llm_service()
         result = await llm_service.chat(
             message=request.message,
-            context=request.context
+            context=request.context,
+            request_id=request.request_id  # For progress tracking
         )
         
         return ChatResponse(
@@ -265,6 +325,181 @@ async def chat(request: ChatRequest):
             response=f"I apologize, but I encountered an error processing your request. Please try again. Error: {str(e)}",
             confidence=0.0
         )
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint - returns tokens as they're generated.
+    
+    - For CACHED responses: Fast typing animation (like ChatGPT)
+    - For FRESH responses: Real-time streaming from LLM
+    
+    Event format:
+        data: {"token": "chunk of text"}
+        data: {"done": true, "full_response": "complete text"}
+    """
+    from chat.llm_service import get_llm_service
+    from utils.redis_cache import cache_get
+    import json
+    import asyncio
+    import hashlib
+    
+    async def generate_stream():
+        try:
+            llm_service = get_llm_service()
+            
+            # Check if search context is needed
+            if llm_service.search_service.is_search_query(request.message):
+                search_context = llm_service.search_service.search_web(request.message)
+                message = f"{request.message}\n\n{search_context}"
+                skip_db = True
+            else:
+                message = llm_service._enhance_with_context(request.message, request.context)
+                skip_db = False
+            
+            # Check cache first for fast streaming (same key format as llm_service.py)
+            message_hash = hashlib.md5(request.message.lower().strip().encode()).hexdigest()[:16]
+            cache_key = f"chat_response:{message_hash}"
+            
+            try:
+                cached_response = cache_get(cache_key)
+            except:
+                cached_response = None
+            
+            if cached_response:
+                # FAST STREAMING for cached responses - like ChatGPT's quick typing
+                print(f"[STREAM] Cache hit - using fast typing animation")
+                
+                # Cached response is a dict with 'response' key
+                if isinstance(cached_response, dict):
+                    full_response = cached_response.get('response', str(cached_response))
+                else:
+                    full_response = str(cached_response)
+                
+                # Stream in chunks of 8 characters with 60ms delays (smooth typing effect)
+                chunk_size = 8
+                for i in range(0, len(full_response), chunk_size):
+                    chunk = full_response[i:i + chunk_size]
+                    yield f"data: {json.dumps({'token': chunk})}\n\n"
+                    await asyncio.sleep(0.06)  # 60ms delay - smooth typing animation
+                
+                yield f"data: {json.dumps({'done': True, 'full_response': full_response})}\n\n"
+            else:
+                # REAL-TIME STREAMING for fresh responses
+                print(f"[STREAM] Cache miss - streaming from LLM")
+                full_response = ""
+                
+                async for token in llm_service._chat_ollama_stream(
+                    message,
+                    skip_db_context=skip_db,
+                    request_id=request.request_id
+                ):
+                    full_response += token
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+                
+                # CACHE the response for fast streaming next time
+                try:
+                    from utils.redis_cache import cache_set
+                    result = {"response": full_response, "confidence": 0.95}
+                    cache_set(cache_key, result, ttl_seconds=600)  # 10 min TTL
+                    print(f"[STREAM] Response cached for future fast streaming")
+                except Exception as e:
+                    print(f"[STREAM] Cache write failed: {e}")
+                
+                yield f"data: {json.dumps({'done': True, 'full_response': full_response})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.get("/chat/progress/{request_id}")
+async def stream_progress(request_id: str):
+    """
+    Stream progress updates via Server-Sent Events (SSE).
+    
+    Connect to this endpoint before starting a chat request.
+    Progress updates will be streamed as events.
+    
+    Event format:
+        data: {"stage": "scraping_fishbase", "current": 3, "total": 10, "message": "..."}
+    """
+    from chat.progress import get_progress_tracker
+    import asyncio
+    import json
+    
+    async def event_generator():
+        tracker = get_progress_tracker()
+        queue = tracker.subscribe(request_id)
+        
+        try:
+            while True:
+                try:
+                    # Wait for progress update with timeout
+                    progress = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(progress)}\n\n"
+                    
+                    # Stop if complete or error
+                    if progress.get("stage") in ["complete", "error"]:
+                        break
+                except asyncio.TimeoutError:
+                    # Send heartbeat
+                    yield f"data: {{\"heartbeat\": true}}\n\n"
+        finally:
+            tracker.unsubscribe(request_id)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.get("/chat/progress-status/{request_id}")
+async def get_progress_status(request_id: str):
+    """
+    Get current progress status (non-streaming alternative to SSE).
+    """
+    from chat.progress import get_progress_tracker
+    
+    tracker = get_progress_tracker()
+    progress = tracker.get_progress(request_id)
+    
+    if progress:
+        return progress
+    return {"request_id": request_id, "stage": "not_found"}
+
+
+@app.post("/chat/cancel/{request_id}")
+async def cancel_request(request_id: str):
+    """
+    Cancel a running chat request.
+    
+    Returns success if the request was found and marked for cancellation.
+    The request will stop processing at the next checkpoint.
+    """
+    from chat.progress import get_progress_tracker
+    
+    tracker = get_progress_tracker()
+    success = tracker.cancel(request_id)
+    
+    return {
+        "success": success,
+        "request_id": request_id,
+        "message": "Request cancelled" if success else "Request not found"
+    }
 
 
 # ============================================
@@ -325,23 +560,68 @@ async def classify_fish(image: UploadFile = File(...)):
                 if species_data:
                     enriched = fishbase.format_species_info(species_data)
                     
-                    # Add FishBase enrichment to response
+                    # Format depth as string
+                    depth_info = enriched.get("depth", {})
+                    depth_str = None
+                    if depth_info and (depth_info.get("min") or depth_info.get("max")):
+                        min_d = depth_info.get("min", "?")
+                        max_d = depth_info.get("max", "?")
+                        depth_str = f"{min_d} - {max_d} meters"
+                    
+                    # Format diet as string
+                    diet_info = enriched.get("diet", {})
+                    diet_str = None
+                    if diet_info:
+                        if diet_info.get("main_food"):
+                            diet_str = diet_info["main_food"]
+                            if diet_info.get("trophic_level"):
+                                diet_str += f" (Trophic level: {diet_info['trophic_level']})"
+                        elif diet_info.get("description"):
+                            diet_str = diet_info["description"]
+                    
+                    # Format behavior as string
+                    behavior_info = enriched.get("behavior", {})
+                    behavior_str = None
+                    if behavior_info:
+                        parts = []
+                        if behavior_info.get("schooling"):
+                            parts.append(f"Schooling: {behavior_info['schooling']}")
+                        if behavior_info.get("activity"):
+                            parts.append(f"Activity: {behavior_info['activity']}")
+                        if parts:
+                            behavior_str = ", ".join(parts)
+                    
+                    # Format reproduction as string
+                    repro_info = enriched.get("reproduction", {})
+                    repro_str = None
+                    if repro_info:
+                        parts = []
+                        if repro_info.get("spawning_season"):
+                            parts.append(f"Spawning: {repro_info['spawning_season']}")
+                        if repro_info.get("spawning_area"):
+                            parts.append(f"Area: {repro_info['spawning_area']}")
+                        if parts:
+                            repro_str = ", ".join(parts)
+                    
+                    # Add FishBase enrichment to response (all as strings)
                     response["fishbase"] = {
-                        "depth": enriched.get("depth"),
-                        "diet": enriched.get("diet"),
+                        "depth": depth_str,
+                        "diet": diet_str,
                         "habitat_details": enriched.get("habitat"),
-                        "behavior": enriched.get("behavior"),
-                        "reproduction": enriched.get("reproduction"),
-                        "vulnerability": enriched.get("vulnerability"),
+                        "behavior": behavior_str,
+                        "reproduction": repro_str,
+                        "vulnerability": str(enriched.get("vulnerability")) if enriched.get("vulnerability") else None,
                         "importance": enriched.get("importance"),
                         # Danger to humans (from raw FishBase data)
                         "dangerous": species_data.get("Dangerous"),
                         "danger_description": species_data.get("DangerousSp"),
+                        "description": enriched.get("comprehensive_description")
                     }
             except Exception as e:
                 import logging
                 logging.warning(f"FishBase enrichment failed: {e}")
                 # Continue without enrichment
+
         
         return response
         

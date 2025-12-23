@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     MessageSquare, X, Send, Loader2, Bot, User, Maximize2,
-    Plus, Trash2, ChevronLeft, History, MessageCircle
+    Plus, Trash2, ChevronLeft, History, MessageCircle, Square
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiService } from '@/services/api';
@@ -22,6 +22,14 @@ interface ChatSession {
     messages: Message[];
     createdAt: Date;
     updatedAt: Date;
+}
+
+interface ProgressState {
+    stage: string;
+    current: number;
+    total: number;
+    message: string;
+    eta_seconds?: number;
 }
 
 // Local storage key
@@ -88,6 +96,9 @@ export default function FloatingAIChat() {
     });
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [progress, setProgress] = useState<ProgressState | null>(null);
+    const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
+    const [streamingContent, setStreamingContent] = useState<string>('');  // For streaming responses
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
@@ -141,22 +152,91 @@ export default function FloatingAIChat() {
 
         setInput('');
         setIsLoading(true);
+        setProgress({ stage: 'connecting', current: 0, total: 0, message: 'Connecting...' });
+
+        // Generate a request ID for progress tracking
+        const requestId = `chat-${Date.now()}`;
+        setCurrentRequestId(requestId);
+
+        // Start polling for progress (via REST API since SSE would need more setup)
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`http://localhost:8000/chat/progress-status/${requestId}`);
+                const data = await res.json();
+                if (data.stage && data.stage !== 'not_found') {
+                    setProgress({
+                        stage: data.stage,
+                        current: data.current || 0,
+                        total: data.total || 0,
+                        message: data.message || ''
+                    });
+                }
+            } catch {
+                // Ignore polling errors
+            }
+        }, 500);
 
         try {
-            const response = await aiService.chat(input);
+            // Try streaming first - create a temporary message that updates as tokens arrive
+            let fullContent = '';
+            const streamingMsgId = (Date.now() + 1).toString();
 
-            const assistantMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: response.response || "I'm sorry, I couldn't process that request.",
-                timestamp: new Date(),
-            };
-
+            // Add a temporary assistant message that we'll update
             setChats(prev => prev.map(chat =>
                 chat.id === activeChatId
                     ? {
                         ...chat,
-                        messages: [...chat.messages, assistantMessage],
+                        messages: [...chat.messages, {
+                            id: streamingMsgId,
+                            role: 'assistant' as const,
+                            content: '',
+                            timestamp: new Date(),
+                        }],
+                        updatedAt: new Date()
+                    }
+                    : chat
+            ));
+
+            try {
+                for await (const chunk of aiService.chatStream(input, undefined, requestId)) {
+                    if (chunk.type === 'token') {
+                        fullContent += chunk.content;
+                        // Update the streaming message content in real-time
+                        setChats(prev => prev.map(chat =>
+                            chat.id === activeChatId
+                                ? {
+                                    ...chat,
+                                    messages: chat.messages.map(msg =>
+                                        msg.id === streamingMsgId
+                                            ? { ...msg, content: fullContent }
+                                            : msg
+                                    )
+                                }
+                                : chat
+                        ));
+                    } else if (chunk.type === 'done') {
+                        fullContent = chunk.content;
+                    } else if (chunk.type === 'error') {
+                        throw new Error(chunk.content);
+                    }
+                }
+            } catch (streamError) {
+                // Fallback to regular non-streaming chat if streaming fails
+                console.warn('Streaming failed, falling back to regular chat:', streamError);
+                const response = await aiService.chat(input, undefined, requestId);
+                fullContent = response.response || '';
+            }
+
+            // Final update with complete content
+            setChats(prev => prev.map(chat =>
+                chat.id === activeChatId
+                    ? {
+                        ...chat,
+                        messages: chat.messages.map(msg =>
+                            msg.id === streamingMsgId
+                                ? { ...msg, content: fullContent || "I'm sorry, I couldn't process that request." }
+                                : msg
+                        ),
                         updatedAt: new Date()
                     }
                     : chat
@@ -175,7 +255,40 @@ export default function FloatingAIChat() {
                     : chat
             ));
         } finally {
+            clearInterval(pollInterval);
             setIsLoading(false);
+            setProgress(null);
+            setCurrentRequestId(null);
+            setStreamingContent('');
+        }
+    };
+
+    const handleCancel = async () => {
+        if (!currentRequestId) return;
+
+        try {
+            await fetch(`http://localhost:8000/chat/cancel/${currentRequestId}`, {
+                method: 'POST'
+            });
+            setIsLoading(false);
+            setProgress(null);
+
+            // Add cancelled message
+            const cancelledMessage: Message = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: 'Request cancelled.',
+                timestamp: new Date(),
+            };
+            setChats(prev => prev.map(chat =>
+                chat.id === activeChatId
+                    ? { ...chat, messages: [...chat.messages, cancelledMessage] }
+                    : chat
+            ));
+        } catch (error) {
+            console.error('Cancel error:', error);
+        } finally {
+            setCurrentRequestId(null);
         }
     };
 
@@ -365,12 +478,57 @@ export default function FloatingAIChat() {
                                 </div>
                             ))}
                             {isLoading && (
-                                <div className="flex gap-2 items-center">
-                                    <div className="w-7 h-7 rounded-full bg-ocean-100 flex items-center justify-center">
+                                <div className="flex gap-2 items-start">
+                                    <div className="w-7 h-7 rounded-full bg-ocean-100 flex items-center justify-center flex-shrink-0">
                                         <Bot className="w-4 h-4 text-ocean-600" />
                                     </div>
-                                    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 dark:bg-gray-800 dark:border-gray-700">
-                                        <Loader2 className="w-4 h-4 animate-spin text-ocean-500" />
+                                    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 dark:bg-gray-800 dark:border-gray-700 min-w-[180px]">
+                                        <div className="flex items-center gap-2">
+                                            <Loader2 className="w-4 h-4 animate-spin text-ocean-500" />
+                                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                                                {progress?.stage === 'scraping_fishbase'
+                                                    ? 'Fetching FishBase...'
+                                                    : progress?.stage === 'processing_llm'
+                                                        ? 'Processing with AI...'
+                                                        : 'Thinking...'}
+                                            </span>
+                                        </div>
+                                        {progress && progress.total && progress.total > 0 && (
+                                            <div className="mt-2">
+                                                <div className="text-xs text-gray-500 mb-1 flex justify-between">
+                                                    <span>{progress.current}/{progress.total} species</span>
+                                                    {progress.eta_seconds && progress.eta_seconds > 0 && (
+                                                        <span className="text-ocean-500">~{Math.ceil(progress.eta_seconds)}s left</span>
+                                                    )}
+                                                </div>
+                                                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-ocean-500 transition-all duration-300"
+                                                        style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                        {progress?.message && (
+                                            <p className="text-xs text-gray-400 mt-1 truncate max-w-[200px]">
+                                                {progress.message}
+                                            </p>
+                                        )}
+                                        {/* Stream LLM response as it arrives */}
+                                        {streamingContent && (
+                                            <div className="mt-2 text-sm text-gray-700 dark:text-gray-200 max-h-32 overflow-y-auto">
+                                                {streamingContent}
+                                                <span className="animate-pulse">▌</span>
+                                            </div>
+                                        )}
+                                        <button
+                                            onClick={handleCancel}
+                                            className="mt-2 flex items-center gap-1 text-xs text-red-500 hover:text-red-600 transition-colors"
+                                            title="Cancel request"
+                                        >
+                                            <Square className="w-3 h-3" />
+                                            Cancel
+                                        </button>
                                     </div>
                                 </div>
                             )}

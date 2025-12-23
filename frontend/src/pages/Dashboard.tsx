@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { analyticsService } from '@/services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { 
+import {
   Database, Fish, Circle, Dna, Activity,
   ArrowUpRight, Clock, Zap, Globe2, Layers, BarChart3,
   ChevronRight, Sparkles, FileUp, AlertCircle
@@ -30,6 +31,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => analyticsService.getStats(),
@@ -45,56 +47,56 @@ export default function Dashboard() {
     queryFn: () => analyticsService.getSpeciesByPhylum(),
   });
 
-const statsCards = [
-    { 
-      title: 'Total Species', 
-      value: stats?.totalSpecies || 0, 
-      icon: Fish, 
+  const statsCards = [
+    {
+      title: 'Total Species',
+      value: stats?.totalSpecies || 0,
+      icon: Fish,
       iconColor: 'text-ocean-600',
       iconBg: 'bg-ocean-50',
       change: { value: 12, type: 'increase' as const },
       subtitle: 'Marine species catalogued'
     },
-    { 
-      title: 'Occurrences', 
-      value: stats?.totalOccurrences || 0, 
-      icon: Globe2, 
+    {
+      title: 'Occurrences',
+      value: stats?.totalOccurrences || 0,
+      icon: Globe2,
       iconColor: 'text-marine-600',
       iconBg: 'bg-marine-50',
       change: { value: 8, type: 'increase' as const },
       subtitle: 'Geographic records'
     },
-    { 
-      title: 'Otolith Records', 
-      value: stats?.totalOtoliths || 0, 
-      icon: Circle, 
+    {
+      title: 'Otolith Records',
+      value: stats?.totalOtoliths || 0,
+      icon: Circle,
       iconColor: 'text-coral-600',
       iconBg: 'bg-coral-50',
       change: { value: 5, type: 'increase' as const },
       subtitle: 'Images analyzed'
     },
-    { 
-      title: 'eDNA Detections', 
-      value: stats?.totalEdnaDetections || 0, 
-      icon: Dna, 
+    {
+      title: 'eDNA Detections',
+      value: stats?.totalEdnaDetections || 0,
+      icon: Dna,
       iconColor: 'text-purple-600',
       iconBg: 'bg-purple-50',
       change: { value: 23, type: 'increase' as const },
       subtitle: 'Sequence matches'
     },
-    { 
-      title: 'Active Surveys', 
-      value: stats?.totalSurveys || 0, 
-      icon: Layers, 
+    {
+      title: 'Active Surveys',
+      value: stats?.totalSurveys || 0,
+      icon: Layers,
       iconColor: 'text-indigo-600',
       iconBg: 'bg-indigo-50',
       change: { value: 3, type: 'neutral' as const },
       subtitle: 'Research campaigns'
     },
-    { 
-      title: 'Data Quality', 
-      value: `${stats?.dataQualityScore || 94}%`, 
-      icon: Sparkles, 
+    {
+      title: 'Data Quality',
+      value: `${stats?.dataQualityScore || 94}%`,
+      icon: Sparkles,
       iconColor: 'text-amber-600',
       iconBg: 'bg-amber-50',
       change: { value: 2, type: 'increase' as const },
@@ -108,8 +110,8 @@ const statsCards = [
     action: activity.action || 'Activity',
     description: activity.description || '',
     time: activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Recently',
-    type: activity.type === 'ingestion' ? 'success' : 
-          activity.type === 'error' ? 'warning' : 'info'
+    type: activity.type === 'ingestion' ? 'success' :
+      activity.type === 'error' ? 'warning' : 'info'
   })).slice(0, 5);
 
   // Fallback data if API returns empty
@@ -141,11 +143,11 @@ const statsCards = [
           </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="default">
+          <Button variant="outline" size="default" onClick={() => navigate('/ingest')}>
             <FileUp className="w-4 h-4 mr-2" />
             Quick Import
           </Button>
-          <Button variant="premium">
+          <Button variant="premium" onClick={() => navigate('/reports')}>
             <Zap className="w-4 h-4 mr-2" />
             Generate Report
           </Button>
@@ -189,19 +191,19 @@ const statsCards = [
               <AreaChart data={displayChartData}>
                 <defs>
                   <linearGradient id="colorSpecies" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorOccurrences" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-gray-200 dark:text-gray-700" vertical={false} />
                 <XAxis dataKey="month" stroke="currentColor" className="text-gray-500 dark:text-gray-400" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="currentColor" className="text-gray-500 dark:text-gray-400" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend 
+                <Legend
                   wrapperStyle={{ paddingTop: 20 }}
                   formatter={(value) => <span className="text-sm text-deep-600 dark:text-gray-300">{value}</span>}
                 />
@@ -261,31 +263,30 @@ const statsCards = [
           <CardContent>
             <div className="space-y-4">
               {recentActivity.map((activity: { id: string | number; action: string; description: string; time: string; type: string }) => (
-                <div 
-                  key={activity.id} 
+                <div
+                  key={activity.id}
                   className="flex items-start gap-4 p-4 rounded-xl bg-gray-50/50 dark:bg-deep-800/50 hover:bg-gray-100/50 dark:hover:bg-deep-700/50 transition-colors border border-gray-100 dark:border-gray-700/50"
                 >
-                  <div className={`p-2 rounded-lg ${
-                    activity.type === 'success' ? 'bg-marine-100 dark:bg-marine-900/30 text-marine-600 dark:text-marine-400' :
-                    activity.type === 'warning' ? 'bg-coral-100 dark:bg-coral-900/30 text-coral-600 dark:text-coral-400' :
-                    activity.type === 'processing' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' :
-                    'bg-ocean-100 dark:bg-ocean-900/30 text-ocean-600 dark:text-ocean-400'
-                  }`}>
+                  <div className={`p-2 rounded-lg ${activity.type === 'success' ? 'bg-marine-100 dark:bg-marine-900/30 text-marine-600 dark:text-marine-400' :
+                      activity.type === 'warning' ? 'bg-coral-100 dark:bg-coral-900/30 text-coral-600 dark:text-coral-400' :
+                        activity.type === 'processing' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' :
+                          'bg-ocean-100 dark:bg-ocean-900/30 text-ocean-600 dark:text-ocean-400'
+                    }`}>
                     {activity.type === 'success' ? <Activity className="w-4 h-4" /> :
-                     activity.type === 'warning' ? <AlertCircle className="w-4 h-4" /> :
-                     activity.type === 'processing' ? <Zap className="w-4 h-4" /> :
-                     <Database className="w-4 h-4" />
+                      activity.type === 'warning' ? <AlertCircle className="w-4 h-4" /> :
+                        activity.type === 'processing' ? <Zap className="w-4 h-4" /> :
+                          <Database className="w-4 h-4" />
                     }
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-deep-900 dark:text-gray-100">{activity.action}</p>
-                      <Badge 
+                      <Badge
                         variant={
                           activity.type === 'success' ? 'success' :
-                          activity.type === 'warning' ? 'warning' :
-                          activity.type === 'processing' ? 'default' :
-                          'secondary'
+                            activity.type === 'warning' ? 'warning' :
+                              activity.type === 'processing' ? 'default' :
+                                'secondary'
                         }
                         size="sm"
                       >
@@ -315,19 +316,19 @@ const statsCards = [
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button variant="outline" className="w-full justify-start" size="default">
+              <Button variant="outline" className="w-full justify-start" size="default" onClick={() => navigate('/ingest')}>
                 <FileUp className="w-4 h-4 mr-3 text-ocean-500" />
                 Import Dataset
               </Button>
-              <Button variant="outline" className="w-full justify-start" size="default">
+              <Button variant="outline" className="w-full justify-start" size="default" onClick={() => navigate('/species')}>
                 <Fish className="w-4 h-4 mr-3 text-marine-500" />
                 Add Species Record
               </Button>
-              <Button variant="outline" className="w-full justify-start" size="default">
+              <Button variant="outline" className="w-full justify-start" size="default" onClick={() => navigate('/analytics')}>
                 <BarChart3 className="w-4 h-4 mr-3 text-purple-500" />
                 Run Analysis
               </Button>
-              <Button variant="outline" className="w-full justify-start" size="default">
+              <Button variant="outline" className="w-full justify-start" size="default" onClick={() => navigate('/fish-id')}>
                 <Sparkles className="w-4 h-4 mr-3 text-amber-500" />
                 AI Classification
               </Button>

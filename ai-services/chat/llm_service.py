@@ -76,7 +76,7 @@ When asked to list species, generate reports, or summarize data - use the inform
 You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images."""
 
 
-def get_dynamic_system_prompt(message: str = "") -> str:
+async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str] = None) -> str:
     """Get system prompt with REAL database context from MongoDB Atlas AND PostgreSQL."""
     
     # Fast path: skip DB calls if configured (for debugging/performance)
@@ -115,9 +115,26 @@ def get_dynamic_system_prompt(message: str = "") -> str:
                 target_species = []
                 message_lower = message.lower() if message else ""
                 
-                # Check for "all" keywords (limit to 10 for safety)
-                if any(k in message_lower for k in ["list all", "all species", "entire database"]):
-                    target_species = all_sci_names[:10]
+                # Check for detailed queries that need FishBase enrichment
+                # Simple "list all species" queries don't need FishBase - only detailed ones do
+                fishbase_limit = os.getenv("FISHBASE_LIMIT", "")  # Empty = no limit
+                
+                # Keywords that indicate user wants DETAILED FishBase data (not just listing)
+                detail_keywords = ["habitat", "diet", "color", "depth", "size", "length", 
+                                   "details", "information", "info about", "tell me about",
+                                   "what is", "describe", "characteristics"]
+                needs_fishbase = any(k in message_lower for k in detail_keywords)
+                
+                if needs_fishbase and any(k in message_lower for k in ["list all", "all species", "entire database"]):
+                    if fishbase_limit and fishbase_limit.isdigit():
+                        target_species = all_sci_names[:int(fishbase_limit)]
+                        logger.info(f"FishBase enrichment limited to {fishbase_limit} species (FISHBASE_LIMIT env)")
+                    else:
+                        target_species = all_sci_names  # No limit - enrich ALL species
+                        logger.info(f"FishBase enrichment for ALL {len(all_sci_names)} species (detailed query)")
+                elif not needs_fishbase and any(k in message_lower for k in ["list all", "all species", "entire database"]):
+                    # Simple listing - no FishBase needed
+                    logger.info("Simple species listing query - skipping FishBase enrichment")
                 else:
                     # Only enrich species mentioned in the query
                     for name in all_sci_names:
@@ -135,23 +152,16 @@ def get_dynamic_system_prompt(message: str = "") -> str:
                 
                 logger.info(f"Identified relevant species for enrichment: {target_species}")
 
-                # Run async FishBase enrichment
-                async def fetch_fishbase():
-                    service = get_fishbase_service()
-                    return await service.enrich_species_list(target_species)
-                
-                # Check if we're already in an async context or need to create one
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Can't use asyncio.run inside running loop, skip FishBase
-                    logger.info("In async context, skipping FishBase sync call")
-                except RuntimeError:
-                    # No running loop, safe to use asyncio.run
+                # Run async FishBase enrichment - now works properly since function is async
+                if target_species:
                     try:
-                        fishbase_data = asyncio.run(fetch_fishbase())
+                        service = get_fishbase_service()
+                        fishbase_data = await service.enrich_species_list(target_species, request_id=request_id)
                         logger.info(f"FishBase enriched {len(fishbase_data)} species")
                     except Exception as e:
                         logger.warning(f"FishBase enrichment failed: {e}")
+                else:
+                    logger.info("No target species for FishBase enrichment")
             except ImportError as e:
                 logger.warning(f"FishBase service not available: {e}")
             
@@ -328,7 +338,8 @@ class LLMService:
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        conversation_history: Optional[List[ChatMessage]] = None
+        conversation_history: Optional[List[ChatMessage]] = None,
+        request_id: Optional[str] = None  # For progress tracking
     ) -> Dict[str, Any]:
         """
         Process a chat message with Privacy-First logic and Redis caching.
@@ -374,7 +385,7 @@ class LLMService:
             if self._active_provider == LLMProvider.OLLAMA:
                 logger.info("Executing via Ollama")
                 skip_db = bool(search_context)
-                response_text = await self._chat_ollama(enhanced_message, conversation_history, skip_db_context=skip_db)
+                response_text = await self._chat_ollama(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
             else:
                 logger.warning("Ollama not available. Using static fallback.")
                 response_text = self._generate_fallback_response(message, context)
@@ -434,7 +445,8 @@ class LLMService:
         self,
         message: str,
         history: Optional[List[ChatMessage]] = None,
-        skip_db_context: bool = False
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None  # For progress tracking
     ) -> str:
         """Chat using Ollama local LLM."""
         # Skip heavy DB context loading if search results are already in message
@@ -442,7 +454,7 @@ class LLMService:
             system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
             logger.info("Skipping DB context (search-mode)")
         else:
-            system_prompt = await asyncio.to_thread(get_dynamic_system_prompt, message)
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id)
         messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history
@@ -474,6 +486,66 @@ class LLMService:
             content = result.get("message", {}).get("content", "I apologize, I couldn't generate a response.")
             logger.info(f"Ollama Raw Response: {content[:200]}...")  # Debug log
             return content
+    
+    async def _chat_ollama_stream(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ):
+        """
+        Chat using Ollama with STREAMING output (yields tokens as they're generated).
+        
+        Yields:
+            str: Chunks of text as they're generated by the LLM
+        """
+        # Skip heavy DB context loading if search results are already in message
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id)
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history
+        if history:
+            for msg in history[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"{self.config.ollama_url}/api/chat",
+                json={
+                    "model": self.config.model,
+                    "messages": messages,
+                    "stream": True,  # Enable streaming
+                    "options": {
+                        "temperature": self.config.temperature,
+                        "num_predict": self.config.max_tokens
+                    }
+                }
+            ) as response:
+                if response.status_code != 200:
+                    raise Exception(f"Ollama streaming error: {response.status_code}")
+                
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            import json
+                            data = json.loads(line)
+                            content = data.get("message", {}).get("content", "")
+                            if content:
+                                yield content
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
     
     def _generate_fallback_response(
         self,

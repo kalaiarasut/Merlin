@@ -448,7 +448,7 @@ class FishClassifier:
                 scientific_name=species_info.scientific_name if species_info else species_name,
                 common_name=species_info.common_name if species_info else None,
                 overall_confidence=overall_confidence,
-                message="Species identified successfully",
+                message="",  # Empty message - data speaks for itself
                 top_predictions=top_predictions
             )
             

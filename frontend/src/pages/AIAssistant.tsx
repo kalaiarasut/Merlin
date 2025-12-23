@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import {
   Send, Mic, Paperclip, Bot, User, Copy, ThumbsUp,
   ThumbsDown, Lightbulb, ChevronRight, Brain, Loader,
   Plus, Trash2, MessageCircle, History, ChevronLeft,
-  Wifi, WifiOff, Sparkles, Database, Globe, HelpCircle, ChevronDown
+  Wifi, WifiOff, Sparkles, Database, Globe, HelpCircle, ChevronDown, Square
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiService } from '@/services/api';
@@ -28,6 +28,14 @@ interface ChatSession {
   messages: Message[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface ProgressState {
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+  eta_seconds?: number;
 }
 
 // Shared localStorage key - SAME as FloatingAIChat
@@ -135,6 +143,9 @@ export default function AIAssistant() {
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null);
+  const [streamingContent, setStreamingContent] = useState<string>('');
   const [showHistory, setShowHistory] = useState(false);
   const [frequentPrompts, setFrequentPrompts] = useState<{ text: string; count: number }[]>([]);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
@@ -216,23 +227,84 @@ export default function AIAssistant() {
     setInput('');
     setIsLoading(true);
 
+    // Generate request ID for progress tracking
+    const requestId = `chat-${Date.now()}`;
+    setCurrentRequestId(requestId);
+
+    // Start polling for progress
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/chat/progress-status/${requestId}`);
+        const data = await res.json();
+        if (data.stage && data.stage !== 'not_found') {
+          setProgress(data);
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }, 500);
+
     try {
-      const response = await aiService.chat(input, {
-        recentMessages: activeChat.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
-      });
+      // Try streaming first - create a temporary message that updates as tokens arrive
+      let fullContent = '';
+      const streamingMsgId = (Date.now() + 1).toString();
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response.response || "I'm sorry, I couldn't process that request.",
-        timestamp: new Date(),
-      };
-
+      // Add a temporary assistant message that we'll update
       setChats(prev => prev.map(chat =>
         chat.id === activeChatId
           ? {
             ...chat,
-            messages: [...chat.messages, assistantMessage],
+            messages: [...chat.messages, {
+              id: streamingMsgId,
+              role: 'assistant' as const,
+              content: '',
+              timestamp: new Date(),
+            }],
+            updatedAt: new Date()
+          }
+          : chat
+      ));
+
+      try {
+        for await (const chunk of aiService.chatStream(input, undefined, requestId)) {
+          if (chunk.type === 'token') {
+            fullContent += chunk.content;
+            // Update the streaming message content in real-time
+            setChats(prev => prev.map(chat =>
+              chat.id === activeChatId
+                ? {
+                  ...chat,
+                  messages: chat.messages.map(msg =>
+                    msg.id === streamingMsgId
+                      ? { ...msg, content: fullContent }
+                      : msg
+                  )
+                }
+                : chat
+            ));
+          } else if (chunk.type === 'done') {
+            fullContent = chunk.content;
+          } else if (chunk.type === 'error') {
+            throw new Error(chunk.content);
+          }
+        }
+      } catch (streamError) {
+        // Fallback to regular non-streaming chat if streaming fails
+        console.warn('Streaming failed, falling back to regular chat:', streamError);
+        const response = await aiService.chat(input, undefined, requestId);
+        fullContent = response.response || '';
+      }
+
+      // Final update with complete content
+      setChats(prev => prev.map(chat =>
+        chat.id === activeChatId
+          ? {
+            ...chat,
+            messages: chat.messages.map(msg =>
+              msg.id === streamingMsgId
+                ? { ...msg, content: fullContent || "I'm sorry, I couldn't process that request." }
+                : msg
+            ),
             updatedAt: new Date()
           }
           : chat
@@ -251,7 +323,40 @@ export default function AIAssistant() {
           : chat
       ));
     } finally {
+      clearInterval(pollInterval);
       setIsLoading(false);
+      setProgress(null);
+      setCurrentRequestId(null);
+      setStreamingContent('');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!currentRequestId) return;
+
+    try {
+      await fetch(`http://localhost:8000/chat/cancel/${currentRequestId}`, {
+        method: 'POST'
+      });
+      setIsLoading(false);
+      setProgress(null);
+
+      const cancelledMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Request cancelled.',
+        timestamp: new Date(),
+      };
+      setChats(prev => prev.map(chat =>
+        chat.id === activeChatId
+          ? { ...chat, messages: [...chat.messages, cancelledMessage] }
+          : chat
+      ));
+    } catch (error) {
+      console.error('Cancel error:', error);
+    } finally {
+      setCurrentRequestId(null);
+      setStreamingContent('');
     }
   };
 
@@ -619,11 +724,52 @@ export default function AIAssistant() {
                     <Bot className="w-5 h-5 text-white" />
                   </AvatarFallback>
                 </Avatar>
-                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 min-w-[250px]">
                   <div className="flex items-center gap-2">
                     <Loader className="w-4 h-4 animate-spin text-ocean-500" />
-                    <span className="text-sm text-deep-500">Analyzing your query...</span>
+                    <span className="text-sm text-deep-500">
+                      {progress?.stage === 'scraping_fishbase'
+                        ? 'Fetching FishBase...'
+                        : progress?.stage === 'processing_llm'
+                          ? 'Processing with AI...'
+                          : 'Analyzing your query...'}
+                    </span>
                   </div>
+                  {progress && progress.total && progress.total > 0 && (
+                    <div className="mt-3">
+                      <div className="text-xs text-gray-500 mb-1 flex justify-between">
+                        <span>{progress.current}/{progress.total} species</span>
+                        {progress.eta_seconds && progress.eta_seconds > 0 && (
+                          <span className="text-ocean-500">~{Math.ceil(progress.eta_seconds)}s left</span>
+                        )}
+                      </div>
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-ocean-500 transition-all duration-300"
+                          style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {progress?.message && (
+                    <p className="text-xs text-gray-400 mt-2 truncate max-w-[300px]">
+                      {progress.message}
+                    </p>
+                  )}
+                  {streamingContent && (
+                    <div className="mt-3 text-sm text-gray-700 dark:text-gray-200 max-h-40 overflow-y-auto">
+                      {streamingContent}
+                      <span className="animate-pulse">▌</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleCancel}
+                    className="mt-3 flex items-center gap-1 text-xs text-red-500 hover:text-red-600 transition-colors"
+                    title="Cancel request"
+                  >
+                    <Square className="w-3 h-3" />
+                    Cancel
+                  </button>
                 </div>
               </div>
             )}

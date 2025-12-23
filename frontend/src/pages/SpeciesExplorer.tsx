@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Search, MapPin, Shield, Fish, Grid3X3, List,
   ChevronLeft, ChevronRight, SlidersHorizontal, Sparkles,
-  Globe2, Layers, ArrowUpRight, X, Pencil, Trash2, Save, Loader2
+  Globe2, Layers, ArrowUpRight, X, Pencil, Trash2, Save, Loader2, Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -301,11 +301,15 @@ export default function SpeciesExplorer() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => navigate('/fish-identifier')}>
+          <Button variant="outline" onClick={() => navigate('/reports')}>
+            <Zap className="w-4 h-4 mr-2" />
+            Generate Report
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/fish-id')}>
             <Sparkles className="w-4 h-4 mr-2" />
             AI Identify
           </Button>
-          <Button variant="premium" onClick={() => navigate('/ingestion')}>
+          <Button variant="premium" onClick={() => navigate('/ingest')}>
             <Fish className="w-4 h-4 mr-2" />
             Add Species
           </Button>

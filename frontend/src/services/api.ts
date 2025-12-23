@@ -8,7 +8,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_URL,
-      timeout: 300000, // 5 minute timeout for LLM responses
+      timeout: 600000, // 10 minute timeout for LLM + FishBase responses
       headers: {
         'Content-Type': 'application/json',
       },
@@ -378,8 +378,58 @@ export const correlationService = {
 
 // AI service
 export const aiService = {
-  chat: (message: string, context?: any) =>
-    apiClient.post<{ response: string }>('/ai/chat', { message, context }),
+  chat: (message: string, context?: any, requestId?: string) =>
+    apiClient.post<{ response: string }>('/ai/chat', { message, context, requestId }),
+
+  // Streaming chat - yields tokens as they're generated
+  // Calls Python directly to avoid Express auth issues with streaming
+  chatStream: async function* (message: string, context?: any, requestId?: string) {
+    const response = await fetch('http://localhost:8000/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message, context, request_id: requestId })
+    });
+
+    if (!response.ok) {
+      throw new Error('Streaming failed');
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value);
+      const lines = text.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.token) {
+              yield { type: 'token', content: data.token };
+            }
+            if (data.done) {
+              yield { type: 'done', content: data.full_response };
+            }
+            if (data.error) {
+              yield { type: 'error', content: data.error };
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+  },
 
   classifyFish: async (file: File) => {
     const formData = new FormData();
@@ -389,25 +439,13 @@ export const aiService = {
     // Get FishBase data if available
     const fb = response.fishbase || {};
 
-    // Build description from FishBase data
-    let description = response.message || '';
-    if (fb.dangerous) {
-      description += `\n⚠️ Danger to humans: ${fb.danger_description || fb.dangerous}`;
-    }
-    if (fb.diet?.main_food) {
-      description += `\n🍽️ Diet: ${fb.diet.main_food}`;
-    }
-    if (fb.depth?.min || fb.depth?.max) {
-      description += `\n📏 Depth: ${fb.depth.min || '?'} - ${fb.depth.max || '?'} meters`;
-    }
-    if (fb.behavior?.schooling) {
-      description += `\n🐟 Behavior: ${fb.behavior.schooling}`;
-    }
-    if (fb.importance) {
-      description += `\n💼 Commercial importance: ${fb.importance}`;
-    }
-    if (fb.vulnerability) {
-      description += `\n🛡️ Vulnerability index: ${fb.vulnerability}`;
+    // Build description: Only use comprehensive bio from scraper
+    // Other data (Danger, Diet, Depth, etc.) is displayed in the UI grid separately
+    let description = '';
+
+    // Add the comprehensive description if available (from scraper)
+    if (fb.description) {
+      description = fb.description;
     }
 
     // Map backend response to frontend interface

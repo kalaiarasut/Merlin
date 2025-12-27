@@ -1,0 +1,18 @@
+{
+    "id": "paper-edna-estuarine-001",
+    "doc_id": "D5",
+    "title": "Estuarine eDNA Sampling: Challenges and Adaptations",
+    "type": "Paper",
+    "source": "Kumar et al. (2022) Marine Ecology Progress Series",
+    "method_type": "eDNA",
+    "year": "2022",
+    "authors": "Kumar, R., Singh, A., Patel, M.",
+    "tags": [
+        "eDNA",
+        "estuary",
+        "salinity",
+        "adaptation",
+        "methodology"
+    ],
+    "content": "## Estuarine eDNA Sampling: Methodology Adaptations\n\nAbstract: This study evaluated eDNA sampling protocols in estuarine environments with variable salinity and high turbidity.\n\n### Key Findings\n\n**Salinity Considerations**:\n- Standard marine protocols require modification for brackish waters\n- Recommend stratified sampling at multiple salinity zones\n- DNA degradation rates higher at intermediate salinities (10-20 PSU)\n\n**Turbidity Challenges**:\n- High sediment load reduces filter efficiency\n- Pre-filtration through 100μm mesh recommended\n- Multiple smaller volume samples (250mL) preferred over single 1L sample\n\n**Adapted Protocol for Estuaries**:\n1. Collect samples during slack tide to minimize sediment suspension\n2. Use pre-filters (100μm) before main filtration (0.45μm)\n3. Reduce sample volume to 250-500mL when turbidity > 50 NTU\n4. Process samples within 1 hour due to rapid degradation\n5. Include salinity measurements with each sample\n\n**Tidal Considerations**:\n- Sample at both high and low tide for comprehensive species detection\n- Avoid sampling during strong tidal flows\n- Document tidal stage and current direction\n\n**Recommended Modifications**:\n- Use glass fiber pre-filters for high turbidity sites\n- Increase number of replicates (n=5 vs n=3)\n- Include tidal cycle in sampling design\n\n### Conclusions\nEstuarine eDNA studies require adapted protocols accounting for environmental variability. The modifications presented here improved detection rates by 35% compared to standard marine protocols."
+}

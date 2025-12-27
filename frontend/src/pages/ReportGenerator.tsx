@@ -1,16 +1,22 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   FileText, Download, FileJson, FileCode,
-  Plus, Trash2, Loader2, CheckCircle, AlertCircle,
-  Sparkles, FileOutput
+  Plus, Loader2, CheckCircle, AlertCircle,
+  Sparkles, FileOutput, Settings, Eye, Edit3,
+  LayoutTemplate, Wand2, Palette
 } from 'lucide-react';
 import { analyticsService, speciesService, ednaService } from '@/services/api';
 import { cn } from '@/lib/utils';
+
+// Import new report components
+import { RichTextEditor, AIContentPanel, SectionBuilder, ReportTemplates, VersionHistory } from '@/components/report';
+import { useKeyboardShortcuts } from '@/hooks/useReportHistory';
 
 interface ReportSection {
   id: string;
@@ -40,15 +46,24 @@ const FORMAT_OPTIONS = [
 ];
 
 export default function ReportGenerator() {
+  // Report Configuration State
   const [reportType, setReportType] = useState('biodiversity');
   const [format, setFormat] = useState('html');
   const [title, setTitle] = useState('');
   const [abstract, setAbstract] = useState('');
   const [keywords, setKeywords] = useState('');
   const [sections, setSections] = useState<ReportSection[]>([]);
+
+  // UI State
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [lastGeneratedFormat, setLastGeneratedFormat] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('structure');
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedText, setSelectedText] = useState('');
+
+  // Get selected section for rich editing
+  const selectedSection = sections.find(s => s.id === selectedSectionId);
 
   // Fetch data for auto-population
   const { data: biodiversityData } = useQuery({
@@ -72,7 +87,7 @@ export default function ReportGenerator() {
         format,
         abstract,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
-        use_llm: true,  // Enable AI-powered report generation
+        use_llm: true,
         sections: sections.map(s => ({
           title: s.title,
           content: s.content,
@@ -93,7 +108,7 @@ export default function ReportGenerator() {
       if (data.content) {
         setGeneratedReport(data.content);
         setPreviewMode(true);
-        setLastGeneratedFormat(format);  // Track which format was generated
+        setLastGeneratedFormat(format);
       }
     },
   });
@@ -105,7 +120,7 @@ export default function ReportGenerator() {
         analysis_type: reportType,
         data: getAutoData(),
         format,
-        use_llm: true,  // Enable AI-powered report generation
+        use_llm: true,
       });
       return response;
     },
@@ -113,13 +128,13 @@ export default function ReportGenerator() {
       if (data.content) {
         setGeneratedReport(data.content);
         setPreviewMode(true);
-        setLastGeneratedFormat(format);  // Track which format was generated
+        setLastGeneratedFormat(format);
       }
     },
   });
 
   // Get auto-populated data based on report type
-  const getAutoData = () => {
+  const getAutoData = useCallback(() => {
     if (reportType === 'biodiversity' && biodiversityData) {
       return {
         shannon_index: biodiversityData.biodiversity?.shannon_index || 2.5,
@@ -145,10 +160,43 @@ export default function ReportGenerator() {
       };
     }
     return {};
-  };
+  }, [reportType, biodiversityData, speciesData]);
 
-  // Add a new section
-  const addSection = () => {
+  // Handle template application
+  const handleApplyTemplate = useCallback((template: any) => {
+    if (template.reportType) setReportType(template.reportType);
+    if (template.title) setTitle(template.title);
+    if (template.abstract) setAbstract(template.abstract);
+    if (template.keywords) setKeywords(template.keywords.join(', '));
+    if (template.sections) setSections(template.sections);
+  }, []);
+
+  // Handle section content update from rich editor
+  const handleSectionContentUpdate = useCallback((content: string) => {
+    if (selectedSectionId) {
+      setSections(prev => prev.map(s =>
+        s.id === selectedSectionId ? { ...s, content } : s
+      ));
+    }
+  }, [selectedSectionId]);
+
+  // Handle AI content application
+  const handleAIContentApply = useCallback((content: string) => {
+    if (selectedSectionId) {
+      setSections(prev => prev.map(s =>
+        s.id === selectedSectionId ? { ...s, content: s.content + '\n\n' + content } : s
+      ));
+    }
+  }, [selectedSectionId]);
+
+  // Open section in rich editor
+  const handleEditSection = useCallback((sectionId: string) => {
+    setSelectedSectionId(sectionId);
+    setActiveTab('editor');
+  }, []);
+
+  // Add new section shortcut handler
+  const addNewSection = useCallback(() => {
     const newSection: ReportSection = {
       id: Date.now().toString(),
       title: 'New Section',
@@ -158,44 +206,28 @@ export default function ReportGenerator() {
       bullet_points: [],
       chart_type: 'none',
     };
-    setSections([...sections, newSection]);
-  };
+    setSections(prev => [...prev, newSection]);
+  }, []);
 
-  // Update a section
-  const updateSection = (id: string, updates: Partial<ReportSection>) => {
-    setSections(sections.map(s => s.id === id ? { ...s, ...updates } : s));
-  };
-
-  // Remove a section
-  const removeSection = (id: string) => {
-    setSections(sections.filter(s => s.id !== id));
-  };
-
-  // Add finding to section
-  const addFinding = (sectionId: string) => {
-    setSections(sections.map(s =>
-      s.id === sectionId
-        ? { ...s, key_findings: [...s.key_findings, ''] }
-        : s
-    ));
-  };
-
-  // Update finding
-  const updateFinding = (sectionId: string, index: number, value: string) => {
-    setSections(sections.map(s =>
-      s.id === sectionId
-        ? { ...s, key_findings: s.key_findings.map((f, i) => i === index ? value : f) }
-        : s
-    ));
-  };
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onSave: () => {
+      // Trigger version history save (handled by VersionHistory component)
+      console.log('Save shortcut triggered');
+    },
+    onGenerate: () => {
+      if (!generateMutation.isPending) {
+        generateMutation.mutate();
+      }
+    },
+    onNewSection: addNewSection,
+  });
 
   // Download generated report
   const downloadReport = () => {
     if (!generatedReport || !lastGeneratedFormat) return;
 
-    // Use lastGeneratedFormat since that's the actual format of the generated content
     const downloadFormat = lastGeneratedFormat;
-
     const blob = downloadFormat === 'pdf'
       ? new Blob([atob(generatedReport)], { type: 'application/pdf' })
       : new Blob([generatedReport], { type: downloadFormat === 'html' ? 'text/html' : 'text/plain' });
@@ -251,48 +283,18 @@ export default function ReportGenerator() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuration Panel */}
-        <div className="space-y-6">
-          {/* Report Type Selection */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Report Type</CardTitle>
-              <CardDescription>Choose the type of analysis report</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {REPORT_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  onClick={() => setReportType(type.value)}
-                  className={cn(
-                    "w-full p-3 rounded-lg border text-left transition-all",
-                    reportType === type.value
-                      ? "border-ocean-500 bg-ocean-50 dark:bg-ocean-900/20"
-                      : "border-gray-200 dark:border-gray-700 hover:border-ocean-300"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{type.icon}</span>
-                    <div>
-                      <p className="font-medium text-sm text-deep-900 dark:text-gray-100">
-                        {type.label}
-                      </p>
-                      <p className="text-xs text-deep-500 dark:text-gray-400">
-                        {type.description}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
+        {/* Left Sidebar - Configuration */}
+        <div className="space-y-4">
 
           {/* Output Format */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Output Format</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Palette className="w-4 h-4 text-ocean-500" />
+                Output Format
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent>
               <div className="grid grid-cols-2 gap-2">
                 {FORMAT_OPTIONS.map((fmt) => {
                   const Icon = fmt.icon;
@@ -301,24 +303,24 @@ export default function ReportGenerator() {
                       key={fmt.value}
                       onClick={() => setFormat(fmt.value)}
                       className={cn(
-                        "p-3 rounded-lg border text-center transition-all",
+                        "p-2 rounded-lg border text-center transition-all",
                         format === fmt.value
                           ? "border-ocean-500 bg-ocean-50 dark:bg-ocean-900/20"
                           : "border-gray-200 dark:border-gray-700 hover:border-ocean-300"
                       )}
                     >
-                      <Icon className="w-5 h-5 mx-auto mb-1 text-ocean-600 dark:text-ocean-400" />
-                      <p className="text-sm font-medium">{fmt.label}</p>
+                      <Icon className="w-4 h-4 mx-auto mb-1 text-ocean-600 dark:text-ocean-400" />
+                      <p className="text-xs font-medium">{fmt.label}</p>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Show regenerate button when format changed after report generation */}
               {generatedReport && lastGeneratedFormat && format !== lastGeneratedFormat && (
                 <Button
                   variant="premium"
-                  className="w-full"
+                  size="sm"
+                  className="w-full mt-3"
                   onClick={() => generateMutation.mutate()}
                   disabled={generateMutation.isPending}
                 >
@@ -332,18 +334,58 @@ export default function ReportGenerator() {
               )}
             </CardContent>
           </Card>
+
+          {/* Templates */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <LayoutTemplate className="w-4 h-4 text-ocean-500" />
+                Templates
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ReportTemplates
+                currentConfig={{
+                  reportType,
+                  title,
+                  abstract,
+                  keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+                  sections,
+                }}
+                onApplyTemplate={handleApplyTemplate}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Version History */}
+          <VersionHistory
+            currentConfig={{
+              reportType,
+              title,
+              abstract,
+              keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+              sections,
+            }}
+            onRestore={(config) => {
+              setReportType(config.reportType);
+              setTitle(config.title);
+              setAbstract(config.abstract);
+              setKeywords(config.keywords.join(', '));
+              setSections(config.sections);
+            }}
+          />
         </div>
 
         {/* Main Content Area */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-4">
           {/* Report Metadata */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Report Details</CardTitle>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm">Report Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
+                <label className="text-xs font-medium text-deep-700 dark:text-gray-300">
                   Report Title
                 </label>
                 <Input
@@ -354,202 +396,230 @@ export default function ReportGenerator() {
                 />
               </div>
 
-              <div>
-                <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
-                  Abstract / Summary
-                </label>
-                <Textarea
-                  value={abstract}
-                  onChange={(e) => setAbstract(e.target.value)}
-                  placeholder="Brief description of the report contents..."
-                  className="mt-1"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
-                  Keywords
-                </label>
-                <Input
-                  value={keywords}
-                  onChange={(e) => setKeywords(e.target.value)}
-                  placeholder="marine, biodiversity, indian ocean (comma separated)"
-                  className="mt-1"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-deep-700 dark:text-gray-300">
+                    Abstract / Summary
+                  </label>
+                  <Textarea
+                    value={abstract}
+                    onChange={(e) => setAbstract(e.target.value)}
+                    placeholder="Brief description..."
+                    className="mt-1"
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-deep-700 dark:text-gray-300">
+                    Keywords
+                  </label>
+                  <Textarea
+                    value={keywords}
+                    onChange={(e) => setKeywords(e.target.value)}
+                    placeholder="marine, biodiversity, indian ocean..."
+                    className="mt-1"
+                    rows={2}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Custom Sections */}
-          {reportType === 'custom' && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">Report Sections</CardTitle>
-                    <CardDescription>Add custom sections to your report</CardDescription>
-                  </div>
-                  <Button size="sm" onClick={addSection}>
-                    <Plus className="w-4 h-4 mr-1" />
-                    Add Section
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {sections.length === 0 ? (
-                  <div className="text-center py-8 text-deep-500 dark:text-gray-400">
-                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>No sections added yet</p>
-                    <p className="text-sm">Click "Add Section" to start building your report</p>
-                  </div>
-                ) : (
-                  sections.map((section, index) => (
-                    <div key={section.id} className="p-4 border rounded-lg space-y-3">
+          {/* Tabbed Editor Area */}
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full">
+              <TabsTrigger value="structure" className="flex-1">
+                <Settings className="w-4 h-4 mr-2" />
+                Structure
+              </TabsTrigger>
+              <TabsTrigger value="editor" className="flex-1">
+                <Edit3 className="w-4 h-4 mr-2" />
+                Rich Editor
+              </TabsTrigger>
+              <TabsTrigger value="ai" className="flex-1">
+                <Wand2 className="w-4 h-4 mr-2" />
+                AI Assistant
+              </TabsTrigger>
+              {generatedReport && (
+                <TabsTrigger value="preview" className="flex-1">
+                  <Eye className="w-4 h-4 mr-2" />
+                  Preview
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            {/* Structure Tab - Section Builder */}
+            <TabsContent value="structure" className="mt-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <SectionBuilder
+                    sections={sections}
+                    onSectionsChange={setSections}
+                    onEditSection={handleEditSection}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Rich Editor Tab */}
+            <TabsContent value="editor" className="mt-4">
+              <Card>
+                <CardContent className="pt-4">
+                  {selectedSection ? (
+                    <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-deep-500">
-                          Section {index + 1}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => removeSection(section.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </div>
-
-                      <Input
-                        value={section.title}
-                        onChange={(e) => updateSection(section.id, { title: e.target.value })}
-                        placeholder="Section Title"
-                      />
-
-                      <Textarea
-                        value={section.content}
-                        onChange={(e) => updateSection(section.id, { content: e.target.value })}
-                        placeholder="Section content..."
-                        rows={3}
-                      />
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-deep-500">Key Findings</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => addFinding(section.id)}
-                          >
-                            <Plus className="w-3 h-3" />
-                          </Button>
-                        </div>
-                        {section.key_findings.map((finding, i) => (
-                          <Input
-                            key={i}
-                            value={finding}
-                            onChange={(e) => updateFinding(section.id, i, e.target.value)}
-                            placeholder={`Finding ${i + 1}`}
-                            className="mb-2 text-sm"
-                          />
-                        ))}
-                      </div>
-
-                      <div>
-                        <span className="text-xs font-medium text-deep-500">Include Chart</span>
+                        <h3 className="font-medium text-deep-900 dark:text-gray-100">
+                          Editing: {selectedSection.title}
+                        </h3>
                         <Select
-                          value={section.chart_type || 'none'}
-                          onChange={(e) => updateSection(section.id, {
-                            chart_type: e.target.value as any
-                          })}
-                          className="mt-1"
+                          value={selectedSectionId || ''}
+                          onChange={(e) => setSelectedSectionId(e.target.value)}
+                          className="w-48"
                         >
-                          <option value="none">No Chart</option>
-                          <option value="bar">Bar Chart</option>
-                          <option value="pie">Pie Chart</option>
-                          <option value="line">Line Chart</option>
-                          <option value="area">Area Chart</option>
+                          {sections.map(s => (
+                            <option key={s.id} value={s.id}>{s.title}</option>
+                          ))}
                         </Select>
                       </div>
+                      <RichTextEditor
+                        content={selectedSection.content}
+                        onChange={handleSectionContentUpdate}
+                        placeholder="Write your section content with rich formatting..."
+                        minHeight="400px"
+                      />
                     </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  ) : (
+                    <div className="text-center py-12 text-deep-500 dark:text-gray-400">
+                      <Edit3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No section selected</p>
+                      <p className="text-sm mt-1">
+                        Add sections in the Structure tab, then click "Open in Rich Editor" to edit here.
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="mt-4"
+                        onClick={() => setActiveTab('structure')}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Go to Structure
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          {/* Preview / Generated Report - Hide when regenerating */}
-          {generatedReport && previewMode && !generateMutation.isPending && !quickReportMutation.isPending && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      Report Generated
-                      {lastGeneratedFormat && (
-                        <span className="text-sm font-normal text-deep-500 dark:text-gray-400">
-                          ({FORMAT_OPTIONS.find(f => f.value === lastGeneratedFormat)?.label})
-                        </span>
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      Your report is ready for download
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setPreviewMode(false)}>
-                      Edit
-                    </Button>
-                    <Button variant="premium" onClick={downloadReport}>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Use lastGeneratedFormat for rendering preview (actual content format) */}
-                {lastGeneratedFormat === 'html' && (
-                  <div className="border rounded-lg overflow-hidden max-h-[600px] overflow-y-auto">
-                    <iframe
-                      srcDoc={generatedReport}
-                      className="w-full h-[500px] border-0"
-                      title="Report Preview"
+            {/* AI Assistant Tab */}
+            <TabsContent value="ai" className="mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">AI Writing Assistant</CardTitle>
+                    <CardDescription>Transform or generate content with AI</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <AIContentPanel
+                      selectedText={selectedText}
+                      onApply={handleAIContentApply}
                     />
-                  </div>
-                )}
-                {lastGeneratedFormat === 'markdown' && (
-                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
-                    {generatedReport}
-                  </pre>
-                )}
-                {lastGeneratedFormat === 'json' && (
-                  <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
-                    {generatedReport}
-                  </pre>
-                )}
-                {lastGeneratedFormat === 'pdf' && (
-                  <div className="border rounded-lg overflow-hidden h-[600px] bg-gray-100 dark:bg-gray-800">
-                    <object
-                      data={`data:application/pdf;base64,${generatedReport}`}
-                      type="application/pdf"
-                      className="w-full h-full"
-                    >
-                      <div className="text-center py-8">
-                        <FileText className="w-16 h-16 mx-auto mb-4 text-ocean-500" />
-                        <p className="text-deep-600 dark:text-gray-300">
-                          PDF Preview not supported in this browser
-                        </p>
-                        <Button variant="outline" onClick={downloadReport} className="mt-4">
-                          Download PDF
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Source Text</CardTitle>
+                    <CardDescription>Paste text to transform</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      value={selectedText}
+                      onChange={(e) => setSelectedText(e.target.value)}
+                      placeholder="Paste or type text here to summarize, expand, rewrite, or improve..."
+                      rows={10}
+                    />
+                    <p className="text-xs text-deep-400 mt-2">
+                      {selectedText.length} characters
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Preview Tab */}
+            <TabsContent value="preview" className="mt-4">
+              {generatedReport && previewMode && !generateMutation.isPending && !quickReportMutation.isPending && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-500" />
+                          Report Generated
+                          {lastGeneratedFormat && (
+                            <span className="text-sm font-normal text-deep-500 dark:text-gray-400">
+                              ({FORMAT_OPTIONS.find(f => f.value === lastGeneratedFormat)?.label})
+                            </span>
+                          )}
+                        </CardTitle>
+                        <CardDescription>
+                          Your report is ready for download
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setPreviewMode(false)}>
+                          Edit
+                        </Button>
+                        <Button variant="premium" onClick={downloadReport}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
                         </Button>
                       </div>
-                    </object>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {lastGeneratedFormat === 'html' && (
+                      <div className="border rounded-lg overflow-hidden max-h-[600px] overflow-y-auto">
+                        <iframe
+                          srcDoc={generatedReport}
+                          className="w-full h-[500px] border-0"
+                          title="Report Preview"
+                        />
+                      </div>
+                    )}
+                    {lastGeneratedFormat === 'markdown' && (
+                      <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
+                        {generatedReport}
+                      </pre>
+                    )}
+                    {lastGeneratedFormat === 'json' && (
+                      <pre className="p-4 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm overflow-auto max-h-[500px] font-mono">
+                        {generatedReport}
+                      </pre>
+                    )}
+                    {lastGeneratedFormat === 'pdf' && (
+                      <div className="border rounded-lg overflow-hidden h-[600px] bg-gray-100 dark:bg-gray-800">
+                        <object
+                          data={`data:application/pdf;base64,${generatedReport}`}
+                          type="application/pdf"
+                          className="w-full h-full"
+                        >
+                          <div className="text-center py-8">
+                            <FileText className="w-16 h-16 mx-auto mb-4 text-ocean-500" />
+                            <p className="text-deep-600 dark:text-gray-300">
+                              PDF Preview not supported in this browser
+                            </p>
+                            <Button variant="outline" onClick={downloadReport} className="mt-4">
+                              Download PDF
+                            </Button>
+                          </div>
+                        </object>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
 
           {/* Generation Progress */}
           {(generateMutation.isPending || quickReportMutation.isPending) && (
@@ -561,7 +631,7 @@ export default function ReportGenerator() {
                     Generating Report
                   </h3>
                   <p className="text-deep-500 dark:text-gray-400 mb-4">
-                    Creating your professional report with charts and analysis...
+                    Creating your professional report with AI-powered insights...
                   </p>
                   <Progress value={65} variant="gradient" className="max-w-xs mx-auto" />
                 </div>

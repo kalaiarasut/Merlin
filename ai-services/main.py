@@ -201,6 +201,11 @@ async def root():
             "chat": {
                 "POST /chat": "Natural language queries"
             },
+            "methodology": {
+                "POST /methodology/query": "RAG-powered methodology generation with citations",
+                "POST /methodology/ingest": "Ingest protocol documents",
+                "GET /methodology/stats": "Get RAG system statistics"
+            },
             "otolith": {
                 "POST /analyze-otolith": "Otolith shape analysis",
                 "POST /analyze-otolith-age": "Age estimation from otolith images"
@@ -498,8 +503,276 @@ async def cancel_request(request_id: str):
     return {
         "success": success,
         "request_id": request_id,
-        "message": "Request cancelled" if success else "Request not found"
+        "message": "Request cancelled" if success else "Request not found or already completed"
     }
+
+
+# ====================================
+# RAG Methodology Query (New!)
+# ====================================
+
+class MethodologyRequest(BaseModel):
+    """Request model for RAG methodology query."""
+    query: str
+    include_papers: Optional[bool] = True  # Whether to include paper results
+
+
+@app.post("/methodology/query")
+async def query_methodology(request: MethodologyRequest):
+    """
+    RAG-powered methodology generation with 4 core rules:
+    
+    1. Method-Type Classification BEFORE retrieval (keyword-based)
+    2. SOP Priority over Papers (SOPs are authoritative)
+    3. Citation Anchoring (every step MUST have [Dx] tags)
+    4. Mandatory Limitations section
+    
+    Returns:
+        - methodology: Step-by-step protocol with citations
+        - citations: Document references used
+        - confidence_score: Retrieval quality (0-1)
+        - limitations: Academic warnings
+        - expert_review_required: HITL flag
+        - sources: List of source documents
+    """
+    try:
+        from rag.rag_service import get_rag_service
+        
+        rag = get_rag_service()
+        result = await rag.query(
+            user_query=request.query,
+            include_papers=request.include_papers
+        )
+        
+        return result
+        
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG module not available. Install chromadb: pip install chromadb. Error: {str(e)}"
+        )
+    except Exception as e:
+        import traceback
+        print(f"Methodology query error: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Methodology query failed: {str(e)}"
+        )
+
+
+@app.post("/methodology/ingest")
+async def ingest_protocols():
+    """
+    Ingest protocol documents from the protocols directory.
+    
+    Reads JSON files from:
+    - rag/protocols/sops/ (Authoritative SOPs)
+    - rag/protocols/papers/ (Supporting papers)
+    
+    Returns count of ingested documents.
+    """
+    try:
+        from rag.rag_service import get_rag_service
+        
+        rag = get_rag_service()
+        result = await rag.ingest_protocols()
+        
+        return {
+            "success": True,
+            "message": f"Ingested {result['sops']} SOPs and {result['papers']} papers",
+            **result
+        }
+        
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG module not available. Install chromadb: pip install chromadb. Error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Protocol ingestion failed: {str(e)}"
+        )
+
+
+@app.get("/methodology/stats")
+async def get_methodology_stats():
+    """
+    Get RAG system statistics including document counts and model info.
+    """
+    try:
+        from rag.rag_service import get_rag_service
+        
+        rag = get_rag_service()
+        stats = rag.get_stats()
+        
+        return {
+            "success": True,
+            **stats
+        }
+        
+    except ImportError as e:
+        return {
+            "success": False,
+            "error": "RAG module not available",
+            "message": "Install chromadb: pip install chromadb"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/methodology/classify")
+async def classify_query(query: str):
+    """
+    Classify a query by method type (for debugging/testing).
+    
+    Uses keyword-based classification (Core Rule #1).
+    """
+    try:
+        from rag.method_classifier import get_method_classifier
+        
+        classifier = get_method_classifier()
+        details = classifier.get_classification_details(query)
+        
+        return {
+            "success": True,
+            **details
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# ====================================
+# Research Paper Search
+# ====================================
+
+class PaperSearchRequest(BaseModel):
+    """Request model for paper search."""
+    query: str
+    limit: Optional[int] = 20
+    deterministic: Optional[bool] = True  # Stable ranking for institutions
+    offset: Optional[int] = 0  # Pagination support
+
+
+@app.post("/research/papers")
+async def search_research_papers(request: PaperSearchRequest):
+    """
+    Search academic papers using Europe PMC + Semantic Scholar.
+    
+    Returns merged, ranked papers with:
+    - Abstracts and full text (Europe PMC)
+    - Citation data and credibility (Semantic Scholar)
+    - Smart ranking based on relevance, citations, and recency
+    - 3-level caching (epmc, s2, merged)
+    - Retry logic with exponential backoff
+    - Deterministic mode for consistent results
+    """
+    try:
+        from research.paper_search import search_papers
+        
+        papers = await search_papers(
+            request.query, 
+            request.limit, 
+            request.deterministic,
+            offset=request.offset
+        )
+        
+        return {
+            "success": True,
+            "total": len(papers),
+            "papers": papers,
+            "query": request.query,
+            "deterministic": request.deterministic,
+            "offset": request.offset
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Paper search failed: {str(e)}"
+        )
+
+
+class ExportRequest(BaseModel):
+    """Request model for citation export."""
+    papers: List[Dict[str, Any]]
+    format: str  # 'bibtex', 'ris', 'apa', 'mla'
+
+
+@app.post("/research/export")
+async def export_citations(request: ExportRequest):
+    """
+    Export papers in various citation formats.
+    
+    Formats: BibTeX, RIS, APA, MLA
+    """
+    try:
+        from research.citations import export_bibtex, export_ris, export_apa, export_mla
+        
+        format_handlers = {
+            'bibtex': export_bibtex,
+            'ris': export_ris,
+            'apa': export_apa,
+            'mla': export_mla
+        }
+        
+        if request.format not in format_handlers:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {request.format}")
+        
+        handler = format_handlers[request.format]
+        formatted_text = handler(request.papers)
+        
+        return {
+            "success": True,
+            "format": request.format,
+            "text": formatted_text,
+            "count": len(request.papers)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Export failed: {str(e)}"
+        )
+
+
+
+@app.get("/research/similar")
+async def get_similar_papers_endpoint(paper_id: str, limit: int = 10):
+    """
+    Get similar/recommended papers for a given paper.
+    
+    Uses Semantic Scholar's recommendation API.
+    
+    Args:
+        paper_id: DOI or Semantic Scholar paper ID (query parameter)
+        limit: Maximum number of recommendations (default 10)
+    """
+    try:
+        from research.similar_papers import get_similar_papers as fetch_similar_papers
+        
+        similar = await fetch_similar_papers(paper_id, limit)
+        
+        return {
+            "success": True,
+            "count": len(similar),
+            "papers": similar,
+            "source_paper_id": paper_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Similar papers error for {paper_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Similar papers search failed: {str(e)}"
+        )
 
 
 # ============================================

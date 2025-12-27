@@ -1,0 +1,17 @@
+{
+    "id": "edna-filtration-001",
+    "doc_id": "D2",
+    "title": "eDNA Filtration and Preservation Protocol",
+    "type": "SOP",
+    "source": "CMLRE Standard Operating Procedure 2024",
+    "method_type": "eDNA",
+    "version": "2024.1",
+    "tags": [
+        "eDNA",
+        "filtration",
+        "preservation",
+        "membrane",
+        "laboratory"
+    ],
+    "content": "## eDNA Filtration and Preservation Protocol\n\n### Purpose\nThis protocol describes the standard procedure for filtering and preserving eDNA samples collected from marine environments.\n\n### Equipment Required\n- Vacuum filtration apparatus (Nalgene or equivalent)\n- 0.45μm pore size mixed cellulose ester (MCE) filters (47mm diameter)\n- Sterile forceps\n- 2mL cryovials\n- Longmire buffer or 95% ethanol\n- Vacuum pump (capable of -0.5 bar)\n- Laminar flow hood (if available)\n\n### Procedure\n\n1. **Workspace Preparation**:\n   - Clean workspace with 10% bleach solution\n   - Expose to UV light for 30 minutes (if available)\n   - Wear lab coat and fresh nitrile gloves\n\n2. **Filtration Setup**:\n   - Assemble sterile filter funnel\n   - Place 0.45μm MCE filter on filter base using sterile forceps\n   - Secure filter funnel and connect to vacuum\n\n3. **Sample Filtration**:\n   - Pour water sample into filter funnel\n   - Apply vacuum (-0.3 to -0.5 bar)\n   - Filter entire sample (typically 500mL - 1L)\n   - Record filtration time and final volume filtered\n\n4. **Filter Preservation**:\n   - Using sterile forceps, fold filter in half (DNA side inward)\n   - Place in labeled 2mL cryovial\n   - Add 1mL Longmire buffer or 95% ethanol\n   - Store at -20°C within 24 hours, -80°C for long-term storage\n\n5. **Equipment Decontamination**:\n   - Rinse filter apparatus with 10% bleach\n   - Rinse 3x with ultrapure water\n   - Allow to air dry\n\n### Quality Control\n- Process extraction blanks (unused filters) alongside samples\n- Record lot numbers of all consumables\n- Monitor vacuum pressure throughout filtration\n- Replace filters if filtration time exceeds 30 minutes\n\n### Troubleshooting\n- If filter clogs: Use multiple filters per sample, record as fractions\n- If vacuum insufficient: Check for leaks, replace tubing\n\n### References\n- CMLRE eDNA Laboratory Guidelines 2024\n- Renshaw et al. (2015) Environmental DNA filtration optimization"
+}

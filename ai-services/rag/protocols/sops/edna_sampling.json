@@ -1,0 +1,17 @@
+{
+    "id": "edna-water-sampling-001",
+    "doc_id": "D1",
+    "title": "eDNA Water Sampling Protocol",
+    "type": "SOP",
+    "source": "CMLRE Standard Operating Procedure 2024",
+    "method_type": "eDNA",
+    "version": "2024.1",
+    "tags": [
+        "eDNA",
+        "sampling",
+        "water",
+        "filtration",
+        "marine"
+    ],
+    "content": "## eDNA Water Sampling Protocol\n\n### Purpose\nThis protocol describes the standard procedure for collecting water samples for environmental DNA (eDNA) analysis in marine environments.\n\n### Equipment Required\n- Sterile 1L Nalgene bottles (pre-treated with 10% bleach, rinsed with ultrapure water)\n- Nitrile gloves (powder-free)\n- Cooler with ice packs\n- Field data sheets\n- GPS device\n- Depth sampler (for subsurface samples)\n\n### Procedure\n\n1. **Site Selection**: Select sampling sites based on target species habitat, accessibility, and safety considerations.\n\n2. **Sample Collection - Surface Water**:\n   - Wear fresh nitrile gloves for each sample\n   - Submerge bottle 20-30 cm below surface\n   - Allow bottle to fill completely, avoiding air bubbles\n   - Cap immediately underwater\n   - Record GPS coordinates, time, and depth\n\n3. **Sample Collection - Subsurface**:\n   - Use Van Dorn or Niskin bottle for depths > 1m\n   - Rinse collection bottle 3 times with sample water\n   - Transfer to sterile Nalgene bottle immediately\n\n4. **Negative Controls**:\n   - Collect at least 1 field blank per sampling event\n   - Open sterile bottle at sampling site for 30 seconds\n   - Fill with ultrapure water from sealed container\n\n5. **Sample Preservation**:\n   - Place samples immediately on ice (4°C)\n   - Filter within 6 hours (preferably within 2 hours)\n   - If immediate filtration not possible, add preservation buffer\n\n6. **Documentation**:\n   - Complete chain of custody form\n   - Photograph sampling site\n   - Note environmental conditions (wind, current, visibility)\n\n### Quality Control\n- Use separate equipment for different sites\n- Change gloves between samples\n- Process negative controls alongside samples\n- Maintain cold chain throughout transport\n\n### References\n- CMLRE eDNA Working Group Guidelines 2024\n- Thomsen & Willerslev (2015) Environmental DNA methodology"
+}

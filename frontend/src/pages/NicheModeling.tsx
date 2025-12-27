@@ -8,7 +8,8 @@ import { Progress } from '@/components/ui/progress';
 import {
   Globe, Layers, Upload, Play,
   Loader2, CheckCircle, AlertCircle, Info,
-  MapPin, Thermometer, Droplets, Wind
+  MapPin, Thermometer, Droplets, Wind,
+  AlertTriangle, ChevronDown, ChevronUp, Clock
 } from 'lucide-react';
 import { analyticsService, speciesService } from '@/services/api';
 import {
@@ -63,6 +64,49 @@ const ENV_VARIABLES = [
 
 const CHART_COLORS = ['#0891b2', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#06b6d4'];
 
+// Model assumptions and limitations for scientific rigor
+const MODEL_ASSUMPTIONS: Record<string, { name: string; assumptions: string[]; limitations: string[] }> = {
+  maxent: {
+    name: 'MaxEnt',
+    assumptions: [
+      'Uses presence-only data (no confirmed absences required)',
+      'Assumes sampling is representative of species occurrence',
+      'Maximum entropy principle for probability distribution'
+    ],
+    limitations: [
+      'Sensitive to sampling bias in occurrence data',
+      'May overfit with small sample sizes',
+      'Correlative model - does not imply causation'
+    ]
+  },
+  bioclim: {
+    name: 'BIOCLIM',
+    assumptions: [
+      'Envelope-based approach using environmental ranges',
+      'Species can survive within observed environmental limits',
+      'Environmental variables are linearly related to suitability'
+    ],
+    limitations: [
+      'Cannot extrapolate beyond observed environmental space',
+      'Does not account for species interactions',
+      'Sensitive to outliers in occurrence data'
+    ]
+  },
+  gower: {
+    name: 'Gower Distance',
+    assumptions: [
+      'Similarity-based prediction using distance metrics',
+      'Similar environments indicate similar suitability',
+      'All variables contribute equally unless weighted'
+    ],
+    limitations: [
+      'Performance depends on reference point selection',
+      'May not capture non-linear relationships',
+      'Sensitive to variable scaling'
+    ]
+  }
+};
+
 export default function NicheModeling() {
   const [modelType, setModelType] = useState('maxent');
   const [selectedVars, setSelectedVars] = useState<string[]>(['temperature', 'depth', 'salinity']);
@@ -71,6 +115,9 @@ export default function NicheModeling() {
   const [selectedSpecies, setSelectedSpecies] = useState('');
   const [resolution, setResolution] = useState(0.5);
   const [result, setResult] = useState<NicheResult | null>(null);
+  const [showAssumptions, setShowAssumptions] = useState(false);
+  const [modelRunTimestamp, setModelRunTimestamp] = useState<Date | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   // Fetch species list for selection
   const { data: speciesData } = useQuery({
@@ -85,9 +132,12 @@ export default function NicheModeling() {
   // Niche modeling mutation
   const modelMutation = useMutation({
     mutationFn: async () => {
+      setValidationErrors([]);
+      const errors: string[] = [];
+
       // Combine manual coords with uploaded occurrences
-      const allOccurrences = [...occurrences];
-      
+      let allOccurrences = [...occurrences];
+
       // Parse manual coordinates
       if (manualCoords.trim()) {
         const lines = manualCoords.split('\n').filter(l => l.trim());
@@ -104,8 +154,40 @@ export default function NicheModeling() {
         });
       }
 
+      // Validation: Filter invalid lat/lon
+      const originalCount = allOccurrences.length;
+      allOccurrences = allOccurrences.filter(occ => {
+        const validLat = occ.lat >= -90 && occ.lat <= 90;
+        const validLon = occ.lon >= -180 && occ.lon <= 180;
+        return validLat && validLon;
+      });
+      const invalidCount = originalCount - allOccurrences.length;
+      if (invalidCount > 0) {
+        errors.push(`${invalidCount} records with invalid coordinates removed (lat: -90 to 90, lon: -180 to 180)`);
+      }
+
+      // Validation: Remove duplicates
+      const seenCoords = new Set<string>();
+      const uniqueOccurrences: OccurrenceRecord[] = [];
+      allOccurrences.forEach(occ => {
+        const key = `${occ.lat.toFixed(6)},${occ.lon.toFixed(6)}`;
+        if (!seenCoords.has(key)) {
+          seenCoords.add(key);
+          uniqueOccurrences.push(occ);
+        }
+      });
+      const duplicateCount = allOccurrences.length - uniqueOccurrences.length;
+      if (duplicateCount > 0) {
+        errors.push(`${duplicateCount} duplicate coordinates removed`);
+      }
+      allOccurrences = uniqueOccurrences;
+
+      if (errors.length > 0) {
+        setValidationErrors(errors);
+      }
+
       if (allOccurrences.length < 5) {
-        throw new Error('At least 5 occurrence records required');
+        throw new Error(`At least 5 valid occurrence records required. Currently: ${allOccurrences.length}`);
       }
 
       const response = await analyticsService.nicheModel({
@@ -118,12 +200,13 @@ export default function NicheModeling() {
     },
     onSuccess: (data) => {
       setResult(data as NicheResult);
+      setModelRunTimestamp(new Date());
     },
   });
 
   // Toggle environment variable selection
   const toggleVariable = (varName: string) => {
-    setSelectedVars(prev => 
+    setSelectedVars(prev =>
       prev.includes(varName)
         ? prev.filter(v => v !== varName)
         : [...prev, varName]
@@ -137,16 +220,16 @@ export default function NicheModeling() {
 
     const text = await file.text();
     const lines = text.split('\n').filter(l => l.trim());
-    
+
     // Skip header if present
     const startIdx = lines[0].toLowerCase().includes('lat') ? 1 : 0;
-    
+
     const parsed: OccurrenceRecord[] = [];
     for (let i = startIdx; i < lines.length; i++) {
       const parts = lines[i].split(/[,\t]+/);
       const lat = parseFloat(parts[0]);
       const lon = parseFloat(parts[1]);
-      
+
       if (!isNaN(lat) && !isNaN(lon)) {
         parsed.push({
           id: `file_${i}`,
@@ -157,7 +240,7 @@ export default function NicheModeling() {
         });
       }
     }
-    
+
     setOccurrences(parsed);
   };
 
@@ -196,7 +279,7 @@ export default function NicheModeling() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button 
+          <Button
             variant="premium"
             onClick={() => modelMutation.mutate()}
             disabled={modelMutation.isPending || (occurrences.length === 0 && !manualCoords.trim())}
@@ -243,7 +326,54 @@ export default function NicheModeling() {
             </CardContent>
           </Card>
 
-          {/* Environmental Variables */}
+          {/* Model Assumptions & Limitations Panel */}
+          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
+            <button
+              onClick={() => setShowAssumptions(!showAssumptions)}
+              className="w-full p-4 flex items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Model Assumptions & Limitations
+                </span>
+              </div>
+              {showAssumptions ? (
+                <ChevronUp className="w-4 h-4 text-amber-600" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-amber-600" />
+              )}
+            </button>
+            {showAssumptions && MODEL_ASSUMPTIONS[modelType] && (
+              <CardContent className="pt-0 pb-4 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">Assumptions:</p>
+                  <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                    {MODEL_ASSUMPTIONS[modelType].assumptions.map((item, i) => (
+                      <li key={i} className="flex items-start gap-1.5">
+                        <span className="text-amber-500 mt-0.5">•</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">Limitations:</p>
+                  <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                    {MODEL_ASSUMPTIONS[modelType].limitations.map((item, i) => (
+                      <li key={i} className="flex items-start gap-1.5">
+                        <span className="text-amber-500 mt-0.5">•</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-[10px] text-amber-600 dark:text-amber-500 italic pt-2 border-t border-amber-200 dark:border-amber-800">
+                  Results are correlative and should not be interpreted as causal relationships.
+                </p>
+              </CardContent>
+            )}
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Environmental Variables</CardTitle>
@@ -277,6 +407,18 @@ export default function NicheModeling() {
                   </button>
                 );
               })}
+
+              {/* Variable Correlation Warning */}
+              {selectedVars.length > 3 && (
+                <div className="mt-3 p-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      <span className="font-medium">Note:</span> Highly correlated variables may introduce multicollinearity and bias model results.
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -303,7 +445,7 @@ export default function NicheModeling() {
                   ))}
                 </Select>
               </div>
-              
+
               <div>
                 <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
                   Grid Resolution (degrees)
@@ -389,6 +531,23 @@ export default function NicheModeling() {
                   </p>
                 </div>
               )}
+
+              {/* Validation Errors Display */}
+              {validationErrors.length > 0 && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Data Validation Applied</p>
+                      <ul className="text-xs text-blue-700 dark:text-blue-300 mt-1 space-y-0.5">
+                        {validationErrors.map((err, i) => (
+                          <li key={i}>• {err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -415,17 +574,36 @@ export default function NicheModeling() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg text-center">
+                    <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg text-center relative group">
                       <p className="text-2xl font-bold text-ocean-600">
                         {result.model_metrics.auc?.toFixed(3) || 'N/A'}
                       </p>
                       <p className="text-xs text-deep-500">AUC Score</p>
+                      {result.model_metrics.auc && (
+                        <p className={cn(
+                          "text-[10px] mt-1",
+                          result.model_metrics.auc >= 0.7 ? "text-green-600" : "text-amber-600"
+                        )}>
+                          {result.model_metrics.auc >= 0.9 ? 'Excellent' :
+                            result.model_metrics.auc >= 0.8 ? 'Good' :
+                              result.model_metrics.auc >= 0.7 ? 'Acceptable' : 'Poor'}
+                        </p>
+                      )}
                     </div>
                     <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg text-center">
                       <p className="text-2xl font-bold text-marine-600">
                         {result.model_metrics.tss?.toFixed(3) || 'N/A'}
                       </p>
                       <p className="text-xs text-deep-500">TSS</p>
+                      {result.model_metrics.tss && (
+                        <p className={cn(
+                          "text-[10px] mt-1",
+                          result.model_metrics.tss >= 0.5 ? "text-green-600" : "text-amber-600"
+                        )}>
+                          {result.model_metrics.tss >= 0.7 ? 'Excellent' :
+                            result.model_metrics.tss >= 0.5 ? 'Good' : 'Fair'}
+                        </p>
+                      )}
                     </div>
                     <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg text-center">
                       <p className="text-2xl font-bold text-coral-600">
@@ -452,7 +630,7 @@ export default function NicheModeling() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                           <XAxis type="number" domain={[0, 100]} />
                           <YAxis dataKey="name" type="category" width={120} />
-                          <Tooltip 
+                          <Tooltip
                             formatter={(value: number) => [`${value}%`, 'Importance']}
                           />
                           <Bar dataKey="value" fill="#0891b2" radius={[0, 4, 4, 0]}>
@@ -485,6 +663,48 @@ export default function NicheModeling() {
                       </div>
                     </div>
                   )}
+
+                  {/* Reproducibility Metadata */}
+                  <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className="w-4 h-4 text-deep-400" />
+                      <h4 className="text-sm font-medium text-deep-700 dark:text-gray-300">Model Run Metadata</h4>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                      <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded">
+                        <p className="text-deep-400 mb-0.5">Model</p>
+                        <p className="font-medium text-deep-700 dark:text-gray-200">{result.model_type.toUpperCase()}</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded">
+                        <p className="text-deep-400 mb-0.5">Species</p>
+                        <p className="font-medium text-deep-700 dark:text-gray-200 truncate">{result.species}</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded">
+                        <p className="text-deep-400 mb-0.5">Variables</p>
+                        <p className="font-medium text-deep-700 dark:text-gray-200">{selectedVars.length} selected</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded">
+                        <p className="text-deep-400 mb-0.5">Resolution</p>
+                        <p className="font-medium text-deep-700 dark:text-gray-200">{resolution}°</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded">
+                        <p className="text-deep-400 mb-0.5">Timestamp</p>
+                        <p className="font-medium text-deep-700 dark:text-gray-200">
+                          {modelRunTimestamp?.toLocaleString() || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Confidence Disclaimer */}
+                  <div className="mt-4 p-3 bg-gray-50 dark:bg-deep-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-deep-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-deep-500 dark:text-gray-400">
+                        <span className="font-medium">Important:</span> Predictions represent modeled habitat suitability based on environmental correlates, not confirmed species presence. Results should be validated with field observations.
+                      </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -500,21 +720,21 @@ export default function NicheModeling() {
                       <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis 
-                            type="number" 
-                            dataKey="lon" 
-                            name="Longitude" 
+                          <XAxis
+                            type="number"
+                            dataKey="lon"
+                            name="Longitude"
                             unit="°"
                             domain={['auto', 'auto']}
                           />
-                          <YAxis 
-                            type="number" 
-                            dataKey="lat" 
-                            name="Latitude" 
+                          <YAxis
+                            type="number"
+                            dataKey="lat"
+                            name="Latitude"
                             unit="°"
                             domain={['auto', 'auto']}
                           />
-                          <Tooltip 
+                          <Tooltip
                             cursor={{ strokeDasharray: '3 3' }}
                             formatter={(value: number, name: string) => [
                               name === 'suitability' ? `${value}%` : value.toFixed(4),
@@ -522,14 +742,14 @@ export default function NicheModeling() {
                             ]}
                           />
                           <Legend />
-                          <Scatter 
-                            name="Hotspots" 
-                            data={hotspotsData} 
+                          <Scatter
+                            name="Hotspots"
+                            data={hotspotsData}
                             fill="#0891b2"
                           >
                             {hotspotsData.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
+                              <Cell
+                                key={`cell-${index}`}
                                 fill={`rgba(8, 145, 178, ${entry.suitability / 100})`}
                               />
                             ))}
@@ -537,7 +757,7 @@ export default function NicheModeling() {
                         </ScatterChart>
                       </ResponsiveContainer>
                     </div>
-                    
+
                     {/* Hotspot Table */}
                     <div className="mt-4 max-h-[200px] overflow-auto">
                       <table className="w-full text-sm">
@@ -618,7 +838,7 @@ export default function NicheModeling() {
                     </h4>
                     <div className="text-sm text-ocean-700 dark:text-ocean-300 space-y-2">
                       <p>
-                        Environmental Niche Modeling (ENM) predicts where a species is likely to occur 
+                        Environmental Niche Modeling (ENM) predicts where a species is likely to occur
                         based on environmental conditions at known occurrence locations.
                       </p>
                       <p>

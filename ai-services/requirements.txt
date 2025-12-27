@@ -51,3 +51,6 @@ tqdm==4.66.1
 # LLM (Local inference)
 llama-cpp-python==0.2.27
 ollama==0.1.6
+
+# RAG (Retrieval-Augmented Generation)
+chromadb>=0.4.0

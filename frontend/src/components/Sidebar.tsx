@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  Home, Database, Waves, Fish, Circle, Dna, BarChart3, 
+import {
+  Home, Database, Waves, Fish, Circle, Dna, BarChart3,
   MessageSquare, Settings, FileText, ChevronRight, Sparkles, Camera, GraduationCap,
   Globe, FileOutput
 } from 'lucide-react';
@@ -36,21 +36,21 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-ocean-500 to-ocean-700 flex items-center justify-center shadow-lg shadow-ocean-500/30">
-              <Waves className="w-6 h-6 text-white" />
+              <img src="/favicon.png" alt="Marlin Logo" className="w-8 h-8 object-contain" />
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-marine-500 rounded-full border-2 border-white dark:border-deep-900 flex items-center justify-center">
               <Sparkles className="w-2 h-2 text-white" />
             </div>
           </div>
           <div>
-            <h1 className="text-lg font-bold bg-gradient-to-r from-ocean-600 to-ocean-800 dark:from-ocean-400 dark:to-ocean-600 bg-clip-text text-transparent">
-              CMLRE
+            <h1 className="text-xl font-bold bg-gradient-to-r from-ocean-600 to-ocean-800 dark:from-ocean-400 dark:to-ocean-600 bg-clip-text text-transparent">
+              Marlin
             </h1>
             <p className="text-xs text-deep-500 dark:text-gray-400 font-medium">Marine Data Platform</p>
           </div>
         </div>
       </div>
-      
+
       {/* Main Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-premium dark:scrollbar-premium-dark">
         <p className="px-3 py-2 text-xs font-semibold text-deep-400 dark:text-gray-500 uppercase tracking-wider">
@@ -71,8 +71,8 @@ export default function Sidebar() {
             >
               <div className={cn(
                 "p-2 rounded-lg transition-colors",
-                isActive 
-                  ? "bg-white/20" 
+                isActive
+                  ? "bg-white/20"
                   : "bg-gray-100 dark:bg-deep-800 group-hover:bg-gray-200/80 dark:group-hover:bg-deep-700"
               )}>
                 <item.icon className="w-4 h-4" />
@@ -86,8 +86,8 @@ export default function Sidebar() {
               {item.badge && (
                 <span className={cn(
                   "px-2 py-0.5 text-xs font-semibold rounded-full",
-                  isActive 
-                    ? "bg-white/20 text-white" 
+                  isActive
+                    ? "bg-white/20 text-white"
                     : "bg-gradient-to-r from-ocean-500 to-ocean-600 text-white"
                 )}>
                   {item.badge}

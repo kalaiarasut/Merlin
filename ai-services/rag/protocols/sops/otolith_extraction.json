@@ -1,0 +1,17 @@
+{
+    "id": "otolith-extraction-001",
+    "doc_id": "D3",
+    "title": "Otolith Extraction and Processing Protocol",
+    "type": "SOP",
+    "source": "CMLRE Fisheries Research Division 2023",
+    "method_type": "Otolith",
+    "version": "2023.2",
+    "tags": [
+        "otolith",
+        "extraction",
+        "age",
+        "growth",
+        "fisheries"
+    ],
+    "content": "## Otolith Extraction and Processing Protocol\n\n### Purpose\nThis protocol describes standard procedures for extracting, mounting, and reading fish otoliths for age determination.\n\n### Equipment Required\n- Dissection tools (scalpel, fine forceps, scissors)\n- Dissection tray\n- Distilled water\n- 95% ethanol\n- Mounting medium (crystal bond or thermoplastic cement)\n- Glass microscope slides\n- Grinding/polishing equipment\n- Stereo microscope with transmitted light\n\n### Otolith Extraction\n\n1. **Fish Preparation**:\n   - Record fish total length (TL), fork length (FL), and weight\n   - Photograph specimen with scale bar\n   - Make transverse cut posterior to eyes\n\n2. **Sagitta Removal**:\n   - Locate otoliths in semicircular canals below brain\n   - Use fine forceps to carefully extract sagitta\n   - Remove both left and right sagittae when possible\n   - Clean otoliths in distilled water\n\n3. **Preservation**:\n   - Air dry otoliths for 24 hours\n   - Store in labeled vials with paper backing\n   - Record otolith weight (if required for analysis)\n\n### Sectioning (for large or opaque otoliths)\n\n4. **Embedding**:\n   - Mount otolith in epoxy resin, sulcus side down\n   - Allow to cure 24-48 hours\n\n5. **Sectioning**:\n   - Cut transverse section through core using low-speed saw\n   - Section thickness: 300-500 μm\n   - Mount section on glass slide with crystal bond\n\n6. **Polishing**:\n   - Polish with progressively finer grits (400, 600, 1200)\n   - Final thickness: 200-300 μm\n   - Check clarity under microscope during polishing\n\n### Age Reading\n\n7. **Microscopy**:\n   - Use transmitted light at 25-40x magnification\n   - Count translucent (hyaline) zones from core to edge\n   - Each complete annual ring = 1 year\n\n8. **Validation**:\n   - Independent reads by 2+ readers\n   - Calculate percent agreement and APE (Average Percent Error)\n   - Re-read if discrepancy > 2 years\n\n### References\n- CMLRE Otolith Processing Manual 2023\n- Campana (2001) Accuracy and precision in age estimation"
+}

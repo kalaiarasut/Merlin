@@ -1,0 +1,17 @@
+{
+    "id": "fish-survey-visual-001",
+    "doc_id": "D4",
+    "title": "Underwater Visual Census Protocol",
+    "type": "SOP",
+    "source": "CMLRE Marine Survey Methods 2024",
+    "method_type": "Survey",
+    "version": "2024.1",
+    "tags": [
+        "survey",
+        "visual census",
+        "abundance",
+        "reef",
+        "transect"
+    ],
+    "content": "## Underwater Visual Census (UVC) Protocol\n\n### Purpose\nThis protocol describes standardized methods for conducting underwater visual census surveys to estimate fish abundance and diversity on coral reefs.\n\n### Equipment Required\n- SCUBA or snorkeling equipment\n- Underwater slate and pencils\n- Transect tape (50m)\n- Quadrat frame (if sampling benthos)\n- Underwater camera\n- Depth gauge\n- Safety equipment (SMB, whistle)\n\n### Survey Design\n\n1. **Site Selection**:\n   - Stratify by habitat type (reef flat, slope, crest)\n   - Use random or systematic placement\n   - Minimum 3 replicate transects per site\n\n2. **Transect Layout**:\n   - Deploy 50m transect tape parallel to reef contour\n   - Mark start point with GPS (surface)\n   - Record depth at start, middle, and end\n\n### Survey Procedure\n\n3. **Belt Transect Method**:\n   - Swim at constant speed (approximately 10 min per 50m)\n   - Record all fish within 2.5m on each side (5m total width)\n   - Survey area = 50m × 5m = 250 m²\n\n4. **Fish Recording**:\n   - Identify to lowest taxonomic level possible\n   - Estimate size class (TL): <5cm, 5-10cm, 10-20cm, 20-30cm, >30cm\n   - Count individuals; estimate schools >20 fish\n   - Note behavior (feeding, schooling, resting)\n\n5. **Environmental Data**:\n   - Record visibility (horizontal distance)\n   - Estimate percent coral cover\n   - Note current strength and direction\n   - Record water temperature\n\n### Quality Control\n\n6. **Observer Training**:\n   - Practice fish identification before surveys\n   - Conduct calibration exercises between observers\n   - Document observer experience level\n\n7. **Data Validation**:\n   - Cross-check identifications with underwater photos\n   - Flag unusual sightings for verification\n   - Calculate inter-observer variability\n\n### Data Analysis\n- Calculate density (individuals per m²)\n- Calculate species richness per transect\n- Use PERMANOVA for community comparisons\n\n### References\n- English et al. (1997) Survey Manual for Tropical Marine Resources\n- CMLRE Reef Monitoring Guidelines 2024"
+}

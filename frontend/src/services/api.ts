@@ -5,9 +5,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 class ApiClient {
   private client: AxiosInstance;
 
-  constructor() {
+  constructor(baseURL: string = API_URL) {
     this.client = axios.create({
-      baseURL: API_URL,
+      baseURL,
       timeout: 600000, // 10 minute timeout for LLM + FishBase responses
       headers: {
         'Content-Type': 'application/json',
@@ -79,6 +79,7 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient();
+export const aiServicesClient = new ApiClient('http://localhost:8000');
 
 // Auth service
 export const authService = {
@@ -472,6 +473,36 @@ export const aiService = {
     const formData = new FormData();
     formData.append('file', file);
     return apiClient.upload<any>('/ai/extract-metadata', formData);
+  },
+
+  // Research paper search
+  paperSearch: async (query: string, limit: number = 20) => {
+    return aiServicesClient.post<{
+      success: boolean;
+      total: number;
+      papers: any[];
+      query: string;
+    }>('/research/papers', { query, limit });
+  },
+
+  // Export citations in various formats
+  exportCitations: async (papers: any[], format: 'bibtex' | 'ris' | 'apa' | 'mla') => {
+    return aiServicesClient.post<{
+      success: boolean;
+      format: string;
+      text: string;
+      count: number;
+    }>('/research/export', { papers, format });
+  },
+
+  // Get similar papers for a given paper
+  getSimilarPapers: async (paperId: string, limit: number = 10) => {
+    return aiServicesClient.get<{
+      success: boolean;
+      count: number;
+      papers: any[];
+      source_paper_id: string;
+    }>(`/research/similar?paper_id=${encodeURIComponent(paperId)}&limit=${limit}`);
   },
 };
 

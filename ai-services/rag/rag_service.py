@@ -26,6 +26,11 @@ from .chromadb_service import ChromaDBService, get_chromadb_service
 from .citation_validator import CitationValidator, get_citation_validator, CITATION_PROMPT
 from .confidence_analyzer import ConfidenceAnalyzer, get_confidence_analyzer
 
+# New Hybrid RAG components
+from .live_paper_fetcher import LivePaperFetcher, get_live_paper_fetcher, PaperSource
+from .source_ranker import SourceRanker, get_source_ranker
+from .method_normalizer import MethodNormalizer, get_method_normalizer
+
 logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434"
@@ -37,6 +42,7 @@ class RAGService:
     Main RAG Service for marine protocol methodology generation.
     
     Orchestrates the full pipeline with all 4 core rules enforced.
+    Now supports HYBRID mode with real-time paper fetching.
     """
     
     def __init__(self):
@@ -47,10 +53,15 @@ class RAGService:
         self.citation_validator = get_citation_validator()
         self.confidence_analyzer = get_confidence_analyzer()
         
+        # Hybrid RAG components
+        self.paper_fetcher = get_live_paper_fetcher()
+        self.source_ranker = get_source_ranker()
+        self.method_normalizer = get_method_normalizer()
+        
         self.ollama_url = OLLAMA_URL
         self.model = LLM_MODEL
         
-        logger.info("RAG Service initialized with all components")
+        logger.info("RAG Service initialized with all components (Hybrid mode enabled)")
     
     async def query(self, user_query: str, include_papers: bool = True) -> Dict[str, Any]:
         """
@@ -161,6 +172,141 @@ class RAGService:
             "sources": sources
         }
     
+    async def query_live(self, user_query: str, limit: int = 8) -> Dict[str, Any]:
+        """
+        HYBRID RAG: Query using real-time paper search from Semantic Scholar/Europe PMC.
+        
+        Implements:
+        - Live paper fetching
+        - Method normalization  
+        - Source confidence scoring (trust × citations × relevance)
+        - Provenance tagging (DOI, journal, year)
+        
+        Args:
+            user_query: User's methodology question
+            limit: Max papers to fetch
+            
+        Returns:
+            Dict with methodology, real citations, confidence bands, provenance
+        """
+        logger.info(f"HYBRID RAG query: {user_query[:100]}...")
+        
+        # Normalize method terms for better caching
+        canonical_method = self.method_normalizer.get_canonical_label(user_query)
+        logger.info(f"Normalized method: {canonical_method}")
+        
+        # Expand query with synonyms
+        expanded_query = self.method_normalizer.expand_query(user_query)
+        logger.info(f"Expanded query: {expanded_query[:100]}...")
+        
+        # Fetch real papers from Semantic Scholar + Europe PMC
+        try:
+            papers = await self.paper_fetcher.search_papers(
+                query=expanded_query,
+                method_type=canonical_method,
+                limit=limit
+            )
+            logger.info(f"Fetched {len(papers)} papers from live sources")
+        except Exception as e:
+            logger.error(f"Live paper fetch failed: {e}")
+            papers = []
+        
+        if not papers:
+            return self._no_papers_response(user_query, canonical_method)
+        
+        # Rank sources by confidence score
+        paper_dicts = [p.to_dict() for p in papers]
+        ranked = self.source_ranker.rank_sources(paper_dicts)
+        
+        # Get overall confidence
+        overall_confidence = self.source_ranker.get_overall_confidence(ranked)
+        
+        # Build context for LLM
+        context_parts = []
+        doc_ids = []
+        for i, rsrc in enumerate(ranked[:5]):  # Top 5 sources
+            doc_id = rsrc.doc_id
+            doc_ids.append(doc_id)
+            
+            # Format with provenance
+            provenance = self.source_ranker.format_provenance(rsrc)
+            context_parts.append(f"""
+=== [{doc_id}] {rsrc.title} ===
+Source: {provenance}
+Trust: {rsrc.trust_score:.2f} | Confidence Band: {rsrc.confidence_band.upper()}
+
+{paper_dicts[i].get('methods_text', 'No methods section available.')}
+""")
+        
+        context = "\n".join(context_parts)
+        
+        # Generate methodology with LLM
+        methodology = await self._generate_methodology(
+            query=user_query,
+            context=context,
+            doc_ids=doc_ids
+        )
+        
+        # Format limitations based on confidence
+        limitations = []
+        if overall_confidence['band'] == 'low':
+            limitations.append("⚠️ Low confidence - limited authoritative sources found")
+        if overall_confidence['band'] == 'medium':
+            limitations.append("⚠️ Medium confidence - verify critical steps with primary literature")
+        if any(p.source_type == 'preprint' for p in papers[:3]):
+            limitations.append("⚠️ Some sources are preprints - not yet peer-reviewed")
+        
+        # Build sources list with provenance
+        sources = []
+        for rsrc in ranked[:5]:
+            prov = rsrc.provenance
+            sources.append({
+                "doc_id": rsrc.doc_id,
+                "title": rsrc.title,
+                "type": rsrc.source_type.replace('_', ' ').title(),
+                "doi": prov.get('doi'),
+                "journal": prov.get('journal'),
+                "year": prov.get('year'),
+                "citations": prov.get('citation_count'),
+                "trust_score": rsrc.trust_score,
+                "confidence_band": rsrc.confidence_band,
+                "provenance": self.source_ranker.format_provenance(rsrc)
+            })
+        
+        return {
+            "success": True,
+            "mode": "hybrid_live",
+            "methodology": methodology,
+            "canonical_method": canonical_method,
+            "confidence": overall_confidence,
+            "limitations": limitations,
+            "expert_review_required": overall_confidence['band'] == 'low',
+            "sources": sources,
+            "papers_fetched": len(papers)
+        }
+    
+    def _no_papers_response(self, query: str, method: str) -> Dict[str, Any]:
+        """Response when no papers found from live search."""
+        return {
+            "success": True,
+            "mode": "hybrid_live",
+            "methodology": (
+                f"No relevant papers found for method: {method}\n\n"
+                "This could mean:\n"
+                "1. The academic databases have limited coverage for this topic\n"
+                "2. Try using different terminology\n\n"
+                "Suggestions:\n"
+                "- Use more specific keywords\n"
+                "- Check protocols.io or institutional SOPs"
+            ),
+            "canonical_method": method,
+            "confidence": {"score": 0, "band": "low", "label": "🔴 Low Confidence"},
+            "limitations": ["⚠️ No papers found in Semantic Scholar or Europe PMC"],
+            "expert_review_required": True,
+            "sources": [],
+            "papers_fetched": 0
+        }
+    
     async def _generate_methodology(
         self,
         query: str,
@@ -172,29 +318,45 @@ class RAGService:
         
         RULE #3: Every step must have a citation.
         """
-        system_prompt = f"""You are a marine research methodology assistant.
-Your task is to generate step-by-step protocols based ONLY on the provided documents.
+        system_prompt = f"""You are a precise marine research methodology extractor.
 
-{CITATION_PROMPT}
+CRITICAL RULES - FOLLOW EXACTLY:
+1. ONLY describe methods that are EXPLICITLY stated in the documents below
+2. NEVER invent or assume steps not mentioned in documents
+3. If a document describes a technique, quote or paraphrase it directly
+4. Every step MUST cite its source document ID like [PMC_12345]
+5. If documents don't describe a complete protocol, say "The documents do not provide complete methodology for this"
 
-Available document IDs you can cite: {', '.join(doc_ids)}
+WHAT NOT TO DO:
+- Do NOT mention water sampling unless documents specifically describe it
+- Do NOT add generic steps like "clean the sample" unless documents say this
+- Do NOT combine unrelated methods from different documents
 
-DOCUMENTS:
+Available document IDs: {', '.join(doc_ids)}
+
+DOCUMENTS TO EXTRACT FROM:
 {context}
 """
         
-        user_prompt = f"""Based on the documents above, provide a step-by-step methodology for:
+        user_prompt = f"""Extract the methodology for: {query}
 
-{query}
+INSTRUCTIONS:
+1. Read each document carefully
+2. ONLY list steps that are EXPLICITLY described in the documents
+3. Quote key phrases from the documents to prove accuracy
+4. If the documents describe techniques for {query}, list those specific techniques
+5. If documents don't contain methodology for this topic, respond: "The retrieved documents do not contain specific methodology for {query}. The papers discuss related topics but do not provide step-by-step protocols."
 
-Remember:
-- Every step MUST end with a citation like [D1] or [D1, D2]
-- Only include steps that are supported by the documents
-- Do NOT make up information not in the documents
-- Prioritize information from SOPs (marked as PRIMARY SOURCE)"""
+Format each step as:
+**Step X: [Step name]**
+[Exact method from document] [Document ID]
+"""
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            logger.info(f"Calling Ollama LLM at {self.ollama_url} with model {self.model}")
+            logger.info(f"Context length: {len(context)} chars, Doc IDs: {doc_ids}")
+            
+            async with httpx.AsyncClient(timeout=600.0) as client:  # 10 min timeout for very slow systems
                 response = await client.post(
                     f"{self.ollama_url}/api/generate",
                     json={
@@ -208,13 +370,41 @@ Remember:
                         }
                     }
                 )
+                
+                logger.info(f"Ollama response status: {response.status_code}")
+                
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(f"Ollama error response: {error_text}")
+                    return f"LLM Error (HTTP {response.status_code}): {error_text}"
+                
                 response.raise_for_status()
                 data = response.json()
-                return data.get("response", "Failed to generate methodology.")
                 
+                methodology = data.get("response", "")
+                if methodology:
+                    logger.info(f"LLM generated {len(methodology)} chars of methodology")
+                else:
+                    logger.warning("LLM returned empty response")
+                    
+                return methodology if methodology else "Failed to generate methodology."
+                
+        except httpx.TimeoutException as e:
+            logger.error(f"LLM TIMEOUT after 300s: {e}")
+            print(f"[RAG ERROR] Ollama timeout - try running a simpler query first to warm up the model")
+            return f"Error: Ollama timeout after 5 minutes. Try running 'ollama run llama3.2:1b' in terminal first."
+            
+        except httpx.ConnectError as e:
+            logger.error(f"LLM CONNECTION ERROR: {e}")
+            print(f"[RAG ERROR] Cannot connect to Ollama at {self.ollama_url}")
+            return f"Error: Cannot connect to Ollama at {self.ollama_url}. Make sure 'ollama serve' is running."
+            
         except Exception as e:
-            logger.error(f"LLM generation failed: {e}")
-            return f"Error generating methodology: {e}"
+            import traceback
+            error_details = traceback.format_exc()
+            logger.error(f"LLM generation failed: {e}\n{error_details}")
+            print(f"[RAG ERROR] LLM generation failed:\n{error_details}")
+            return f"Error generating methodology: {type(e).__name__}: {e}"
     
     def _build_sources_list(
         self, 

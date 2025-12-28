@@ -649,6 +649,29 @@ async def classify_query(query: str):
         }
 
 
+@app.post("/methodology/query-live")
+async def query_methodology_live(request: MethodologyRequest):
+    """
+    HYBRID RAG: Query using real-time paper search from Semantic Scholar/Europe PMC.
+    
+    Features:
+    - Live paper search (real DOIs)
+    - Source confidence scoring (trust × citations × relevance)
+    - Provenance tagging (DOI, journal, year)
+    """
+    try:
+        from rag.rag_service import get_rag_service
+        
+        rag = get_rag_service()
+        result = await rag.query_live(user_query=request.query, limit=8)
+        return result
+        
+    except Exception as e:
+        import traceback
+        print(f"Hybrid RAG error: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Hybrid RAG failed: {str(e)}")
+
+
 # ====================================
 # Research Paper Search
 # ====================================

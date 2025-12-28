@@ -57,6 +57,10 @@ interface Message {
     suggestions?: string[];
     completedPhases?: Array<{ iconName: string; text: string }>;
     analysis?: AnalysisResult;
+    confidenceScore?: number;
+    expertReviewRequired?: boolean;
+    papersFetched?: number;
+    citations?: string[];
   };
 }
 
@@ -89,16 +93,45 @@ const RESEARCH_MODES = [
   { id: 'writing', name: 'Writing Assistant', icon: FileText, color: 'coral' },
 ];
 
-const QUICK_RESEARCH_PROMPTS = [
-  { icon: BookOpen, text: 'Find recent papers on coral reef bleaching in Indian Ocean', category: 'Literature' },
-  { icon: Microscope, text: 'Suggest methodology for eDNA sampling in estuaries', category: 'Methods' },
-  { icon: TrendingUp, text: 'Analyze fish population trends from my data', category: 'Analysis' },
-  { icon: Lightbulb, text: 'Generate hypotheses for declining fish stocks', category: 'Hypothesis' },
-  { icon: FileText, text: 'Help write abstract for marine biodiversity study', category: 'Writing' },
-  { icon: Target, text: 'Identify gaps in mangrove ecosystem research', category: 'Review' },
-  { icon: Dna, text: 'Interpret eDNA metabarcoding results', category: 'Analysis' },
-  { icon: Globe, text: 'Compare species richness across study sites', category: 'Analysis' },
-];
+// Mode-specific quick prompts
+const MODE_SPECIFIC_PROMPTS: Record<string, Array<{ icon: any; text: string }>> = {
+  general: [
+    { icon: MessageSquare, text: 'What are the latest trends in marine research?' },
+    { icon: BookOpen, text: 'Explain the importance of marine protected areas' },
+    { icon: Globe, text: 'How does climate change affect ocean ecosystems?' },
+    { icon: Dna, text: 'What is eDNA and how is it used in marine biology?' },
+  ],
+  literature: [
+    { icon: BookOpen, text: 'Find recent papers on coral reef bleaching in Indian Ocean' },
+    { icon: Search, text: 'Literature review on eDNA metabarcoding in marine ecosystems' },
+    { icon: Target, text: 'Identify gaps in mangrove ecosystem research' },
+    { icon: TrendingUp, text: 'Most cited papers on fish stock assessment methods' },
+  ],
+  methodology: [
+    { icon: FlaskConical, text: 'How to extract otoliths for age estimation?' },
+    { icon: Microscope, text: 'Suggest methodology for eDNA sampling in estuaries' },
+    { icon: Dna, text: 'Protocol for fish tissue DNA extraction' },
+    { icon: Target, text: 'Best practices for underwater visual census surveys' },
+  ],
+  analysis: [
+    { icon: BarChart3, text: 'Analyze fish population trends from my data' },
+    { icon: TrendingUp, text: 'Compare species richness across study sites' },
+    { icon: Dna, text: 'Interpret eDNA metabarcoding results' },
+    { icon: Globe, text: 'PERMANOVA analysis for community composition' },
+  ],
+  hypothesis: [
+    { icon: Lightbulb, text: 'Generate hypotheses for declining fish stocks' },
+    { icon: Target, text: 'Propose research questions for coral reef resilience' },
+    { icon: Dna, text: 'Hypotheses for eDNA detection in varying salinity' },
+    { icon: TrendingUp, text: 'Predict climate change impacts on fish migration' },
+  ],
+  writing: [
+    { icon: FileText, text: 'Help write abstract for marine biodiversity study' },
+    { icon: BookOpen, text: 'Draft methods section for eDNA sampling protocol' },
+    { icon: MessageSquare, text: 'Write introduction for fisheries research paper' },
+    { icon: Target, text: 'Summarize key findings for discussion section' },
+  ],
+};
 
 const SAMPLE_PAPERS: Paper[] = [
   {
@@ -401,18 +434,84 @@ export default function AIResearchAssistant() {
     }
 
     if (mode === 'methodology' || query.toLowerCase().includes('method') || query.toLowerCase().includes('how to')) {
+      // Use HYBRID RAG with REAL papers from Semantic Scholar/Europe PMC
+      try {
+        const response = await fetch('http://localhost:8000/methodology/query-live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const ragResult = await response.json();
+
+        if (ragResult.success && ragResult.methodology) {
+          // Build formatted response with real citations
+          let content = `## Recommended Methodology\n\n${ragResult.methodology}`;
+
+          // Add sources section with real DOIs and provenance
+          if (ragResult.sources && ragResult.sources.length > 0) {
+            content += `\n\n---\n\n### 📚 Sources (Real Papers)\n`;
+            ragResult.sources.forEach((src: any) => {
+              const icon = src.type?.includes('Peer') ? '📄' : '📋';
+              const doi = src.doi ? ` | [DOI](https://doi.org/${src.doi})` : '';
+              const year = src.year ? ` (${src.year})` : '';
+              const journal = src.journal && src.journal !== 'Unknown' ? ` - ${src.journal}` : '';
+              content += `- ${icon} **[${src.doc_id}]** ${src.title}${year}${journal}${doi}\n`;
+            });
+          }
+
+          // Add confidence from source ranking
+          const confidence = ragResult.confidence?.score || 0;
+          const confidenceLabel = ragResult.confidence?.label ||
+            (confidence >= 0.75 ? '🟢 High' : confidence >= 0.5 ? '🟡 Medium' : '🔴 Low');
+          content += `\n\n**Confidence**: ${confidenceLabel} (${Math.round(confidence * 100)}%)`;
+
+          if (ragResult.expert_review_required) {
+            content += `\n⚠️ *Expert review recommended*`;
+          }
+
+          // Add limitations
+          if (ragResult.limitations && ragResult.limitations.length > 0) {
+            content += `\n\n### ⚠️ Limitations\n`;
+            ragResult.limitations.forEach((lim: string) => {
+              content += `- ${lim}\n`;
+            });
+          }
+
+          return {
+            id: baseId,
+            role: 'assistant',
+            content,
+            timestamp: new Date(),
+            type: 'methodology',
+            metadata: {
+              suggestions: ragResult.limitations || [],
+              confidenceScore: ragResult.confidence?.score,
+              expertReviewRequired: ragResult.expert_review_required,
+              papersFetched: ragResult.papers_fetched
+            }
+          };
+        }
+      } catch (error) {
+        console.error('Hybrid RAG query failed:', error);
+        // Fall through to fallback below
+      }
+
+      // Fallback if RAG API fails
       return {
         id: baseId,
         role: 'assistant',
-        content: `## Recommended Methodology\n\nBased on your research question, here's a suggested approach:\n\n### 1. Study Design\n- **Type**: Comparative field study with temporal sampling\n- **Duration**: 12-month monitoring period recommended\n- **Replication**: Minimum 3 sites per habitat type\n\n### 2. Sampling Protocol\n- Collect water samples at 3 depths (surface, mid-water, benthic)\n- Use sterile 1L Nalgene bottles\n- Filter through 0.45μm membrane filters within 6 hours\n- Store at -20°C until DNA extraction\n\n### 3. Analysis Methods\n- DNA extraction: DNeasy PowerWater Kit\n- Amplification: COI and 12S rRNA markers\n- Sequencing: Illumina MiSeq paired-end 2×300bp\n- Bioinformatics: DADA2 pipeline with MIDORI2 database\n\n### 4. Statistical Analysis\n- Alpha diversity: Shannon, Simpson indices\n- Beta diversity: NMDS ordination, PERMANOVA\n- Environmental correlations: CCA/RDA\n\nWould you like me to elaborate on any of these steps or suggest alternative approaches?`,
+        content: `## Recommended Methodology\n\n⚠️ Could not connect to the live paper search.\n\nPlease try:\n1. Check that AI services are running\n2. Verify Ollama is active\n3. Try again in a moment`,
         timestamp: new Date(),
         type: 'methodology',
         metadata: {
           suggestions: [
-            'Add control sites for comparison',
-            'Consider seasonal variation in sampling',
-            'Include environmental metadata collection',
-            'Plan for technical replicates'
+            'Live paper search unavailable',
+            'Check AI services and Ollama'
           ]
         }
       };
@@ -1014,7 +1113,7 @@ export default function AIResearchAssistant() {
         </div>
 
         {/* Messages Container - Expanded for more vertical space */}
-        <div className="flex-1 bg-white dark:bg-deep-800 rounded-xl shadow-sm border border-gray-200 dark:border-deep-700 flex flex-col overflow-hidden max-h-[calc(100vh-200px)]">
+        <div className="flex-1 bg-white dark:bg-deep-800 rounded-xl shadow-sm border border-gray-200 dark:border-deep-700 flex flex-col overflow-hidden max-h-[calc(100vh-120px)]">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {messages.map((message) => (
               <div
@@ -1206,7 +1305,10 @@ export default function AIResearchAssistant() {
           </button>
           {expandedSections.includes('prompts') && (
             <div className="px-4 pb-4 space-y-2">
-              {QUICK_RESEARCH_PROMPTS.map((prompt, idx) => (
+              <p className="text-xs text-deep-400 dark:text-gray-500 mb-2 capitalize">
+                {RESEARCH_MODES.find(m => m.id === activeMode)?.name || 'General'} prompts
+              </p>
+              {(MODE_SPECIFIC_PROMPTS[activeMode] || MODE_SPECIFIC_PROMPTS.general).map((prompt, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleQuickPrompt(prompt.text)}
@@ -1217,7 +1319,6 @@ export default function AIResearchAssistant() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-deep-700 dark:text-gray-300 line-clamp-2">{prompt.text}</p>
-                    <p className="text-xs text-deep-400 dark:text-gray-500">{prompt.category}</p>
                   </div>
                 </button>
               ))}

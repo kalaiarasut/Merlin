@@ -905,19 +905,18 @@ export default function EdnaManager() {
     if (uploadedSequences.length === 0) return;
 
     setIsProcessing(true);
-    const steps = [...PIPELINE_STEPS].map(s => ({ ...s, status: 'pending' as const }));
+    const steps: ProcessingStep[] = PIPELINE_STEPS.map(s => ({ ...s, status: 'pending' as ProcessingStep['status'] }));
     setProcessingSteps(steps);
 
     for (let i = 0; i < steps.length; i++) {
       setCurrentProcessingStep(i);
-      steps[i].status = 'running';
+      steps[i] = { ...steps[i], status: 'running' };
       setProcessingSteps([...steps]);
 
       // Simulate processing time
       await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
 
-      steps[i].status = 'completed';
-      steps[i].details = `Processed ${uploadedSequences.length} sequences`;
+      steps[i] = { ...steps[i], status: 'completed', details: `Processed ${uploadedSequences.length} sequences` };
       setProcessingSteps([...steps]);
     }
 

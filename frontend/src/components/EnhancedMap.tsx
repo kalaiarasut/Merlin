@@ -283,7 +283,7 @@ export default function EnhancedMap({
           p.lng,
           p.value ?? 1,
         ]);
-        
+
         heatmapRef.current = (L as any).heatLayer(heatData, {
           radius: heatmapOptions.radius || 25,
           blur: heatmapOptions.blur || 15,
@@ -334,7 +334,8 @@ export default function EnhancedMap({
           );
           return distance !== undefined && distance <= coords.radius;
         } else {
-          const polygon = L.polygon(shape.coordinates as number[][]);
+          const coords = shape.coordinates as [number, number][];
+          const polygon = L.polygon(coords);
           return polygon.getBounds().contains(L.latLng(point.lat, point.lng));
         }
       });
@@ -356,7 +357,7 @@ export default function EnhancedMap({
           >
             <MapIcon className="w-4 h-4" />
           </button>
-          
+
           {showClustering && (
             <button
               onClick={() => setViewMode('clusters')}
@@ -369,7 +370,7 @@ export default function EnhancedMap({
               <Layers className="w-4 h-4" />
             </button>
           )}
-          
+
           {showHeatmap && (
             <button
               onClick={() => setViewMode('heatmap')}
@@ -409,7 +410,7 @@ export default function EnhancedMap({
       {viewMode === 'heatmap' && (
         <div className="absolute bottom-2 right-2 z-[1000] bg-white/90 dark:bg-gray-800/90 rounded-lg shadow-md p-2">
           <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Intensity</div>
-          <div 
+          <div
             className="h-2 w-24 rounded"
             style={{
               background: `linear-gradient(to right, ${Object.values(heatmapOptions.gradient || defaultGradient).join(', ')})`
@@ -428,5 +429,3 @@ export default function EnhancedMap({
   );
 }
 
-// Re-export types
-export type { DrawnShape, MapPoint };

@@ -9,8 +9,9 @@
     ],
     "module": "ESNext",
     "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -31,7 +32,10 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/tests",
+    "**/*.test.tsx",
+    "**/*.test.ts"
   ],
   "references": [
     {

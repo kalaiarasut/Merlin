@@ -352,6 +352,32 @@ Format each step as:
 [Exact method from document] [Document ID]
 """
 
+        # Try Groq API first (Best for Cloud/Deployment)
+        import os
+        groq_api_key = os.environ.get("GROQ_API_KEY")
+        
+        if groq_api_key:
+            try:
+                from groq import Groq
+                # Use synchronous client inside async function (or use AsyncGroq if installed, but sync is fine for this scale)
+                # Ideally use: client = AsyncGroq(api_key=groq_api_key)
+                client = Groq(api_key=groq_api_key)
+                
+                logger.info("Using GROQ Cloud API for generation (High Performance)")
+                completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    model="llama3-70b-8192", # Free high-performance model
+                    temperature=0.3,
+                    max_tokens=2048,
+                )
+                return completion.choices[0].message.content
+            except Exception as e:
+                logger.error(f"Groq API failed, falling back to Ollama: {e}")
+                # Fall through to Ollama
+
         try:
             logger.info(f"Calling Ollama LLM at {self.ollama_url} with model {self.model}")
             logger.info(f"Context length: {len(context)} chars, Doc IDs: {doc_ids}")
@@ -365,7 +391,7 @@ Format each step as:
                         "system": system_prompt,
                         "stream": False,
                         "options": {
-                            "temperature": 0.3,  # Lower temperature for accuracy
+                            "temperature": 0.3,
                             "num_predict": 2048
                         }
                     }

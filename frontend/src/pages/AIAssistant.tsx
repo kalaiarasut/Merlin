@@ -149,6 +149,18 @@ export default function AIAssistant() {
   const [showHistory, setShowHistory] = useState(false);
   const [frequentPrompts, setFrequentPrompts] = useState<{ text: string; count: number }[]>([]);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<'auto' | 'groq' | 'ollama' | 'ollama_agent'>(() => {
+    // Load from localStorage, default to 'auto'
+    try {
+      const stored = localStorage.getItem('cmlre-llm-provider');
+      if (stored === 'groq' || stored === 'ollama' || stored === 'ollama_agent' || stored === 'auto') {
+        return stored;
+      }
+    } catch (e) {
+      console.error('Failed to load provider preference:', e);
+    }
+    return 'auto';
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch AI system status
@@ -159,7 +171,7 @@ export default function AIAssistant() {
         const response = await fetch('http://localhost:8000/ai/status');
         return response.json();
       } catch {
-        return { internet: false, ollama: false, gemini: false, fishbase: false, active_provider: 'offline', mode: 'offline' };
+        return { internet: false, ollama: false, groq: false, fishbase: false, active_provider: 'offline', mode: 'offline' };
       }
     },
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -266,7 +278,7 @@ export default function AIAssistant() {
       ));
 
       try {
-        for await (const chunk of aiService.chatStream(input, undefined, requestId)) {
+        for await (const chunk of aiService.chatStream(input, undefined, requestId, selectedProvider)) {
           if (chunk.type === 'token') {
             fullContent += chunk.content;
             // Update the streaming message content in real-time
@@ -291,7 +303,7 @@ export default function AIAssistant() {
       } catch (streamError) {
         // Fallback to regular non-streaming chat if streaming fails
         console.warn('Streaming failed, falling back to regular chat:', streamError);
-        const response = await aiService.chat(input, undefined, requestId);
+        const response = await aiService.chat(input, undefined, requestId, selectedProvider);
         fullContent = response.response || '';
       }
 
@@ -469,9 +481,37 @@ export default function AIAssistant() {
           <div className="h-4 w-px bg-gray-300" />
           <div className="flex items-center gap-2">
             <Brain className="w-4 h-4 text-ocean-500" />
-            <span className="text-sm">
-              Provider: <span className="font-medium capitalize">{aiStatus?.active_provider || 'Ollama'}</span>
-            </span>
+            <span className="text-sm">Provider:</span>
+            <div className="relative group z-50">
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/50 border border-gray-200 hover:border-ocean-300 transition-colors text-xs font-medium text-deep-700">
+                {selectedProvider === 'auto' && 'Auto (Groq)'}
+                {selectedProvider === 'groq' && 'Groq (Cloud)'}
+                {selectedProvider === 'ollama' && 'Ollama (Local)'}
+                {selectedProvider === 'ollama_agent' && 'Ollama (Agentic)'}
+                <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
+              </button>
+              {/* Dropdown with padding bridge for hover stability */}
+              <div className="absolute top-full left-0 pt-2 w-48 hidden group-hover:block z-50">
+                <div className="bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                  <button onClick={() => { setSelectedProvider('auto'); localStorage.setItem('cmlre-llm-provider', 'auto'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                    <span className="font-medium">Auto (Groq)</span>
+                    <span className="block text-[10px] text-gray-400">Best performance</span>
+                  </button>
+                  <button onClick={() => { setSelectedProvider('groq'); localStorage.setItem('cmlre-llm-provider', 'groq'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                    <span className="font-medium">Groq (Cloud)</span>
+                    <span className="block text-[10px] text-gray-400">Fastest, uses internet</span>
+                  </button>
+                  <button onClick={() => { setSelectedProvider('ollama'); localStorage.setItem('cmlre-llm-provider', 'ollama'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                    <span className="font-medium">Ollama (Local)</span>
+                    <span className="block text-[10px] text-gray-400">Offline, context-based</span>
+                  </button>
+                  <button onClick={() => { setSelectedProvider('ollama_agent'); localStorage.setItem('cmlre-llm-provider', 'ollama_agent'); }} className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50 transition-colors border-t border-gray-100">
+                    <span className="font-medium">Ollama (Agentic)</span>
+                    <span className="block text-[10px] text-emerald-500">Local tools (Experimental)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="h-4 w-px bg-gray-300" />
           <div className="flex items-center gap-2">
@@ -485,12 +525,12 @@ export default function AIAssistant() {
               </>
             )}
           </div>
-          {aiStatus?.gemini && (
+          {aiStatus?.groq && (
             <>
               <div className="h-4 w-px bg-gray-300" />
               <div className="flex items-center gap-1">
                 <Sparkles className="w-4 h-4 text-purple-500" />
-                <span className="text-sm text-purple-600 font-medium">Gemini Active</span>
+                <span className="text-sm text-purple-600 font-medium">Groq Active</span>
               </div>
             </>
           )}
@@ -525,7 +565,7 @@ export default function AIAssistant() {
                 <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
                   <Sparkles className="w-8 h-8 mx-auto mb-2 text-purple-500" />
                   <h4 className="font-medium text-sm">Premium Mode</h4>
-                  <p className="text-xs text-gray-500 mt-1">Gemini + Web Search</p>
+                  <p className="text-xs text-gray-500 mt-1">Groq + Web Search</p>
                   <Badge className="mt-2 text-xs bg-purple-500">Best Quality</Badge>
                 </div>
               </div>
@@ -562,10 +602,10 @@ export default function AIAssistant() {
                       <span className="text-green-500 text-xs font-medium">Yes</span>
                       <div className="w-px h-3 bg-gray-300" />
                       <div className="px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-lg border border-yellow-300">
-                        Gemini API Key Set?
+                        Groq API Key Set?
                       </div>
                       <div className="flex items-start gap-6 mt-2">
-                        {/* No Gemini */}
+                        {/* No Groq */}
                         <div className="flex flex-col items-center">
                           <span className="text-red-500 text-xs">No</span>
                           <div className="w-px h-2 bg-gray-300" />
@@ -574,13 +614,13 @@ export default function AIAssistant() {
                             Ollama + FishBase
                           </div>
                         </div>
-                        {/* Yes Gemini */}
+                        {/* Yes Groq */}
                         <div className="flex flex-col items-center">
                           <span className="text-green-500 text-xs">Yes</span>
                           <div className="w-px h-2 bg-gray-300" />
                           <div className="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg border text-xs">
                             <Sparkles className="w-3 h-3 inline mr-1" />
-                            Gemini + Web
+                            Groq + Web
                           </div>
                         </div>
                       </div>
@@ -591,7 +631,7 @@ export default function AIAssistant() {
 
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <p className="text-xs text-gray-600">
-                  <strong>Current:</strong> {aiStatus?.gemini ? '🟣 Premium Mode (Gemini)' :
+                  <strong>Current:</strong> {aiStatus?.groq ? '🟣 Premium Mode (Groq)' :
                     aiStatus?.internet ? '🔵 Online Mode (Ollama + FishBase)' : '⚪ Offline Mode (Local Only)'}
                 </p>
               </div>
@@ -687,14 +727,35 @@ export default function AIAssistant() {
                       "prose prose-sm max-w-none",
                       message.role === 'user' ? "prose-invert" : "dark:prose-invert"
                     )}>
-                      {message.content.split('\n').map((line, i) => (
-                        <p key={i} className={cn(
-                          "mb-2 last:mb-0",
-                          line.startsWith('**') && "font-semibold"
-                        )}>
-                          {line}
-                        </p>
-                      ))}
+                      {/* Show loading spinner if message is empty and we're loading */}
+                      {message.role === 'assistant' && !message.content && isLoading ? (
+                        <div className="flex items-center gap-2">
+                          <Loader className="w-4 h-4 animate-spin text-ocean-500" />
+                          <span className="text-sm text-deep-500">
+                            {progress?.stage === 'scraping_fishbase'
+                              ? 'Fetching FishBase...'
+                              : progress?.stage === 'processing_llm'
+                                ? 'Processing with AI...'
+                                : 'Analyzing your query...'}
+                          </span>
+                          <button
+                            onClick={handleCancel}
+                            className="ml-2 text-xs text-red-500 hover:text-red-600 flex items-center gap-1"
+                          >
+                            <Square className="w-3 h-3" />
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        message.content.split('\n').map((line, i) => (
+                          <p key={i} className={cn(
+                            "mb-2 last:mb-0",
+                            line.startsWith('**') && "font-semibold"
+                          )}>
+                            {line}
+                          </p>
+                        ))
+                      )}
                     </div>
                   </div>
                   {message.role === 'assistant' && (
@@ -717,62 +778,6 @@ export default function AIAssistant() {
               </div>
             ))}
 
-            {isLoading && (
-              <div className="flex gap-4">
-                <Avatar className="w-10 h-10 ring-2 ring-ocean-200">
-                  <AvatarFallback className="bg-gradient-to-br from-ocean-500 to-marine-600">
-                    <Bot className="w-5 h-5 text-white" />
-                  </AvatarFallback>
-                </Avatar>
-                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 min-w-[250px]">
-                  <div className="flex items-center gap-2">
-                    <Loader className="w-4 h-4 animate-spin text-ocean-500" />
-                    <span className="text-sm text-deep-500">
-                      {progress?.stage === 'scraping_fishbase'
-                        ? 'Fetching FishBase...'
-                        : progress?.stage === 'processing_llm'
-                          ? 'Processing with AI...'
-                          : 'Analyzing your query...'}
-                    </span>
-                  </div>
-                  {progress && progress.total && progress.total > 0 && (
-                    <div className="mt-3">
-                      <div className="text-xs text-gray-500 mb-1 flex justify-between">
-                        <span>{progress.current}/{progress.total} species</span>
-                        {progress.eta_seconds && progress.eta_seconds > 0 && (
-                          <span className="text-ocean-500">~{Math.ceil(progress.eta_seconds)}s left</span>
-                        )}
-                      </div>
-                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-ocean-500 transition-all duration-300"
-                          style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {progress?.message && (
-                    <p className="text-xs text-gray-400 mt-2 truncate max-w-[300px]">
-                      {progress.message}
-                    </p>
-                  )}
-                  {streamingContent && (
-                    <div className="mt-3 text-sm text-gray-700 dark:text-gray-200 max-h-40 overflow-y-auto">
-                      {streamingContent}
-                      <span className="animate-pulse">▌</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={handleCancel}
-                    className="mt-3 flex items-center gap-1 text-xs text-red-500 hover:text-red-600 transition-colors"
-                    title="Cancel request"
-                  >
-                    <Square className="w-3 h-3" />
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </CardContent>
 
@@ -813,9 +818,8 @@ export default function AIAssistant() {
         </Card>
       </div>
 
-      {/* Right Side Panel - Frequently Used Prompts Only */}
+      {/* Right Side Panel */}
       <div className="hidden xl:block w-80 space-y-4">
-        {/* Frequently Used Prompts */}
         <Card variant="glass">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">

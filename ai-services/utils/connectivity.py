@@ -87,7 +87,7 @@ async def check_ollama(url: str = None) -> bool:
     ollama_url = url or os.getenv("OLLAMA_URL", "http://localhost:11434")
     
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{ollama_url}/api/tags")
             return response.status_code == 200
     except Exception as e:

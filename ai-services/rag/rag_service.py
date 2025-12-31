@@ -63,7 +63,7 @@ class RAGService:
         
         logger.info("RAG Service initialized with all components (Hybrid mode enabled)")
     
-    async def query(self, user_query: str, include_papers: bool = True) -> Dict[str, Any]:
+    async def query(self, user_query: str, include_papers: bool = True, provider: Optional[str] = "auto") -> Dict[str, Any]:
         """
         Full RAG pipeline with all 4 core rules.
         
@@ -133,7 +133,8 @@ class RAGService:
         methodology = await self._generate_methodology(
             query=user_query,
             context=context_text,
-            doc_ids=doc_ids
+            doc_ids=doc_ids,
+            provider=provider
         )
         
         # ============================================
@@ -172,7 +173,7 @@ class RAGService:
             "sources": sources
         }
     
-    async def query_live(self, user_query: str, limit: int = 8) -> Dict[str, Any]:
+    async def query_live(self, user_query: str, limit: int = 8, provider: Optional[str] = "auto") -> Dict[str, Any]:
         """
         HYBRID RAG: Query using real-time paper search from Semantic Scholar/Europe PMC.
         
@@ -244,7 +245,8 @@ Trust: {rsrc.trust_score:.2f} | Confidence Band: {rsrc.confidence_band.upper()}
         methodology = await self._generate_methodology(
             query=user_query,
             context=context,
-            doc_ids=doc_ids
+            doc_ids=doc_ids,
+            provider=provider
         )
         
         # Format limitations based on confidence
@@ -311,7 +313,8 @@ Trust: {rsrc.trust_score:.2f} | Confidence Band: {rsrc.confidence_band.upper()}
         self,
         query: str,
         context: str,
-        doc_ids: List[str]
+        doc_ids: List[str],
+        provider: Optional[str] = "auto"
     ) -> str:
         """
         Generate methodology using LLM with citation-forcing prompt.
@@ -352,15 +355,26 @@ Format each step as:
 [Exact method from document] [Document ID]
 """
 
-        # Try Groq API first (Best for Cloud/Deployment)
+        # Determine provider
+        use_groq = False
         import os
         groq_api_key = os.environ.get("GROQ_API_KEY")
         
-        if groq_api_key:
+        if provider == "groq":
+            if groq_api_key:
+                use_groq = True
+            else:
+                logger.warning("Groq requested but no API key found. Falling back.")
+        elif provider == "ollama":
+            use_groq = False
+        else: # auto
+            if groq_api_key:
+                use_groq = True
+
+        # Execution
+        if use_groq:
             try:
                 from groq import Groq
-                # Use synchronous client inside async function (or use AsyncGroq if installed, but sync is fine for this scale)
-                # Ideally use: client = AsyncGroq(api_key=groq_api_key)
                 client = Groq(api_key=groq_api_key)
                 
                 logger.info("Using GROQ Cloud API for generation (High Performance)")
@@ -369,7 +383,7 @@ Format each step as:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
-                    model="llama3-70b-8192", # Free high-performance model
+                    model="llama-3.3-70b-versatile",
                     temperature=0.3,
                     max_tokens=2048,
                 )
@@ -377,6 +391,7 @@ Format each step as:
             except Exception as e:
                 logger.error(f"Groq API failed, falling back to Ollama: {e}")
                 # Fall through to Ollama
+
 
         try:
             logger.info(f"Calling Ollama LLM at {self.ollama_url} with model {self.model}")

@@ -175,6 +175,7 @@ class ChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
     request_id: Optional[str] = None  # For progress tracking
+    provider: Optional[str] = None  # LLM provider: "groq", "ollama", or "auto"
 
 class ChatResponse(BaseModel):
     response: str
@@ -267,17 +268,40 @@ async def get_ai_status():
         - mode: Current operation mode (offline/online)
     """
     from utils.connectivity import get_cached_status
+    import os
     
     try:
         status = await get_cached_status(max_age_seconds=30)
+        
+        # Check Groq availability
+        groq_api_key = os.getenv("GROQ_API_KEY", "")
+        groq_available = bool(groq_api_key)
+        
+        # Determine active provider based on what's available
+        if groq_available:
+            active_provider = "groq"
+        elif status.ollama:
+            active_provider = "ollama"
+        else:
+            active_provider = "fallback"
+        
         return {
             "success": True,
             **status.to_dict(),
+            "groq": groq_available,
+            "active_provider": active_provider,  # Override with actual provider
             "providers": {
+                "groq": {
+                    "name": "Groq (Cloud)",
+                    "available": groq_available,
+                    "description": "Cloud LLM - Fast, Free Tier",
+                    "model": "llama-3.3-70b-versatile"
+                },
                 "ollama": {
                     "name": "Ollama (Local)",
                     "available": status.ollama,
-                    "description": "Local LLM - 100% Private"
+                    "description": "Local LLM - 100% Private",
+                    "model": "llama3.2:1b"
                 }
             },
             "data_sources": {
@@ -292,6 +316,7 @@ async def get_ai_status():
             "error": str(e),
             "internet": False,
             "ollama": False,
+            "groq": False,
             "tavily": False,
             "fishbase": False,
             "active_provider": "fallback",
@@ -304,7 +329,11 @@ async def chat(request: ChatRequest):
     """
     Intelligent marine-domain chat endpoint.
     
-    Uses Ollama (local LLM) or falls back to OpenAI for natural language queries.
+    Supports two LLM providers:
+    - groq: Cloud API (fast, free tier, no local resources needed)
+    - ollama: Local LLM (private, requires local install)
+    - auto: Auto-detect (Groq if API key present, else Ollama)
+    
     Provides context-aware responses for:
     - Species identification and information
     - Oceanographic data interpretation
@@ -316,7 +345,7 @@ async def chat(request: ChatRequest):
     from chat.llm_service import get_llm_service
     
     try:
-        llm_service = get_llm_service()
+        llm_service = get_llm_service(preferred_provider=request.provider)
         result = await llm_service.chat(
             message=request.message,
             context=request.context,
@@ -357,7 +386,7 @@ async def chat_stream(request: ChatRequest):
     
     async def generate_stream():
         try:
-            llm_service = get_llm_service()
+            llm_service = get_llm_service(preferred_provider=request.provider)
             
             # Check if search context is needed
             if llm_service.search_service.is_search_query(request.message):
@@ -370,7 +399,7 @@ async def chat_stream(request: ChatRequest):
             
             # Check cache first for fast streaming (same key format as llm_service.py)
             message_hash = hashlib.md5(request.message.lower().strip().encode()).hexdigest()[:16]
-            cache_key = f"chat_response:{message_hash}"
+            cache_key = f"chat_response_v3:{request.provider}:{message_hash}"
             
             try:
                 cached_response = cache_get(cache_key)
@@ -397,10 +426,10 @@ async def chat_stream(request: ChatRequest):
                 yield f"data: {json.dumps({'done': True, 'full_response': full_response})}\n\n"
             else:
                 # REAL-TIME STREAMING for fresh responses
-                print(f"[STREAM] Cache miss - streaming from LLM")
+                print(f"[STREAM] Cache miss - streaming from LLM (Provider: {llm_service._active_provider.value})")
                 full_response = ""
                 
-                async for token in llm_service._chat_ollama_stream(
+                async for token in llm_service.chat_stream(
                     message,
                     skip_db_context=skip_db,
                     request_id=request.request_id
@@ -520,6 +549,7 @@ class MethodologyRequest(BaseModel):
     """Request model for RAG methodology query."""
     query: str
     include_papers: Optional[bool] = True  # Whether to include paper results
+    provider: Optional[str] = "auto"  # "groq", "ollama", or "auto"
 
 
 @app.post("/methodology/query")
@@ -546,7 +576,8 @@ async def query_methodology(request: MethodologyRequest):
         rag = get_rag_service()
         result = await rag.query(
             user_query=request.query,
-            include_papers=request.include_papers
+            include_papers=request.include_papers,
+            provider=request.provider
         )
         
         return result
@@ -563,6 +594,38 @@ async def query_methodology(request: MethodologyRequest):
             status_code=500,
             detail=f"Methodology query failed: {str(e)}"
         )
+
+
+class MethodologyLiveRequest(BaseModel):
+    """Request model for HYBRID RAG methodology query."""
+    query: str
+    limit: Optional[int] = 8
+    provider: Optional[str] = "auto"  # "groq", "ollama", or "auto"
+
+
+@app.post("/methodology/query-live")
+async def query_live_methodology(request: MethodologyLiveRequest):
+    """
+    HYBRID RAG Endpoint: Real-time paper search + RAG.
+    """
+    try:
+        from rag.rag_service import get_rag_service
+        
+        rag = get_rag_service()
+        result = await rag.query_live(
+            user_query=request.query,
+            limit=request.limit,
+            provider=request.provider
+        )
+        
+        return result
+        
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"RAG module error: {str(e)}")
+    except Exception as e:
+        import traceback
+        print(f"Live methodology query error: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Live query failed: {str(e)}")
 
 
 @app.post("/methodology/ingest")

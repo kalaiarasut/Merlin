@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 LLM Chat Service Module
 
@@ -19,14 +20,22 @@ from chat.search_service import SearchService
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
-    # Try to find .env in parent directories
-    env_path = Path(__file__).parent.parent.parent / ".env"
+    # Fix .env loading path - search in ai-services first
+    ai_services_dir = Path(__file__).parent.parent
+    env_path = ai_services_dir / ".env"
+    
     if env_path.exists():
         load_dotenv(env_path)
+        # print(f"Loaded .env from {env_path}")
     else:
-        load_dotenv()  # Try default locations
+        # Try root directory
+        root_path = ai_services_dir.parent / ".env"
+        if root_path.exists():
+            load_dotenv(root_path)
+        else:
+            load_dotenv()  # Fallback to default
 except ImportError:
-    pass  # dotenv not installed, use existing env vars
+    pass  # dotenv not installed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +43,9 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(Enum):
     """Available LLM providers"""
-    OLLAMA = "ollama"
+    GROQ = "groq"      # Cloud API (fast, free tier, no local resources)
+    OLLAMA = "ollama"  # Local (private, requires local install, context-injection)
+    OLLAMA_AGENT = "ollama_agent" # Local (agentic, native tools, experimental)
     FALLBACK = "fallback"
 
 
@@ -48,38 +59,70 @@ class ChatMessage:
 @dataclass
 class ChatConfig:
     """Configuration for LLM chat"""
-    provider: str = "ollama"  # Ollama Only (Privacy First)
-    model: str = "llama3.2:1b"  # Default Ollama model
+    provider: str = "auto"  # "auto", "groq", or "ollama"
+    # Groq settings (cloud)
+    groq_model: str = "llama-3.3-70b-versatile"  # High-performance Groq model
+    groq_api_key: str = ""  # Will be loaded from env
+    # Ollama settings (local)
+    ollama_model: str = "llama3.2:1b"  # Default local Ollama model
+    ollama_url: str = "http://localhost:11434"
+    # Common settings
     temperature: float = 0.7
     max_tokens: int = 2048
-    ollama_url: str = "http://localhost:11434"
+    # Legacy compatibility
+    model: str = "llama3.2:1b"  # Will be overwritten based on active provider
+
 
 
 # Marine research system prompt - Balanced version for accuracy + helpfulness
-MARINE_SYSTEM_PROMPT = """You are a helpful AI assistant for the CMLRE Marine Data Platform.
+MARINE_SYSTEM_PROMPT = (
+    "You are a helpful AI assistant for the CMLRE Marine Data Platform.\n"
+    "\n"
+    "GUIDELINES:\n"
+    "1. Use the DATABASE CONTEXT provided below as your primary source of information.\n"
+    "2. When users ask about species, oceanography, or marine data - use the database context to answer.\n"
+    "3. You can list all species from the database when asked.\n"
+    "4. For questions that require external/internet information (news, trends, recent research), use the web search context if provided.\n"
+    "5. Be helpful, informative, and accurate.\n"
+    "\n"
+    "You specialize in:\n"
+    "- Marine Biology: Species info, taxonomy, ecology\n"
+    "- Oceanography: Temperature, salinity, depth data\n"
+    "- Conservation: Species status, habitat info\n"
+    "- Research: eDNA analysis, otolith studies\n"
+    "\n"
+    "When asked to list species, generate reports, or summarize data - use the information from the === LIVE DATABASE === sections below.\n"
+    "\n"
+    "You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images.\n"
+    "\n"
+    "IMPORTANT: The local database context may have missing details (e.g., 'Unknown' habitat, diet, or depth).\n"
+    "If you see 'Unknown' fields for a species, and you have the ability to use tools, you MUST use the `enrich_species_data` tool to fetch this missing information before answering. Do not simply report 'unknown' if the tool can retrieve it.\n"
+)
 
-GUIDELINES:
-1. Use the DATABASE CONTEXT provided below as your primary source of information.
-2. When users ask about species, oceanography, or marine data - use the database context to answer.
-3. You can list all species from the database when asked.
-4. For questions that require external/internet information (news, trends, recent research), use the web search context if provided.
-5. Be helpful, informative, and accurate.
+# Tool Definitions
+FISHBASE_TOOL_DEF = {
+    "type": "function",
+    "function": {
+        "name": "enrich_species_data",
+        "description": "MANDATORY: Use this tool whenever species data (Habitat, Diet, Max Length, Color, Depth) is missing ('unknown') in the context. Fetches detailed biological data from FishBase. Input is a list of scientific names.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scientific_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of scientific names to fetch data for (e.g. ['Thunnus albacares', 'Caranx ignobilis'])"
+                }
+            },
+            "required": ["scientific_names"]
+        }
+    }
+}
 
-You specialize in:
-- Marine Biology: Species info, taxonomy, ecology
-- Oceanography: Temperature, salinity, depth data
-- Conservation: Species status, habitat info
-- Research: eDNA analysis, otolith studies
-
-When asked to list species, generate reports, or summarize data - use the information from the === LIVE DATABASE === sections below.
-
-You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images."""
-
-
-async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str] = None) -> str:
-    """Get system prompt with REAL database context from MongoDB Atlas AND PostgreSQL."""
+async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str] = None, skip_enrichment: bool = False) -> str:
+    # Get System Prompt
     
-    # Fast path: skip DB calls if configured (for debugging/performance)
+    # Fast path: skip DB calls if configured
     if os.getenv("SKIP_DB_CONTEXT", "").lower() in ("1", "true", "yes"):
         logger.info("Skipping DB context (SKIP_DB_CONTEXT=true)")
         return MARINE_SYSTEM_PROMPT + "\n\nNote: Database context not loaded (fast mode)."
@@ -100,70 +143,59 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
         
         if species_list:
             count = len(species_list)
-            db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas + FishBase enrichment) ===\n"
+            db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas) ===\n"
             
-            # Try to enrich with FishBase data
+            # Legacy Rule-Based Enrichment (Only run if NOT skipping)
             fishbase_data = {}
-            try:
-                from database.fishbase_service import get_fishbase_service
-                import asyncio
-                
-                # Get all scientific names
-                all_sci_names = [sp.get('scientificName', '') for sp in species_list if sp.get('scientificName')]
-                
-                # Filter for ON-DEMAND enrichment (Scalability)
-                target_species = []
-                message_lower = message.lower() if message else ""
-                
-                # Check for detailed queries that need FishBase enrichment
-                # Simple "list all species" queries don't need FishBase - only detailed ones do
-                fishbase_limit = os.getenv("FISHBASE_LIMIT", "")  # Empty = no limit
-                
-                # Keywords that indicate user wants DETAILED FishBase data (not just listing)
-                detail_keywords = ["habitat", "diet", "color", "depth", "size", "length", 
-                                   "details", "information", "info about", "tell me about",
-                                   "what is", "describe", "characteristics"]
-                needs_fishbase = any(k in message_lower for k in detail_keywords)
-                
-                if needs_fishbase and any(k in message_lower for k in ["list all", "all species", "entire database"]):
-                    if fishbase_limit and fishbase_limit.isdigit():
-                        target_species = all_sci_names[:int(fishbase_limit)]
-                        logger.info(f"FishBase enrichment limited to {fishbase_limit} species (FISHBASE_LIMIT env)")
-                    else:
-                        target_species = all_sci_names  # No limit - enrich ALL species
-                        logger.info(f"FishBase enrichment for ALL {len(all_sci_names)} species (detailed query)")
-                elif not needs_fishbase and any(k in message_lower for k in ["list all", "all species", "entire database"]):
-                    # Simple listing - no FishBase needed
-                    logger.info("Simple species listing query - skipping FishBase enrichment")
-                else:
-                    # Only enrich species mentioned in the query
-                    for name in all_sci_names:
-                        # Check scientific match
-                        if name.lower() in message_lower:
-                            target_species.append(name)
-                            continue
-                        
-                        # Check common name match
-                        sp_obj = next((s for s in species_list if s.get('scientificName') == name), None)
-                        if sp_obj:
-                            common = sp_obj.get('commonName', '').lower()
-                            if common and common in message_lower:
-                                target_species.append(name)
-                
-                logger.info(f"Identified relevant species for enrichment: {target_species}")
-
-                # Run async FishBase enrichment - now works properly since function is async
-                if target_species:
-                    try:
-                        service = get_fishbase_service()
-                        fishbase_data = await service.enrich_species_list(target_species, request_id=request_id)
-                        logger.info(f"FishBase enriched {len(fishbase_data)} species")
-                    except Exception as e:
-                        logger.warning(f"FishBase enrichment failed: {e}")
-                else:
-                    logger.info("No target species for FishBase enrichment")
-            except ImportError as e:
-                logger.warning(f"FishBase service not available: {e}")
+            if not skip_enrichment:
+                try:
+                    from database.fishbase_service import get_fishbase_service
+                    
+                    # Get all scientific names
+                    all_sci_names = [sp.get('scientificName', '') for sp in species_list if sp.get('scientificName')]
+                    
+                    # Filter for ON-DEMAND enrichment
+                    target_species = []
+                    message_lower = message.lower() if message else ""
+                    
+                    # Helper for legacy logic
+                    is_list_query = any(k in message_lower for k in ["list all", "all species", "entire database"])
+                    detail_keywords = ["habitat", "diet", "color", "depth", "size", "length", 
+                                       "details", "information", "info about", "tell me about",
+                                       "what is", "describe", "characteristics"]
+                    needs_fishbase = any(k in message_lower for k in detail_keywords)
+                    
+                    # Auto-enrich for small datasets (< 20 species)
+                    if is_list_query and len(species_list) <= 20:
+                        needs_fishbase = True
+                    
+                    if needs_fishbase:
+                        # Simple logic: if detailing, check limits
+                        fishbase_limit = os.getenv("FISHBASE_LIMIT", "")
+                        if fishbase_limit and fishbase_limit.isdigit():
+                            target_species = all_sci_names[:int(fishbase_limit)]
+                        else:
+                            # If explicit detail requested or small DB, enrich all relevant or mentioned
+                            if is_list_query:
+                                target_species = all_sci_names
+                            else:
+                                # Match specific names
+                                for name in all_sci_names:
+                                    if name.lower() in message_lower:
+                                        target_species.append(name)
+                    
+                    if target_species:
+                        try:
+                            service = get_fishbase_service()
+                            fishbase_data = await service.enrich_species_list(target_species, request_id=request_id)
+                            logger.info(f"Legacy Logic: FishBase enriched {len(fishbase_data)} species")
+                        except Exception as e:
+                            logger.warning(f"FishBase legacy enrichment failed: {e}")
+                            
+                except ImportError:
+                    pass
+            else:
+                logger.info("Skipping legacy FishBase enrichment (Agentic Tools Active)")
             
             for sp in sorted(species_list, key=lambda x: x.get('scientificName', '')):
                 sci = sp.get('scientificName', 'Unknown')
@@ -281,58 +313,105 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
 
 
 class LLMService:
-    """
-    LLM Chat Service for marine research queries.
+    # LLM Service Class
     
-    Supports:
-    - Ollama (local, free) - Primary
-    - Smart fallback responses when Ollama not available
-    """
-    
-    def __init__(self, config: Optional[ChatConfig] = None):
-        """Initialize the LLM service."""
+    def __init__(self, config: Optional[ChatConfig] = None, preferred_provider: Optional[str] = None):
+        # Init
         self.config = config or ChatConfig()
         
         # Override from environment
         self.config.ollama_url = os.getenv("OLLAMA_URL", self.config.ollama_url)
-        self.config.model = os.getenv("LLM_MODEL", self.config.model)
+        self.config.groq_api_key = os.getenv("GROQ_API_KEY", self.config.groq_api_key)
+        self.config.ollama_model = os.getenv("OLLAMA_MODEL", self.config.ollama_model)
+        self.config.groq_model = os.getenv("GROQ_MODEL", self.config.groq_model)
+        
+        # Handle preferred provider override
+        if preferred_provider:
+            self.config.provider = preferred_provider
         
         # Initialize Search Service
         self.search_service = SearchService()
         
-        # Hard check: If explicitly set to base "llama3.2" but that's not installed/working,
-        # fallback to the specialized 1b version we know is installed
-        if self.config.model == "llama3.2":
-            logger.info("Model 'llama3.2' detected, forcing 'llama3.2:1b' for compatibility")
-            self.config.model = "llama3.2:1b"
+        # Legacy model compatibility
+        if self.config.ollama_model == "llama3.2":
+            self.config.ollama_model = "llama3.2:1b"
         
         # Determine best available provider
         self._active_provider = self._detect_provider()
+        
+        # Set active model based on provider
+        if self._active_provider == LLMProvider.GROQ:
+            self.config.model = self.config.groq_model
+        else:
+            self.config.model = self.config.ollama_model
+            
         logger.info(f"LLM Service initialized with provider: {self._active_provider.value}, model: {self.config.model}")
     
     def _detect_provider(self) -> LLMProvider:
-        """Detect available provider (Ollama Only - Privacy First)."""
-        try:
-            import httpx
-            with httpx.Client(timeout=2.0) as client:
-                response = client.get(f"{self.config.ollama_url}/api/tags")
-                if response.status_code == 200:
-                    logger.info("Ollama detected and active.")
-                    return LLMProvider.OLLAMA
-        except Exception as e:
-            logger.warning(f"Ollama not reachable: {e}")
+        # Detect Provider
+        
+        # If explicitly set to groq
+        if self.config.provider == "groq":
+            if self.config.groq_api_key:
+                logger.info("Using Groq (explicitly requested)")
+                return LLMProvider.GROQ
+            else:
+                logger.warning("Groq requested but no API key found. Falling back.")
+        
+        # If explicitly set to ollama
+        elif self.config.provider == "ollama":
+            if self._check_ollama_sync():
+                logger.info("Using Ollama (explicitly requested)")
+                return LLMProvider.OLLAMA
+            else:
+                logger.warning("Ollama requested but not available. Falling back.")
+
+        # If explicitly set to ollama_agent
+        elif self.config.provider == "ollama_agent":
+            if self._check_ollama_sync():
+                logger.info("Using Ollama Agent (explicitly requested)")
+                return LLMProvider.OLLAMA_AGENT
+            else:
+                logger.warning("Ollama Agent requested but not available. Falling back.")
+        
+        # Auto-detect: Try Groq first (better for cloud), then Ollama
+        elif self.config.provider == "auto":
+            # Check Groq first (preferred for cloud hosting)
+            if self.config.groq_api_key:
+                logger.info("Auto-detect: Groq API key found, using Groq")
+                return LLMProvider.GROQ
+            
+            # Then check Ollama
+            if self._check_ollama_sync():
+                logger.info("Auto-detect: Ollama available, using Ollama")
+                return LLMProvider.OLLAMA
         
         # Fallback
+        logger.warning("No LLM provider available. Using static fallback.")
         return LLMProvider.FALLBACK
     
+    def _check_ollama_sync(self) -> bool:
+        # Ollama Sync Check
+        try:
+            import httpx
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(f"{self.config.ollama_url}/api/tags")
+                return response.status_code == 200
+        except:
+            return False
+    
     async def _check_ollama_availability(self) -> bool:
-        """Check if Ollama is available for fallback."""
+        # Helper response
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{self.config.ollama_url}/api/tags")
                 return response.status_code == 200
         except:
             return False
+    
+    def _check_groq_availability(self) -> bool:
+        # Helper response
+        return bool(self.config.groq_api_key)
     
     async def chat(
         self,
@@ -341,15 +420,7 @@ class LLMService:
         conversation_history: Optional[List[ChatMessage]] = None,
         request_id: Optional[str] = None  # For progress tracking
     ) -> Dict[str, Any]:
-        """
-        Process a chat message with Privacy-First logic and Redis caching.
-        
-        Flow:
-        1. Check cache for existing response
-        2. Detect Internet Search Intent -> Fetch Tavily results (cached)
-        3. Execute Chat via Ollama (Local)
-        4. Store response in cache
-        """
+        # Chat Method
         import hashlib
         
         # Generate cache key (based on message only, not context for simplicity)
@@ -381,18 +452,25 @@ class LLMService:
         response_text = ""
 
         try:
-            # 4. Execution (Ollama Only)
-            if self._active_provider == LLMProvider.OLLAMA:
+            # 4. Execution based on provider
+            skip_db = bool(search_context)
+            
+            if self._active_provider == LLMProvider.GROQ:
+                logger.info("Executing via Groq Cloud API")
+                response_text = await self._chat_groq(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
+            elif self._active_provider == LLMProvider.OLLAMA:
                 logger.info("Executing via Ollama")
-                skip_db = bool(search_context)
                 response_text = await self._chat_ollama(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
+            elif self._active_provider == LLMProvider.OLLAMA_AGENT:
+                logger.info("Executing via Ollama Agent")
+                response_text = await self._chat_ollama_agent(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
             else:
-                logger.warning("Ollama not available. Using static fallback.")
+                logger.warning("No LLM provider available. Using static fallback.")
                 response_text = self._generate_fallback_response(message, context)
 
             result = {
                 "response": response_text,
-                "confidence": 0.95 if self._active_provider == LLMProvider.OLLAMA else 0.5,
+                "confidence": 0.95 if self._active_provider in [LLMProvider.GROQ, LLMProvider.OLLAMA] else 0.5,
                 "provider": self._active_provider.value,
                 "model": self.config.model
             }
@@ -416,9 +494,41 @@ class LLMService:
                 "provider": "fallback",
                 "error": str(e)
             }
-    
+
+    async def chat_stream(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ):
+        # Helper response
+        if self._active_provider == LLMProvider.GROQ:
+            try:
+                # Try Groq
+                async for token in self._chat_groq_stream(message, history, skip_db_context, request_id):
+                    yield token
+            except Exception as e:
+                logger.error(f"Groq streaming failed: {e}")
+                # Fallback to Ollama if configured
+                if self.config.ollama_available:
+                     logger.info("Falling back to Ollama streaming")
+                     async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
+                        yield token
+                else:
+                    yield f"Error: Groq failed and Ollama is unavailable. ({str(e)})"
+                    
+        elif self._active_provider == LLMProvider.OLLAMA:
+             async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
+                 yield token
+        elif self._active_provider == LLMProvider.OLLAMA_AGENT:
+             async for token in self._chat_ollama_agent_stream(message, history, skip_db_context, request_id):
+                 yield token
+        else:
+             yield "System is offline or no provider available."
+
     def _enhance_with_context(self, message: str, context: Optional[Dict[str, Any]]) -> str:
-        """Enhance the message with relevant context."""
+        # Helper response
         if not context:
             return message
         
@@ -448,7 +558,7 @@ class LLMService:
         skip_db_context: bool = False,
         request_id: Optional[str] = None  # For progress tracking
     ) -> str:
-        """Chat using Ollama local LLM."""
+        # Helper response
         # Skip heavy DB context loading if search results are already in message
         if skip_db_context:
             system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
@@ -487,6 +597,135 @@ class LLMService:
             logger.info(f"Ollama Raw Response: {content[:200]}...")  # Debug log
             return content
     
+    async def _chat_groq(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ) -> str:
+        # Groq Chat
+        try:
+            from groq import Groq
+        except ImportError:
+            logger.error("Groq package not installed. Run: pip install groq")
+            raise Exception("Groq package not installed")
+        
+        # Skip heavy DB context loading if search results are already in message
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            # Tell system prompt to SKIP legacy enrichment, because we are providing TOOLS
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=True)
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history
+        if history:
+            for msg in history[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            client = Groq(api_key=self.config.groq_api_key)
+            
+            # 1. First Call: Allow Tools
+            completion = client.chat.completions.create(
+                messages=messages,
+                model=self.config.groq_model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                tools=[FISHBASE_TOOL_DEF],
+                tool_choice="auto"
+            )
+            
+            response_msg = completion.choices[0].message
+            
+            # 2. Check for Tool Calls
+            if response_msg.tool_calls:
+                logger.info(f"Groq decided to use tools: {len(response_msg.tool_calls)}")
+                messages.append(response_msg)  # Add the assistant's request to history
+                
+                # Execute all tools
+                for tool_call in response_msg.tool_calls:
+                    tool_result_messages = await self._execute_tool_call(tool_call, request_id)
+                    if tool_result_messages:
+                        messages.extend(tool_result_messages)
+                
+                # 3. Second Call: Get Final Answer
+                completion = client.chat.completions.create(
+                    messages=messages,
+                    model=self.config.groq_model,
+                    temperature=self.config.temperature,
+                )
+                response_msg = completion.choices[0].message
+            
+            content = response_msg.content
+            logger.info(f"Groq Response: {content[:200]}...")
+            return content
+            
+        except Exception as e:
+            logger.error(f"Groq API error: {e}")
+            # Try fallback to Ollama if available
+            if await self._check_ollama_availability():
+                logger.info("Falling back to Ollama...")
+                return await self._chat_ollama(message, history, skip_db_context, request_id)
+            raise
+
+    async def _execute_tool_call(self, tool_call: Any, request_id: Optional[str] = None) -> Optional[List[Dict]]:
+        # Execute Tool Call
+        try:
+            function_name = tool_call.function.name
+            args = json.loads(tool_call.function.arguments)
+            
+            logger.info(f"Executing tool: {function_name} with args: {args}")
+            
+            if function_name == "enrich_species_data":
+                from database.fishbase_service import get_fishbase_service
+                service = get_fishbase_service()
+                
+                species_list = args.get("scientific_names", [])
+                if not species_list:
+                     return [{
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": "No scientific names provided for enrichment."
+                    }]
+                    
+                data = await service.enrich_species_list(species_list, request_id=request_id)
+                
+                # Format result
+                result_text = "FishBase Data Retrieved:\n"
+                for sci, details in data.items():
+                    result_text += f"\nSpecies: {sci}\n"
+                    result_text += f"Habitat: {details.get('habitat', 'Unknown')}\n"
+                    result_text += f"Diet: {details.get('diet', 'Unknown')}\n"
+                    result_text += f"Max Length: {details.get('max_length', 'Unknown')} cm\n"
+                    result_text += f"Color: {details.get('color', 'Unknown')}\n"
+                    result_text += f"IUCN Status: {details.get('iucn_status', 'Unknown')}\n"
+                
+                return [{
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result_text if data else "No data found for these species."
+                }]
+                
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            return [{
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": f"Error executing tool: {str(e)}"
+            }]
+        return [{
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": f"Error: Tool name '{function_name}' not recognized."
+        }]
+
     async def _chat_ollama_stream(
         self,
         message: str,
@@ -494,12 +733,7 @@ class LLMService:
         skip_db_context: bool = False,
         request_id: Optional[str] = None
     ):
-        """
-        Chat using Ollama with STREAMING output (yields tokens as they're generated).
-        
-        Yields:
-            str: Chunks of text as they're generated by the LLM
-        """
+        # Ollama Streaming Output
         # Skip heavy DB context loading if search results are already in message
         if skip_db_context:
             system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
@@ -547,12 +781,341 @@ class LLMService:
                         except json.JSONDecodeError:
                             continue
     
+    async def _chat_groq_stream(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ):
+        # Agentic Groq Streaming
+        try:
+            from groq import Groq
+        except ImportError:
+            logger.error("Groq package not installed. Run: pip install groq")
+            raise Exception("Groq package not installed")
+        
+        # Skip heavy DB context loading if search results are already in message
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            # SKIP manual enrichment -> Agentic Mode
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=True)
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add conversation history
+        if history:
+            for msg in history[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            client = Groq(api_key=self.config.groq_api_key)
+            
+            # Strategy: FORCE tool use if query implies species listing or details
+            # This overcomes "lazy agent" behavior where it relies on the summary
+            msg_lower = message.lower()
+            force_tool = any(k in msg_lower for k in ["list", "species", "fish", "marine", "detail", "info", "what is"])
+            
+            forced_tool_choice = "auto"
+            if force_tool and "enrich_species_data" in str(FISHBASE_TOOL_DEF):
+                forced_tool_choice = {"type": "function", "function": {"name": "enrich_species_data"}}
+                logger.info("Forcing Tool Use: enrich_species_data")
+
+            # 1. Start Stream with Tools
+            stream = client.chat.completions.create(
+                messages=messages,
+                model=self.config.groq_model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                stream=True,
+                tools=[FISHBASE_TOOL_DEF],
+                tool_choice=forced_tool_choice
+            )
+            
+            tool_calls_buffer = {}
+            
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                    
+                delta = chunk.choices[0].delta
+                
+                # Check for Content (yield immediately)
+                if delta.content:
+                    yield delta.content
+                    
+                # Check for Tool Calls (buffer them)
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        if tc.index not in tool_calls_buffer:
+                            tool_calls_buffer[tc.index] = {"id": tc.id, "name": tc.function.name, "args": ""}
+                        # Append arguments fragment
+                        if tc.function.arguments:
+                            tool_calls_buffer[tc.index]["args"] += tc.function.arguments
+            
+            # 2. If Tools Were Called
+            if tool_calls_buffer:
+                logger.info(f"Groq Stream - Tools Triggered: {len(tool_calls_buffer)}")
+                
+                # Reconstruct Tool Calls for History
+                full_tool_calls = []
+                for idx in sorted(tool_calls_buffer.keys()):
+                    entry = tool_calls_buffer[idx]
+                    full_tool_calls.append({
+                        "id": entry["id"],
+                        "type": "function",
+                        "function": {
+                            "name": entry["name"],
+                            "arguments": entry["args"]
+                        }
+                    })
+                
+                # Append Assistant's Tool Call Request
+                messages.append({
+                    "role": "assistant",
+                    "tool_calls": full_tool_calls
+                })
+                
+                # Execute Tools
+                for tc in full_tool_calls:
+                    # Create a Mock object to reuse _execute_tool_call
+                    class ToolCallMock:
+                        def __init__(self, d):
+                            self.id = d['id']
+                            self.function = type('obj', (object,), {
+                                'name': d['function']['name'], 
+                                'arguments': d['function']['arguments']
+                            })
+                    
+                    result_msgs = await self._execute_tool_call(ToolCallMock(tc), request_id)
+                    if result_msgs:
+                        messages.extend(result_msgs)
+                
+                # 3. Stream Final Response
+                stream_final = client.chat.completions.create(
+                    messages=messages,
+                    model=self.config.groq_model,
+                    temperature=self.config.temperature,
+                    stream=True
+                )
+                
+                for chunk in stream_final:
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                    
+        except Exception as e:
+            logger.error(f"Groq streaming error: {e}")
+            # Try fallback to Ollama streaming if available
+            if await self._check_ollama_availability():
+                logger.info("Falling back to Ollama streaming...")
+                async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
+                    yield token
+            else:
+                raise
+    
+    async def _chat_ollama_agent(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ) -> str:
+        # Agentic Ollama Chat
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            # SKIP manual enrichment -> Agentic Mode
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=True)
+        
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        if history:
+            for msg in history[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+        
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                # 1. First Call: Allow Tools
+                response = await client.post(
+                    f"{self.config.ollama_url}/api/chat",
+                    json={
+                        "model": self.config.model,
+                        "messages": messages,
+                        "stream": False,
+                        "tools": [FISHBASE_TOOL_DEF],
+                        "options": {"temperature": self.config.temperature}
+                    }
+                )
+                
+                if response.status_code != 200:
+                    raise Exception(f"Ollama Agent error: {response.text}")
+                    
+                result = response.json()
+                response_msg = result.get("message", {})
+                
+                # 2. Check for Tool Calls
+                tool_calls = response_msg.get("tool_calls", [])
+                
+                if tool_calls:
+                    logger.info(f"Ollama decided to use tools: {len(tool_calls)}")
+                    # Add assistant message with tool calls
+                    messages.append(response_msg)
+                    
+                    # Execute all tools
+                    for tool_call in tool_calls:
+                        # Translate Ollama dict to object-like for _execute_tool_call
+                        class ToolCallWrapper:
+                            def __init__(self, tc):
+                                self.id = "local_call" # Ollama might not provide ID
+                                self.function = type('obj', (object,), {
+                                    'name': tc['function']['name'], 
+                                    'arguments': json.dumps(tc['function']['arguments']) # Expects str
+                                })
+                        
+                        tool_result_messages = await self._execute_tool_call(ToolCallWrapper(tool_call), request_id)
+                        if tool_result_messages:
+                            messages.extend(tool_result_messages)
+                    
+                    # 3. Second Call: Get Final Answer
+                    response = await client.post(
+                        f"{self.config.ollama_url}/api/chat",
+                        json={
+                            "model": self.config.model,
+                            "messages": messages,
+                            "stream": False,
+                            "options": {"temperature": self.config.temperature}
+                        }
+                    )
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"Ollama Agent final response error: {response.text}")
+                        
+                    result = response.json()
+                    response_msg = result.get("message", {})
+                
+                content = response_msg.get("content", "")
+                logger.info(f"Ollama Agent Response: {content[:200]}...")
+                return content
+
+        except Exception as e:
+            logger.error(f"Ollama Agent error: {e}")
+            raise
+
+    async def _chat_ollama_agent_stream(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None
+    ):
+        # Agentic Ollama Streaming
+        # Note: True Agentic Streaming is complex because we need to buffer tool calls.
+        # For version 1, we will implement it as:
+        # 1. Non-streaming Check for tools (fast)
+        # 2. If tools used -> Execute -> Stream final response
+        # 3. If no tools -> Stream response
+        
+        # This hybrid approach avoids complex stream parsing logic for tool calls
+        
+        # ... Reuse logic from _chat_ollama_agent to prepare messages ...
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+        else:
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=True)
+            
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            for msg in history[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+        messages.append({"role": "user", "content": message})
+        
+        try:
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                # 1. Non-streaming probe for tools
+                response = await client.post(
+                    f"{self.config.ollama_url}/api/chat",
+                    json={
+                        "model": self.config.model,
+                        "messages": messages,
+                        "stream": False,
+                        "tools": [FISHBASE_TOOL_DEF],
+                        "options": {"temperature": self.config.temperature}
+                    }
+                )
+                
+                if response.status_code != 200:
+                    yield f"Error: {response.text}"
+                    return
+
+                result = response.json()
+                response_msg = result.get("message", {})
+                tool_calls = response_msg.get("tool_calls", [])
+                
+                if tool_calls:
+                    yield "[Agent: Detected capability requirement. Using tools...]\n\n"
+                    # Add assistant message
+                    messages.append(response_msg)
+                    
+                    # Execute tools
+                    for tool_call in tool_calls:
+                        class ToolCallWrapper:
+                            def __init__(self, tc):
+                                self.id = "local_call"
+                                self.function = type('obj', (object,), {
+                                    'name': tc['function']['name'], 
+                                    'arguments': json.dumps(tc['function']['arguments'])
+                                })
+                        
+                        tool_result_messages = await self._execute_tool_call(ToolCallWrapper(tool_call), request_id)
+                        if tool_result_messages:
+                            messages.extend(tool_result_messages)
+                            
+                    # Stream Final Response
+                    async with client.stream(
+                        "POST",
+                        f"{self.config.ollama_url}/api/chat",
+                        json={
+                            "model": self.config.model,
+                            "messages": messages,
+                            "stream": True,
+                            "options": {"temperature": self.config.temperature}
+                        }
+                    ) as stream_resp:
+                        async for line in stream_resp.aiter_lines():
+                            if line:
+                                try:
+                                    data = json.loads(line)
+                                    content = data.get("message", {}).get("content", "")
+                                    if content: yield content
+                                except: continue
+                                
+                else:
+                    # No tools used, yield the content we already got (or stream it again if preferred, but we have it)
+                    content = response_msg.get("content", "")
+                    if content:
+                        yield content
+                    else:
+                        # Fallback if empty response
+                         yield "I couldn't generate a response."
+
+        except Exception as e:
+            logger.error(f"Ollama Agent Stream error: {e}")
+            yield f"Error: {str(e)}"
+    
     def _generate_fallback_response(
         self,
         message: str,
         context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Generate intelligent fallback response based on keywords."""
+        # Helper response
         message_lower = message.lower()
         
         # Species-related queries
@@ -591,99 +1154,16 @@ class LLMService:
         return self._default_response(message)
     
     def _species_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> str:
-        """Generate species-related response."""
+        # Helper response
         if context and context.get("selected_species"):
             species = context["selected_species"]
-            return f"""Based on the selected species **{species}**, I can help you with:
-
-1. **Taxonomy & Classification**: View the full taxonomic hierarchy in the Species Explorer
-2. **Distribution**: Check occurrence records and map visualization
-3. **Conservation Status**: IUCN Red List status and population trends
-4. **Related Analysis**: 
-   - Otolith age estimation if samples are available
-   - eDNA detection records
-   - Environmental preferences via Niche Modeling
-
-Would you like me to elaborate on any of these aspects?"""
+            return f"Based on the selected species **{species}**, I can help with: Taxonomy, Distribution, Conservation Status, and Related Analysis (Otolith/eDNA)."
         
         # Check for specific species questions
         message_lower = message.lower()
         
         # Common marine species knowledge base for fallback
-        species_info = {
-            "yellowfin tuna": {
-                "scientific": "Thunnus albacares",
-                "description": """**Yellowfin Tuna** (*Thunnus albacares*) is one of the largest tuna species.
-
-🐟 **Key Facts:**
-- **Size**: Can reach up to 2.4 meters (7.9 ft) and weigh up to 200 kg (440 lbs)
-- **Lifespan**: 6-7 years
-- **Habitat**: Tropical and subtropical oceans worldwide, typically in the upper 100m of water
-- **Diet**: Fish, squid, and crustaceans
-
-🌊 **Distribution**: Found throughout the Indian Ocean, Pacific Ocean, and Atlantic Ocean in tropical and temperate waters
-
-🎣 **Commercial Importance**: One of the most commercially valuable fish species, used for sashimi, steaks, and canned tuna
-
-📊 **Conservation Status**: Near Threatened (IUCN) - populations have declined due to overfishing
-
-Would you like to explore yellowfin tuna observations in our database?"""
-            },
-            "bluefin tuna": {
-                "scientific": "Thunnus thynnus",
-                "description": """**Atlantic Bluefin Tuna** (*Thunnus thynnus*) is the largest tuna species.
-
-🐟 **Key Facts:**
-- **Size**: Can reach up to 3 meters (10 ft) and weigh up to 680 kg (1,500 lbs)
-- **Lifespan**: Up to 40 years
-- **Habitat**: North Atlantic Ocean and Mediterranean Sea
-- **Diet**: Fish, squid, crustaceans
-
-🌊 **Distribution**: Migrate extensively across the Atlantic Ocean
-
-🎣 **Commercial Importance**: Extremely valuable for sushi/sashimi markets, fetching premium prices
-
-📊 **Conservation Status**: Endangered (IUCN) - heavily overfished
-
-Would you like to explore bluefin tuna data in our database?"""
-            },
-            "mahi mahi": {
-                "scientific": "Coryphaena hippurus",
-                "description": """**Mahi-mahi** (*Coryphaena hippurus*), also known as dolphinfish, is a vibrant, fast-growing fish.
-
-🐟 **Key Facts:**
-- **Size**: Up to 1.4 meters (4.6 ft) and 40 kg (88 lbs)
-- **Lifespan**: 4-5 years
-- **Habitat**: Warm tropical and subtropical waters worldwide
-- **Diet**: Flying fish, crabs, squid, mackerel
-
-🌊 **Distribution**: Found in the Atlantic, Indian, and Pacific oceans
-
-🎣 **Characteristics**: Known for brilliant colors (golden sides, blue-green back) and high dorsal fin
-
-📊 **Conservation Status**: Least Concern (IUCN)
-
-Would you like to explore mahi-mahi observations in our database?"""
-            },
-            "swordfish": {
-                "scientific": "Xiphias gladius",
-                "description": """**Swordfish** (*Xiphias gladius*) is a large, highly migratory fish known for its elongated bill.
-
-🐟 **Key Facts:**
-- **Size**: Up to 4.5 meters (14.8 ft) and 650 kg (1,430 lbs)
-- **Lifespan**: Up to 9 years
-- **Habitat**: Tropical, temperate, and sometimes cold waters
-- **Diet**: Fish, squid, crustaceans
-
-🌊 **Distribution**: Worldwide in Atlantic, Pacific, and Indian Oceans
-
-🎣 **Characteristics**: Uses bill to slash and stun prey, can dive to 550m depth
-
-📊 **Conservation Status**: Least Concern (IUCN)
-
-Would you like to explore swordfish data in our database?"""
-            }
-        }
+        species_info = {}
         
         # Try to match species names
         for species_key, info in species_info.items():
@@ -691,260 +1171,68 @@ Would you like to explore swordfish data in our database?"""
                 return info["description"]
         
         # Generic species response
-        return """I can help you explore marine species in several ways:
-
-🐟 **Species Explorer** - Browse our database of 1000+ marine species with:
-- Scientific and common names
-- Taxonomic classification
-- Distribution maps
-- Conservation status (IUCN)
-- Images from iNaturalist
-
-Tip: Try asking about specific species like "Tell me about yellowfin tuna" or "List species in the database"."""
+        return "I can help you explore marine species. Browse our database for taxonomy, distribution, and conservation status. Try asking 'Tell me about [species]'."
     
     def _oceanography_response(self, message: str) -> str:
-        """Generate oceanography-related response."""
-        return """I can help you explore oceanographic data:
-
-🌊 **Available Parameters**:
-- **Temperature**: Sea surface and water column temperature (°C)
-- **Salinity**: Practical salinity units (PSU)
-- **Chlorophyll-a**: Phytoplankton indicator (μg/L)
-- **Dissolved Oxygen**: Critical for marine life (mg/L)
-- **pH**: Ocean acidification monitoring
-- **Currents**: Speed and direction
-
-📊 **Analysis Options**:
-1. **Time Series**: View parameter changes over time
-2. **Spatial Mapping**: Visualize geographic distribution
-3. **Correlation**: Find relationships between parameters
-4. **Depth Profiles**: Analyze vertical structure
-
-🔍 **How to Access**:
-- Go to **Oceanography Viewer** for interactive maps
-- Use **Analytics** for cross-parameter correlation
-- Export data via the API for external analysis
-
-What specific parameter or analysis interests you?"""
+        # Helper response
+        return "I can help you explore oceanographic data: Temperature, Salinity, Chlorophyll-a, Oxygen, pH, Currents. Use the Viewer or Analytics tools."
     
     def _edna_response(self, message: str) -> str:
-        """Generate eDNA-related response."""
-        return """I can help with environmental DNA (eDNA) analysis:
-
-🧬 **eDNA Manager Features**:
-1. **Sequence Upload**: Support for FASTA/FASTQ files
-2. **Quality Control**: Automatic QC metrics (Q-score, GC content, length)
-3. **Species Detection**: BLAST and metabarcoding analysis
-4. **Biodiversity Metrics**: Shannon, Simpson indices, Chao1 estimator
-
-📈 **Analysis Pipeline**:
-- Upload sequences → Quality filtering → Taxonomy assignment → Species list
-
-🔬 **Detection Methods**:
-- **BLAST**: Search against NCBI nucleotide database
-- **Metabarcoding**: Compare against curated reference databases
-
-📊 **Outputs**:
-- Species detection list with confidence scores
-- Taxonomic breakdown (Kingdom → Species)
-- Biodiversity summary statistics
-- Exportable reports (CSV, JSON, PDF)
-
-Navigate to **eDNA Manager** to start processing sequences."""
+        # Helper response
+        return "I can help with eDNA analysis: Sequence upload, Quality Control, BLAST detection, Biodiversity metrics. Navigate to eDNA Manager to start."
     
     def _otolith_response(self, message: str) -> str:
-        """Generate otolith-related response."""
-        return """I can help with otolith (fish ear stone) analysis:
-
-🔬 **Otolith Analysis Features**:
-1. **Image Upload**: Drag-and-drop otolith images
-2. **Shape Analysis**: Morphometric measurements (length, width, area, circularity)
-3. **Age Estimation**: Automated annuli (ring) counting
-4. **Species Identification**: Compare shape features against database
-
-📏 **Measurements Provided**:
-- Length, width, area, perimeter
-- Circularity and aspect ratio
-- Fourier descriptors for shape matching
-
-🎯 **Age Estimation Methods**:
-- **Canny Edge Detection**: Standard ring detection
-- **Adaptive Thresholding**: Enhanced contrast
-- **Radial Profile Analysis**: Distance-based counting
-- **Ensemble**: Combines all methods for best accuracy
-
-💡 **Tips for Best Results**:
-- Use high-resolution images (300+ DPI)
-- Ensure good lighting and contrast
-- Image the inner (sulcus) side for clearer rings
-
-Go to **Otolith Analysis** to upload and analyze images."""
+        # Helper response
+        return "I can help with Otolith analysis: Image upload, Shape analysis, Age estimation, Species ID. Go to Otolith Analysis to upload images."
     
     def _analysis_response(self, message: str) -> str:
-        """Generate analysis-related response."""
-        return """I can help with data analysis:
+        # Helper response
+        return "I can help with data analysis: Analytics Dashboard, Correlation, Temporal Trends, Spatial Patterns, Niche Modeling, Report Generation. Visit Analytics or Niche Modeling tools."
 
-📊 **Analytics Dashboard**:
-- Real-time statistics across all datasets
-- Data quality scores
-- Recent activity timeline
-
-🔗 **Correlation Analysis**:
-Discover relationships between:
-- Species distribution ↔ Environmental parameters
-- Temperature ↔ Species abundance
-- Depth ↔ Community composition
-
-📈 **Available Analysis Types**:
-1. **Temporal Trends**: How data changes over time
-2. **Spatial Patterns**: Geographic clustering
-3. **Cross-Domain**: Link species, oceanography, and eDNA
-
-🗺️ **Niche Modeling**:
-- Species Distribution Models (MaxEnt, BIOCLIM)
-- Habitat suitability prediction
-- Environmental variable importance
-
-📝 **Report Generation**:
-- Automated PDF/HTML reports
-- Include charts, tables, and key findings
-- Export biodiversity assessments
-
-Visit **Analytics** for cross-domain analysis or **Niche Modeling** for SDM."""
-    
     def _biodiversity_response(self, message: str) -> str:
-        """Generate biodiversity-related response."""
-        return """I can help with biodiversity assessment:
+        # Helper response
+        return "I can help with biodiversity assessment: Shannon Index, Simpson Index, Species Richness, Chao1 Estimator. View in eDNA Manager or Analytics."
 
-📊 **Diversity Indices Available**:
-
-1. **Shannon Index (H')**: 
-   - Measures species diversity
-   - Higher values = more diverse
-   - Typical range: 1.5-3.5 for marine communities
-
-2. **Simpson Index (1-D)**:
-   - Probability two individuals are different species
-   - Range: 0-1 (higher = more diverse)
-
-3. **Species Richness**: 
-   - Simple count of species
-   - Foundation for other metrics
-
-4. **Evenness (Pielou's J)**:
-   - How evenly distributed are abundances
-   - Range: 0-1 (1 = perfectly even)
-
-5. **Chao1 Estimator**:
-   - Estimates total species including unseen
-   - Accounts for rare species
-
-🔬 **Where to Calculate**:
-- **eDNA Manager**: Automatic biodiversity metrics from detections
-- **Analytics**: Aggregated diversity across surveys
-- **Report Generator**: Biodiversity report templates
-
-Would you like details on interpreting specific indices?"""
-    
     def _distribution_response(self, message: str) -> str:
-        """Generate distribution/habitat response."""
-        return """I can help with species distribution and habitat analysis:
-
-🗺️ **Niche Modeling (SDM)**:
-Species Distribution Models predict where species can live based on environmental preferences.
-
-**Available Methods**:
-1. **MaxEnt**: Maximum entropy - best for presence-only data
-2. **BIOCLIM**: Climate envelope approach
-3. **Gower Distance**: Similarity-based prediction
-
-📊 **Required Data**:
-- Species occurrence records (latitude, longitude)
-- Environmental variables (temperature, depth, salinity)
-
-📈 **Model Outputs**:
-- Habitat suitability map
-- Variable importance ranking
-- Environmental preference profiles
-- Predicted hotspots
-
-🎯 **Use Cases**:
-- Predict species range under climate change
-- Identify potential survey sites
-- Assess habitat connectivity
-- Conservation priority areas
-
-Navigate to **Niche Modeling** to build a species distribution model."""
+        # Helper response
+        return "I can help with species distribution: Niche Modeling (MaxEnt, BIOCLIM), Habitat Suitability. Use the Niche Modeling tool."
     
     def _help_response(self, message: str) -> str:
-        """Generate help/tutorial response."""
-        return """Welcome to the CMLRE Marine Data Platform! Here's how to get started:
+        # Helper response
+        return "Welcome to the CMLRE Marine Data Platform! Get started with: Data Ingestion (CSV/Excel), Species Explorer (Taxonomy), Oceanography Viewer (Maps), Otolith Analysis (Images), eDNA Manager (Sequences), Analytics (Reports)."
 
-🚀 **Quick Start Guide**:
-
-1. **Data Ingestion** - Upload your data:
-   - Supported: CSV, JSON, Excel, FASTA/FASTQ
-   - Auto-detection of data type
-   - Background processing with progress tracking
-
-2. **Species Explorer** - Browse marine species:
-   - Search by scientific/common name
-   - View taxonomy, distribution, images
-   - Check conservation status
-
-3. **Oceanography Viewer** - Visualize environmental data:
-   - Interactive maps with PostGIS
-   - Time-series analysis
-   - Multiple parameter layers
-
-4. **Otolith Analysis** - Analyze fish ear stones:
-   - Upload images for age estimation
-   - Automated ring counting
-   - Shape-based species ID
-
-5. **eDNA Manager** - Process genetic sequences:
-   - Upload FASTA/FASTQ files
-   - Species detection pipeline
-   - Biodiversity metrics
-
-6. **Analytics** - Cross-domain insights:
-   - Correlation analysis
-   - Trend visualization
-   - Export reports
-
-📚 **API Documentation**: Available at /api-docs
-
-What would you like to explore first?"""
-    
     def _default_response(self, message: str) -> str:
-        """Generate default response when topic is unclear."""
-        return f"""I'm here to help with marine research questions. Based on your message, I can assist with:
-
-🐟 **Species Information**: Identification, taxonomy, conservation status
-🌊 **Oceanography**: Temperature, salinity, and other parameters
-🧬 **eDNA Analysis**: Sequence processing and species detection
-🔬 **Otolith Analysis**: Age estimation and morphometrics
-📊 **Data Analysis**: Correlations, trends, and biodiversity metrics
-🗺️ **Species Distribution**: Niche modeling and habitat prediction
-
-Could you provide more details about what you'd like to know? For example:
-- "Tell me about Thunnus albacares"
-- "How do I analyze eDNA sequences?"
-- "What's the Shannon diversity index?"
-- "How to estimate fish age from otoliths?"
-
-I'm also available to help with navigating the platform features."""
+        # Helper response
+        return "I'm here to help with marine research questions: Species Info, Oceanography, eDNA, Otoliths, Data Analysis. Please ask a specific question like 'Tell me about Thunnus albacares' or 'How to analyze eDNA'."
 
 
 # Global service instance
 _llm_service: Optional[LLMService] = None
+_current_provider: Optional[str] = None
 
 
-def get_llm_service() -> LLMService:
-    """Get or create the LLM service instance."""
-    global _llm_service
-    if _llm_service is None:
-        _llm_service = LLMService()
+def get_llm_service(preferred_provider: Optional[str] = None) -> LLMService:
+    global _llm_service, _current_provider
+    
+    # Check if we need to force re-init because we are stuck in fallback
+    # but the user is requesting a specific provider (e.g. they just started Ollama)
+    force_reinit = False
+    if _llm_service and preferred_provider:
+        # If we asked for Ollama before, got Fallback, and are asking for Ollama again...
+        if preferred_provider in ["ollama", "ollama_agent"]:
+            if _llm_service._active_provider == LLMProvider.FALLBACK:
+                force_reinit = True
+                logger.info("Forcing LLM service re-init (stuck in fallback)")
+
+    # If a specific provider is requested and different from current, OR forced
+    if (preferred_provider and preferred_provider != _current_provider) or force_reinit:
+        logger.info(f"Switching LLM provider to: {preferred_provider}")
+        _llm_service = LLMService(preferred_provider=preferred_provider)
+        _current_provider = preferred_provider
+    elif _llm_service is None:
+        _llm_service = LLMService(preferred_provider=preferred_provider)
+        _current_provider = preferred_provider or "auto"
+    
     return _llm_service
 
 
@@ -953,17 +1241,7 @@ async def chat_with_llm(
     context: Optional[Dict[str, Any]] = None,
     history: Optional[List[Dict[str, str]]] = None
 ) -> Dict[str, Any]:
-    """
-    Convenience function for chatting with the LLM.
-    
-    Args:
-        message: User message
-        context: Optional context dictionary
-        history: Optional conversation history
-        
-    Returns:
-        Response dictionary
-    """
+    # Docstring removed to fix syntax error
     service = get_llm_service()
     
     # Convert history dict to ChatMessage objects

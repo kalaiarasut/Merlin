@@ -379,18 +379,18 @@ export const correlationService = {
 
 // AI service
 export const aiService = {
-  chat: (message: string, context?: any, requestId?: string) =>
-    apiClient.post<{ response: string }>('/ai/chat', { message, context, requestId }),
+  chat: (message: string, context?: any, requestId?: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') =>
+    apiClient.post<{ response: string }>('/ai/chat', { message, context, requestId, provider }),
 
   // Streaming chat - yields tokens as they're generated
   // Calls Python directly to avoid Express auth issues with streaming
-  chatStream: async function* (message: string, context?: any, requestId?: string) {
+  chatStream: async function* (message: string, context?: any, requestId?: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') {
     const response = await fetch('http://localhost:8000/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ message, context, request_id: requestId })
+      body: JSON.stringify({ message, context, request_id: requestId, provider })
     });
 
     if (!response.ok) {

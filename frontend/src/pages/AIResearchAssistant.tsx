@@ -306,8 +306,23 @@ export default function AIResearchAssistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPaperPanel, setShowPaperPanel] = useState(false);
   const [savedPapers, setSavedPapers] = useState<Paper[]>(() => loadSavedPapers());
-  const [expandedSections, setExpandedSections] = useState<string[]>(['prompts']);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['methodology', 'results']);
+  const [selectedProvider, setSelectedProvider] = useState<'auto' | 'groq' | 'ollama' | 'ollama_agent'>(() => {
+    // Load from localStorage, default to 'auto'
+    try {
+      const stored = localStorage.getItem('cmlre-llm-provider');
+      if (stored === 'groq' || stored === 'ollama' || stored === 'ollama_agent' || stored === 'auto') {
+        return stored;
+      }
+    } catch (e) {
+      console.error('Failed to load provider preference:', e);
+    }
+    return 'auto';
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   // Save chats whenever they change
   useEffect(() => {
@@ -439,7 +454,7 @@ export default function AIResearchAssistant() {
         const response = await fetch('http://localhost:8000/methodology/query-live', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
+          body: JSON.stringify({ query, provider: selectedProvider })
         });
 
         if (!response.ok) {
@@ -546,7 +561,7 @@ export default function AIResearchAssistant() {
 
     // Default: General response using AI service
     try {
-      const response = await aiService.chat(query, { mode });
+      const response = await aiService.chat(query, { mode }, undefined, selectedProvider);
       return {
         id: baseId,
         role: 'assistant',
@@ -657,9 +672,19 @@ export default function AIResearchAssistant() {
           setMessages(prev => prev.map(msg => msg.id === progressId ? noResultsMsg : msg));
         }
       } else {
-        // Non-streaming for other modes
+        // Non-streaming for other modes - create placeholder then update
+        const placeholderId = (Date.now() + 1).toString();
+        const placeholderMessage: Message = {
+          id: placeholderId,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(),
+          type: 'text'
+        };
+        setMessages(prev => [...prev, placeholderMessage]);
+
         const response = await generateResearchResponse(input.trim(), activeMode);
-        setMessages(prev => [...prev, response]);
+        setMessages(prev => prev.map(msg => msg.id === placeholderId ? { ...response, id: placeholderId } : msg));
       }
     } catch (error) {
       console.error('Research assistant error:', error);
@@ -837,6 +862,23 @@ export default function AIResearchAssistant() {
   );
 
   const renderMessageContent = (message: Message) => {
+    // Show loading indicator if message is empty and we're loading
+    if (!message.content && isLoading) {
+      return (
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-5 h-5 animate-spin text-purple-500" />
+          <span className="text-sm text-deep-700 dark:text-gray-300">
+            {activeMode === 'literature' ? 'Searching literature databases...' :
+              activeMode === 'methodology' ? 'Generating methodology recommendations...' :
+                activeMode === 'analysis' ? 'Analyzing your query...' :
+                  activeMode === 'hypothesis' ? 'Generating hypotheses...' :
+                    activeMode === 'writing' ? 'Drafting content...' :
+                      'Processing your request...'}
+          </span>
+        </div>
+      );
+    }
+
     // Render streaming phases with icons
     if (message.metadata?.completedPhases && Array.isArray(message.metadata.completedPhases)) {
       const phases = message.metadata.completedPhases as unknown as Array<{ icon: any; text: string }>;
@@ -1039,6 +1081,21 @@ export default function AIResearchAssistant() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors text-xs font-medium text-slate-300">
+                {selectedProvider === 'auto' && 'Auto (Groq)'}
+                {selectedProvider === 'groq' && 'Groq (Cloud)'}
+                {selectedProvider === 'ollama' && 'Ollama (Local)'}
+                {selectedProvider === 'ollama_agent' && 'Ollama (Agentic)'}
+                <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
+              </button>
+              <div className="absolute top-full mt-2 right-0 w-40 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden hidden group-hover:block z-50">
+                <button onClick={() => { setSelectedProvider('auto'); localStorage.setItem('cmlre-llm-provider', 'auto'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Auto (Groq)</button>
+                <button onClick={() => { setSelectedProvider('groq'); localStorage.setItem('cmlre-llm-provider', 'groq'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Groq (Cloud)</button>
+                <button onClick={() => { setSelectedProvider('ollama'); localStorage.setItem('cmlre-llm-provider', 'ollama'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Ollama (Local)</button>
+                <button onClick={() => { setSelectedProvider('ollama_agent'); localStorage.setItem('cmlre-llm-provider', 'ollama_agent'); }} className="w-full text-left px-4 py-2 text-sm text-emerald-400 hover:bg-slate-800 hover:text-emerald-300 transition-colors">Ollama (Agentic)</button>
+              </div>
+            </div>
             <button
               onClick={() => setShowPaperPanel(!showPaperPanel)}
               className={cn(
@@ -1175,28 +1232,6 @@ export default function AIResearchAssistant() {
               </div>
             ))}
 
-            {isLoading && (
-              <div className="flex gap-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-white" />
-                </div>
-                <div className="p-4 bg-gray-50 dark:bg-deep-700 rounded-2xl border border-gray-100 dark:border-deep-600">
-                  <div className="flex items-center gap-3">
-                    <Loader2 className="w-5 h-5 animate-spin text-purple-500" />
-                    <div>
-                      <span className="text-sm text-deep-700 dark:text-gray-300">
-                        {activeMode === 'literature' ? 'Searching literature databases...' :
-                          activeMode === 'methodology' ? 'Generating methodology recommendations...' :
-                            activeMode === 'analysis' ? 'Analyzing your query...' :
-                              activeMode === 'hypothesis' ? 'Generating hypotheses...' :
-                                activeMode === 'writing' ? 'Drafting content...' :
-                                  'Processing your request...'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
 

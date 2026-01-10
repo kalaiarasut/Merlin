@@ -200,6 +200,10 @@ export default function SpeciesExplorer() {
     phylum: '',
     habitat: '',
     conservationStatus: '',
+    region: '',           // INMARLH region: SW, SE, NW, NE
+    category: '',         // INMARLH category: SP, LP, SD, LD, etc.
+    family: '',           // Taxonomic family
+    hasInmarlhData: false, // Only species with life history data
   });
 
   // Edit modal state
@@ -281,10 +285,18 @@ export default function SpeciesExplorer() {
   };
 
   const clearFilters = () => {
-    setFilters({ phylum: '', habitat: '', conservationStatus: '' });
+    setFilters({
+      phylum: '',
+      habitat: '',
+      conservationStatus: '',
+      region: '',
+      category: '',
+      family: '',
+      hasInmarlhData: false,
+    });
   };
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount = Object.values(filters).filter(v => v === true || (typeof v === 'string' && v !== '')).length;
 
   return (
     <div className="space-y-6">
@@ -383,9 +395,64 @@ export default function SpeciesExplorer() {
 
         {/* Expanded Filters */}
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 animate-fade-in-down">
+          <div className="mt-4 pt-4 border-t border-gray-200 animate-fade-in-down space-y-4">
+            {/* Row 1: Indian-specific filters */}
             <div className="flex flex-wrap gap-4">
-              <div className="flex-1 min-w-[200px]">
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Indian Region</label>
+                <select
+                  value={filters.region}
+                  onChange={(e) => setFilters({ ...filters, region: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
+                >
+                  <option value="">All Regions</option>
+                  <option value="SW">Southwest Coast (Kerala, Karnataka, Goa)</option>
+                  <option value="SE">Southeast Coast (Tamil Nadu, Andhra)</option>
+                  <option value="NW">Northwest Coast (Gujarat, Maharashtra)</option>
+                  <option value="NE">Northeast Coast (West Bengal, Odisha)</option>
+                </select>
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">INMARLH Category</label>
+                <select
+                  value={filters.category}
+                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
+                >
+                  <option value="">All Categories</option>
+                  <option value="Small Pelagic">Small Pelagic (SP)</option>
+                  <option value="Large Pelagic">Large Pelagic (LP)</option>
+                  <option value="Small Demersal">Small Demersal (SD)</option>
+                  <option value="Large Demersal">Large Demersal (LD)</option>
+                  <option value="Crustacean">Crustacean (CR)</option>
+                  <option value="Mollusc">Mollusc (ML)</option>
+                  <option value="Elasmobranch">Elasmobranch (EL)</option>
+                </select>
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Family</label>
+                <select
+                  value={filters.family}
+                  onChange={(e) => setFilters({ ...filters, family: e.target.value })}
+                  className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
+                >
+                  <option value="">All Families</option>
+                  <option value="CLUPEIDAE">Clupeidae (Sardines, Herrings)</option>
+                  <option value="SCOMBRIDAE">Scombridae (Mackerels, Tunas)</option>
+                  <option value="CARANGIDAE">Carangidae (Jacks, Trevallies)</option>
+                  <option value="CARCHARHINIDAE">Carcharhinidae (Requiem Sharks)</option>
+                  <option value="PENAEIDAE">Penaeidae (Prawns)</option>
+                  <option value="SERRANIDAE">Serranidae (Groupers)</option>
+                  <option value="LETHRINIDAE">Lethrinidae (Emperors)</option>
+                  <option value="ENGRAULIDAE">Engraulidae (Anchovies)</option>
+                  <option value="LOLIGINIDAE">Loliginidae (Squids)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Row 2: General filters */}
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[180px]">
                 <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Phylum</label>
                 <select
                   value={filters.phylum}
@@ -400,7 +467,7 @@ export default function SpeciesExplorer() {
                   <option value="Cnidaria">Cnidaria</option>
                 </select>
               </div>
-              <div className="flex-1 min-w-[200px]">
+              <div className="flex-1 min-w-[180px]">
                 <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Habitat</label>
                 <select
                   value={filters.habitat}
@@ -408,14 +475,15 @@ export default function SpeciesExplorer() {
                   className="w-full h-10 px-3 rounded-lg border-2 border-gray-200 text-sm focus:outline-none focus:border-ocean-400 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
                 >
                   <option value="">All Habitats</option>
-                  <option value="Pelagic">Pelagic</option>
+                  <option value="Small Pelagic">Small Pelagic</option>
+                  <option value="Large Pelagic">Large Pelagic</option>
+                  <option value="Small Demersal">Small Demersal</option>
+                  <option value="Large Demersal">Large Demersal</option>
                   <option value="Coral reefs">Coral Reefs</option>
-                  <option value="Deep sea">Deep Sea</option>
-                  <option value="Coastal waters">Coastal Waters</option>
                   <option value="Estuarine">Estuarine</option>
                 </select>
               </div>
-              <div className="flex-1 min-w-[200px]">
+              <div className="flex-1 min-w-[180px]">
                 <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">Conservation Status</label>
                 <select
                   value={filters.conservationStatus}
@@ -430,12 +498,24 @@ export default function SpeciesExplorer() {
                   <option value="CR">Critically Endangered</option>
                 </select>
               </div>
-              <div className="flex items-end">
-                <Button variant="ghost" onClick={clearFilters} size="default">
-                  <X className="w-4 h-4 mr-2" />
-                  Clear All
-                </Button>
-              </div>
+            </div>
+
+            {/* Row 3: Toggle and actions */}
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filters.hasInmarlhData}
+                  onChange={(e) => setFilters({ ...filters, hasInmarlhData: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 text-ocean-500 focus:ring-ocean-400"
+                />
+                <span className="text-sm font-medium text-deep-700 dark:text-gray-300">Has Life History Data (CMFRI INMARLH)</span>
+              </label>
+              <div className="flex-1" />
+              <Button variant="ghost" onClick={clearFilters} size="default">
+                <X className="w-4 h-4 mr-2" />
+                Clear All Filters
+              </Button>
             </div>
           </div>
         )}
@@ -499,7 +579,8 @@ export default function SpeciesExplorer() {
                   key={species._id}
                   variant="default"
                   hover
-                  className="overflow-hidden group"
+                  className="overflow-hidden group cursor-pointer"
+                  onClick={() => navigate(`/species/${species._id}`)}
                 >
                   {/* Species Image */}
                   <div className="relative h-48 overflow-hidden">
@@ -589,7 +670,8 @@ export default function SpeciesExplorer() {
                   key={species._id}
                   variant="default"
                   hover
-                  className="px-3 py-2"
+                  className="px-3 py-2 cursor-pointer"
+                  onClick={() => navigate(`/species/${species._id}`)}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">

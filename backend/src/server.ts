@@ -15,7 +15,6 @@ import logger from './utils/logger';
 import swaggerSpec from './config/swagger';
 import { websocketService } from './utils/websocket';
 
-// Routes
 import authRoutes from './routes/auth';
 import speciesRoutes from './routes/species';
 import oceanographyRoutes from './routes/oceanography';
@@ -27,6 +26,7 @@ import aiRoutes from './routes/ai';
 import notificationRoutes from './routes/notifications';
 import exportRoutes from './routes/export';
 import correlationRoutes from './routes/correlation';
+import publicApiRoutes from './routes/publicApi';
 
 // Load env from multiple candidates to ensure root-level .env is picked up
 const candidateEnvPaths = [
@@ -80,6 +80,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
+
+// Public API (National Data Backbone - no auth required)
+app.use('/api/public', publicApiRoutes);
 
 // API Routes
 app.use('/api/auth', authRoutes);

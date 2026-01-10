@@ -80,6 +80,11 @@ const OtolithAnalysis: React.FC = () => {
   const [ageAnalysisResult, setAgeAnalysisResult] = useState<AgeEstimationResult | null>(null);
   const [analysisMethod, setAnalysisMethod] = useState('ensemble');
 
+  // Shape analysis state
+  const [shapeDescriptor, setShapeDescriptor] = useState<any>(null);
+  const [similarOtoliths, setSimilarOtoliths] = useState<any[]>([]);
+  const [showShapeResults, setShowShapeResults] = useState(false);
+
   // Available analysis methods
   const analysisMethods = [
     { value: 'ensemble', label: 'Ensemble (Best Accuracy)', description: 'Combines all methods for highest accuracy' },
@@ -144,6 +149,40 @@ const OtolithAnalysis: React.FC = () => {
     onSuccess: (data) => {
       setAgeAnalysisResult(data.analysis);
       queryClient.invalidateQueries({ queryKey: ['otoliths'] });
+    }
+  });
+
+  // Shape analysis mutation
+  const shapeAnalysisMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'}/otolith/shape/analyze`, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) throw new Error('Shape analysis failed');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setShapeDescriptor(data.shape_descriptor);
+      setShowShapeResults(true);
+    }
+  });
+
+  // Find similar otoliths mutation
+  const findSimilarMutation = useMutation({
+    mutationFn: async (descriptor: any) => {
+      const response = await fetch(`${import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'}/otolith/shape/find-similar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shape_descriptor: descriptor, top_k: 10 })
+      });
+      if (!response.ok) throw new Error('Similarity search failed');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setSimilarOtoliths(data.matches || []);
     }
   });
 
@@ -343,6 +382,25 @@ const OtolithAnalysis: React.FC = () => {
                     ) : '🔬 Estimate Age'}
                   </Button>
                 </div>
+
+                {/* Shape Analysis Button */}
+                <Button
+                  onClick={() => selectedFile && shapeAnalysisMutation.mutate(selectedFile)}
+                  disabled={shapeAnalysisMutation.isPending || !selectedFile}
+                  variant="outline"
+                  className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-600 hover:to-cyan-600"
+                >
+                  {shapeAnalysisMutation.isPending ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Extracting Shape...
+                    </span>
+                  ) : '📐 Analyze Shape'}
+                </Button>
+
                 <Button variant="outline" onClick={resetForm} className="w-full">
                   Clear
                 </Button>
@@ -498,6 +556,126 @@ const OtolithAnalysis: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Shape Analysis Results */}
+      {showShapeResults && shapeDescriptor && (
+        <Card className="mt-6 bg-gradient-to-br from-teal-50 to-cyan-50">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span>📐</span> Shape Analysis Results
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setShowShapeResults(false)}>
+                Close
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Shape Metrics */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-gray-700">Shape Metrics</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">Circularity</p>
+                    <p className="text-2xl font-bold text-teal-600">
+                      {(shapeDescriptor.circularity * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-gray-400">1.0 = perfect circle</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">Aspect Ratio</p>
+                    <p className="text-2xl font-bold text-cyan-600">
+                      {shapeDescriptor.aspect_ratio?.toFixed(2) || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">Area</p>
+                    <p className="text-lg font-semibold text-gray-700">
+                      {shapeDescriptor.area?.toFixed(0)} px²
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase">Perimeter</p>
+                    <p className="text-lg font-semibold text-gray-700">
+                      {shapeDescriptor.perimeter?.toFixed(0)} px
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fourier Coefficients Visualization */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-gray-700">Fourier Shape Signature</h4>
+                <div className="bg-white rounded-lg p-4 shadow-sm">
+                  <div className="flex items-end gap-1 h-20">
+                    {shapeDescriptor.coefficients?.slice(0, 20).map((coef: number, idx: number) => (
+                      <div
+                        key={idx}
+                        className="bg-gradient-to-t from-teal-500 to-cyan-400 rounded-t flex-1"
+                        style={{ height: `${Math.min(Math.abs(coef) * 50, 100)}%` }}
+                        title={`Harmonic ${idx + 1}: ${coef.toFixed(4)}`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2 text-center">
+                    First 20 harmonics ({shapeDescriptor.num_harmonics} total)
+                  </p>
+                </div>
+
+                {/* Find Similar Button */}
+                <Button
+                  onClick={() => findSimilarMutation.mutate(shapeDescriptor)}
+                  disabled={findSimilarMutation.isPending}
+                  className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600"
+                >
+                  {findSimilarMutation.isPending ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Searching...
+                    </span>
+                  ) : '🔍 Find Similar Otoliths'}
+                </Button>
+              </div>
+            </div>
+
+            {/* Similar Otoliths Results */}
+            {similarOtoliths.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Similar Otoliths Found</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {similarOtoliths.map((match, idx) => (
+                    <div key={idx} className="bg-white rounded-lg p-4 shadow-sm border-l-4 border-teal-500">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-gray-800">{match.species || 'Unknown Species'}</p>
+                          <p className="text-xs text-gray-500">ID: {match.id?.substring(0, 8)}...</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-sm font-bold ${match.similarity > 80 ? 'bg-green-100 text-green-700' :
+                            match.similarity > 50 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-700'
+                          }`}>
+                          {match.similarity}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {findSimilarMutation.isSuccess && similarOtoliths.length === 0 && (
+              <div className="mt-6 text-center py-4 bg-gray-50 rounded-lg">
+                <p className="text-gray-500">No similar otoliths found in database yet.</p>
+                <p className="text-sm text-gray-400 mt-1">Upload and analyze more otoliths to build the shape database.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Existing Records */}
       <Card className="mt-6">

@@ -1481,6 +1481,558 @@ async def calculate_biodiversity(detections: List[Dict[str, Any]]):
             detail=f"Calculation failed: {str(e)}"
         )
 
+
+# ====================================
+# DEDICATED NCBI BLAST ENDPOINT
+# ====================================
+
+class BlastRequest(BaseModel):
+    """Request model for dedicated BLAST search."""
+    sequences: List[str]  # List of sequences or FASTA strings
+    database: str = "nt"  # nt, nr, refseq_rna, etc.
+    max_results: int = 5
+    max_sequences: int = 3  # Limit concurrent queries
+    format_type: str = "fasta"  # fasta or raw
+
+@app.post("/edna/blast")
+async def run_blast_search(request: BlastRequest):
+    """
+    Dedicated NCBI BLAST endpoint for species identification.
+    
+    Uses NCBI BLAST web service to search sequences against nucleotide database.
+    
+    Note: NCBI BLAST can take 30-120 seconds per sequence. For large batch
+    processing, consider using local BLAST+ installation.
+    
+    Args:
+        sequences: List of DNA sequences (FASTA format or raw)
+        database: BLAST database (nt, nr, refseq_rna)
+        max_results: Max hits per sequence
+        max_sequences: Max sequences to process
+        
+    Returns:
+        Species detections with confidence, E-value, and taxonomy
+    """
+    from edna.edna_processor import EdnaProcessor, SpeciesDetection
+    import asyncio
+    
+    try:
+        processor = EdnaProcessor()
+        
+        # Parse sequences
+        content = "\n".join(request.sequences)
+        parsed_sequences = processor.parse_sequence_string(content, request.format_type)
+        
+        if not parsed_sequences:
+            raise HTTPException(status_code=400, detail="No valid sequences found")
+        
+        # Limit to max_sequences
+        sequences_to_process = parsed_sequences[:request.max_sequences]
+        
+        # Run BLAST (this is blocking, NCBI doesn't support async)
+        # For production, consider using asyncio.to_thread
+        loop = asyncio.get_event_loop()
+        detections = await loop.run_in_executor(
+            None,
+            processor.run_blast,
+            sequences_to_process,
+            request.database,
+            request.max_results
+        )
+        
+        return {
+            "success": True,
+            "sequences_processed": len(sequences_to_process),
+            "sequences_total": len(parsed_sequences),
+            "detections": [d.to_dict() for d in detections],
+            "database": request.database,
+            "note": "BLAST queries NCBI servers and may take 30-120 seconds per sequence"
+        }
+        
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"BLAST search failed: {str(e)}\n{traceback.format_exc()}"
+        )
+
+
+# ====================================
+# PRODUCTION BLAST JOB QUEUE
+# ====================================
+
+class BlastJobSubmitRequest(BaseModel):
+    """Request model for async BLAST job submission."""
+    sequences: List[str]  # FASTA format sequences
+    database: str = "nt"
+    max_results: int = 5
+    format_type: str = "fasta"
+
+@app.post("/edna/blast/submit")
+async def submit_blast_job(request: BlastJobSubmitRequest):
+    """
+    Submit BLAST job for async processing (PRODUCTION).
+    
+    Jobs are queued in MongoDB and processed by background worker.
+    Poll /edna/blast/status/{job_id} for status updates.
+    
+    Returns:
+        job_id: Unique job identifier for status polling
+    """
+    from pymongo import MongoClient
+    from datetime import datetime
+    from edna.edna_processor import EdnaProcessor
+    
+    try:
+        # Connect to MongoDB
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
+        client = MongoClient(mongodb_uri)
+        db = client.get_default_database()
+        
+        # Parse sequences
+        processor = EdnaProcessor()
+        content = "\n".join(request.sequences)
+        parsed = processor.parse_sequence_string(content, request.format_type)
+        
+        if not parsed:
+            raise HTTPException(status_code=400, detail="No valid sequences found")
+        
+        # Create job document
+        job = {
+            'userId': 'api',  # Would come from auth in production
+            'status': 'pending',
+            'sequences': [
+                {
+                    'id': seq.id,
+                    'sequence': seq.sequence,
+                    'length': seq.length
+                }
+                for seq in parsed[:10]  # Limit to 10 sequences
+            ],
+            'database': request.database,
+            'maxResults': request.max_results,
+            'progress': 0,
+            'currentSequence': 0,
+            'totalSequences': min(len(parsed), 10),
+            'stage': 'queued',
+            'detections': [],
+            'submittedAt': datetime.utcnow(),
+            'retryCount': 0,
+            'maxRetries': 3,
+            'createdAt': datetime.utcnow(),
+            'updatedAt': datetime.utcnow()
+        }
+        
+        result = db.blastjobs.insert_one(job)
+        job_id = str(result.inserted_id)
+        
+        client.close()
+        
+        return {
+            "success": True,
+            "job_id": job_id,
+            "sequences_queued": len(job['sequences']),
+            "status": "pending",
+            "poll_url": f"/edna/blast/status/{job_id}",
+            "note": "Job queued. Poll status endpoint for updates."
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to submit job: {str(e)}"
+        )
+
+
+@app.get("/edna/blast/status/{job_id}")
+async def get_blast_job_status(job_id: str):
+    """
+    Get BLAST job status.
+    
+    Poll this endpoint until status is 'completed' or 'failed'.
+    
+    Status values:
+        - pending: Queued, waiting for worker
+        - processing: Currently running BLAST
+        - completed: Finished, results available
+        - failed: Error occurred (check error field)
+    """
+    from pymongo import MongoClient
+    from bson import ObjectId
+    
+    try:
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
+        client = MongoClient(mongodb_uri)
+        db = client.get_default_database()
+        
+        job = db.blastjobs.find_one({'_id': ObjectId(job_id)})
+        client.close()
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        return {
+            "job_id": job_id,
+            "status": job.get('status'),
+            "progress": job.get('progress', 0),
+            "current_sequence": job.get('currentSequence', 0),
+            "total_sequences": job.get('totalSequences', 0),
+            "stage": job.get('stage'),
+            "submitted_at": job.get('submittedAt'),
+            "started_at": job.get('startedAt'),
+            "completed_at": job.get('completedAt'),
+            "error": job.get('error'),
+            "detection_count": len(job.get('detections', []))
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get status: {str(e)}"
+        )
+
+
+@app.get("/edna/blast/result/{job_id}")
+async def get_blast_job_result(job_id: str):
+    """
+    Get BLAST job results (only available when status is 'completed').
+    
+    Returns all species detections with taxonomy and confidence scores.
+    """
+    from pymongo import MongoClient
+    from bson import ObjectId
+    
+    try:
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
+        client = MongoClient(mongodb_uri)
+        db = client.get_default_database()
+        
+        job = db.blastjobs.find_one({'_id': ObjectId(job_id)})
+        client.close()
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if job.get('status') != 'completed':
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Results not ready. Current status: {job.get('status')}"
+            )
+        
+        return {
+            "job_id": job_id,
+            "status": "completed",
+            "sequences_processed": job.get('totalSequences', 0),
+            "database": job.get('database', 'nt'),
+            "detections": job.get('detections', []),
+            "completed_at": job.get('completedAt')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get results: {str(e)}"
+        )
+
+
+@app.post("/edna/blast/cancel/{job_id}")
+async def cancel_blast_job(job_id: str):
+    """
+    Cancel a pending or processing BLAST job.
+    """
+    from pymongo import MongoClient
+    from bson import ObjectId
+    from datetime import datetime
+    
+    try:
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
+        client = MongoClient(mongodb_uri)
+        db = client.get_default_database()
+        
+        result = db.blastjobs.update_one(
+            {
+                '_id': ObjectId(job_id),
+                'status': {'$in': ['pending', 'processing']}
+            },
+            {
+                '$set': {
+                    'status': 'cancelled',
+                    'stage': 'cancelled_by_user',
+                    'completedAt': datetime.utcnow(),
+                    'updatedAt': datetime.utcnow()
+                }
+            }
+        )
+        client.close()
+        
+        if result.modified_count == 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="Job not found or already completed"
+            )
+        
+        return {
+            "success": True,
+            "job_id": job_id,
+            "status": "cancelled"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cancel job: {str(e)}"
+        )
+
+
+@app.get("/edna/blast/jobs")
+async def list_blast_jobs(limit: int = 20, status: Optional[str] = None):
+    """
+    List recent BLAST jobs.
+    """
+    from pymongo import MongoClient
+    
+    try:
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
+        client = MongoClient(mongodb_uri)
+        db = client.get_default_database()
+        
+        query = {}
+        if status:
+            query['status'] = status
+        
+        jobs = list(db.blastjobs.find(query)
+            .sort('submittedAt', -1)
+            .limit(limit))
+        client.close()
+        
+        return {
+            "jobs": [
+                {
+                    "job_id": str(j['_id']),
+                    "status": j.get('status'),
+                    "progress": j.get('progress', 0),
+                    "sequences": j.get('totalSequences', 0),
+                    "detections": len(j.get('detections', [])),
+                    "submitted_at": j.get('submittedAt')
+                }
+                for j in jobs
+            ],
+            "count": len(jobs)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list jobs: {str(e)}"
+        )
+
+
+# ====================================
+# DATA STANDARDISATION VALIDATORS
+# ====================================
+
+class MIxSValidationRequest(BaseModel):
+    """Request model for MIxS validation."""
+    metadata: Dict[str, Any]
+    sample_type: str = "water"  # water, sediment, soil
+    validation_level: str = "standard"  # strict, standard, lenient
+
+@app.post("/validate/mixs")
+async def validate_mixs(request: MIxSValidationRequest):
+    """
+    Validate eDNA metadata against MIxS 6.0 standard.
+    
+    MIxS (Minimum Information about any (x) Sequence) is the GSC standard
+    for sequence metadata. This endpoint validates:
+    
+    - Core required fields (sample_name, investigation_type, lat_lon, etc.)
+    - Water-specific fields for marine samples (depth, temp, salinity)
+    - Optional recommended fields
+    
+    Returns:
+        - is_valid: Whether metadata passes validation
+        - errors: List of validation errors
+        - warnings: List of warnings for missing recommended fields
+        - completeness_score: Percentage of fields populated
+        - validated_fields: Field-by-field validation status
+    """
+    from utils.validators import get_mixs_validator, ValidationLevel
+    
+    level_map = {
+        "strict": ValidationLevel.STRICT,
+        "standard": ValidationLevel.STANDARD,
+        "lenient": ValidationLevel.LENIENT
+    }
+    
+    validator = get_mixs_validator(level_map.get(request.validation_level, ValidationLevel.STANDARD))
+    result = validator.validate(request.metadata, request.sample_type)
+    
+    return {
+        "success": True,
+        "standard": "MIxS",
+        "version": "6.0",
+        **result.to_dict()
+    }
+
+
+class ISO19115ValidationRequest(BaseModel):
+    """Request model for ISO 19115 validation."""
+    metadata: Dict[str, Any]
+    validation_level: str = "standard"
+
+@app.post("/validate/iso19115")
+async def validate_iso19115(request: ISO19115ValidationRequest):
+    """
+    Validate geographic metadata against ISO 19115:2014 standard.
+    
+    ISO 19115 is the international standard for geographic information metadata.
+    This endpoint validates:
+    
+    - File identification (language, character_set, date_stamp)
+    - Identification info (title, abstract, spatial_representation)
+    - Geographic extent (bounding box coordinates)
+    - Quality info (lineage, accuracy)
+    
+    Returns:
+        - is_valid: Whether metadata passes validation
+        - errors: List of validation errors
+        - completeness_score: Percentage of fields populated
+    """
+    from utils.validators import get_iso19115_validator, ValidationLevel
+    
+    level_map = {
+        "strict": ValidationLevel.STRICT,
+        "standard": ValidationLevel.STANDARD,
+        "lenient": ValidationLevel.LENIENT
+    }
+    
+    validator = get_iso19115_validator(level_map.get(request.validation_level, ValidationLevel.STANDARD))
+    result = validator.validate(request.metadata)
+    
+    return {
+        "success": True,
+        "standard": "ISO 19115",
+        "version": "2014",
+        **result.to_dict()
+    }
+
+
+class DarwinCoreValidationRequest(BaseModel):
+    """Request model for Darwin Core validation."""
+    occurrence: Dict[str, Any]
+    validation_level: str = "standard"
+
+@app.post("/validate/darwin-core")
+async def validate_darwin_core(request: DarwinCoreValidationRequest):
+    """
+    Validate species occurrence data against Darwin Core standard.
+    
+    Darwin Core is the biodiversity data standard used by GBIF, OBIS, and iNaturalist.
+    This endpoint validates:
+    
+    - Required fields (occurrenceID, scientificName, eventDate, coordinates)
+    - Taxonomy fields (kingdom, phylum, class, order, family, genus)
+    - Record metadata (basisOfRecord, recordedBy, institution)
+    
+    Returns:
+        - is_valid: Whether occurrence passes validation
+        - errors: List of validation errors
+        - completeness_score: Percentage of fields populated
+    """
+    from utils.validators import get_darwin_core_validator, ValidationLevel
+    
+    level_map = {
+        "strict": ValidationLevel.STRICT,
+        "standard": ValidationLevel.STANDARD,
+        "lenient": ValidationLevel.LENIENT
+    }
+    
+    validator = get_darwin_core_validator(level_map.get(request.validation_level, ValidationLevel.STANDARD))
+    result = validator.validate(request.occurrence)
+    
+    return {
+        "success": True,
+        "standard": "Darwin Core",
+        "version": "2024-06-26",
+        **result.to_dict()
+    }
+
+
+class BatchValidationRequest(BaseModel):
+    """Request model for bulk validation."""
+    records: List[Dict[str, Any]]
+    standard: str  # mixs, iso19115, darwin-core
+    validation_level: str = "standard"
+
+@app.post("/validate/batch")
+async def validate_batch(request: BatchValidationRequest):
+    """
+    Validate multiple records against a standard in batch.
+    
+    Useful for validating entire datasets before ingestion.
+    
+    Returns summary statistics and individual validation results.
+    """
+    from utils.validators import (
+        get_mixs_validator, get_iso19115_validator, get_darwin_core_validator,
+        ValidationLevel
+    )
+    
+    level_map = {
+        "strict": ValidationLevel.STRICT,
+        "standard": ValidationLevel.STANDARD,
+        "lenient": ValidationLevel.LENIENT
+    }
+    level = level_map.get(request.validation_level, ValidationLevel.STANDARD)
+    
+    # Select validator
+    if request.standard == "mixs":
+        validator = get_mixs_validator(level)
+        validate_fn = lambda r: validator.validate(r, "water")
+    elif request.standard == "iso19115":
+        validator = get_iso19115_validator(level)
+        validate_fn = validator.validate
+    elif request.standard == "darwin-core":
+        validator = get_darwin_core_validator(level)
+        validate_fn = validator.validate
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown standard: {request.standard}")
+    
+    # Validate all records
+    results = []
+    valid_count = 0
+    total_completeness = 0
+    
+    for i, record in enumerate(request.records):
+        result = validate_fn(record)
+        results.append({
+            "index": i,
+            "is_valid": result.is_valid,
+            "errors": result.errors[:3],  # Limit errors per record
+            "completeness": result.completeness_score
+        })
+        if result.is_valid:
+            valid_count += 1
+        total_completeness += result.completeness_score
+    
+    return {
+        "success": True,
+        "standard": request.standard,
+        "total_records": len(request.records),
+        "valid_records": valid_count,
+        "invalid_records": len(request.records) - valid_count,
+        "average_completeness": total_completeness / len(request.records) if request.records else 0,
+        "validation_level": request.validation_level,
+        "results": results
+    }
+
+
 @app.post("/extract-metadata")
 async def extract_metadata(
     file: UploadFile = File(...),
@@ -2619,6 +3171,404 @@ async def generate_quick_report(request: QuickReportRequest):
             status_code=500,
             detail=f"Quick report generation failed: {str(e)}"
         )
+
+
+# ====================================
+# REAL-TIME INDIAN OCEAN DATA SOURCES
+# ====================================
+
+@app.get("/data/live/incois")
+async def fetch_incois_live_data(
+    data_type: str = "sst",
+    region: str = "indian_ocean"
+):
+    """
+    Fetch real-time data from INCOIS (Indian National Centre for Ocean Information Services).
+    
+    Data Types:
+    - sst: Sea Surface Temperature
+    - buoy: OMNI buoy data (SST, salinity, currents)
+    - argo: Argo float profiles (temperature/salinity at depth)
+    
+    Regions:
+    - indian_ocean: Full coverage
+    - arabian_sea: Arabian Sea focus
+    - bay_of_bengal: Bay of Bengal focus
+    
+    Returns Indian Ocean oceanographic data from buoys and floats.
+    """
+    from data_connectors import fetch_incois_data
+    
+    try:
+        readings = await fetch_incois_data(data_type, region)
+        
+        return {
+            "success": True,
+            "source": "INCOIS",
+            "data_type": data_type,
+            "region": region,
+            "count": len(readings),
+            "readings": readings,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"INCOIS data fetch failed: {str(e)}"
+        )
+
+
+@app.get("/data/live/copernicus")
+async def fetch_copernicus_live_data(
+    data_type: str = "sst",
+    region: str = "indian_ocean"
+):
+    """
+    Fetch satellite data from Copernicus Marine Service.
+    
+    Data Types:
+    - sst: Sea Surface Temperature (satellite)
+    - chlorophyll: Chlorophyll-a concentration
+    - currents: Ocean current velocity
+    
+    Regions:
+    - indian_ocean: 0-25°N, 60-100°E
+    - arabian_sea: Arabian Sea focus
+    - bay_of_bengal: Bay of Bengal focus
+    
+    Note: Requires COPERNICUS_USERNAME and COPERNICUS_PASSWORD env vars.
+    Falls back to representative data if credentials not configured.
+    """
+    from data_connectors import fetch_copernicus_data
+    
+    try:
+        readings = await fetch_copernicus_data(data_type, region)
+        
+        return {
+            "success": True,
+            "source": "COPERNICUS",
+            "data_type": data_type,
+            "region": region,
+            "count": len(readings),
+            "readings": readings,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Copernicus data fetch failed: {str(e)}"
+        )
+
+
+class LiveDataFetchRequest(BaseModel):
+    """Request for unified live data fetch."""
+    sources: List[str] = ["incois", "copernicus"]
+    data_types: List[str] = ["sst"]
+    region: str = "indian_ocean"
+    broadcast_websocket: bool = True
+
+
+@app.post("/data/live/fetch")
+async def fetch_all_live_data(request: LiveDataFetchRequest):
+    """
+    Fetch data from all configured sources and optionally broadcast via WebSocket.
+    
+    This is the unified endpoint for production use:
+    1. Fetches from INCOIS (buoys) and Copernicus (satellite)
+    2. Merges and deduplicates data
+    3. Broadcasts to WebSocket subscribers
+    4. Returns combined readings
+    
+    Use this for scheduled data refresh (e.g., every 15 minutes).
+    """
+    from data_connectors import fetch_incois_data, fetch_copernicus_data
+    
+    try:
+        all_readings = []
+        source_stats = {}
+        
+        for source in request.sources:
+            for data_type in request.data_types:
+                try:
+                    if source == "incois":
+                        readings = await fetch_incois_data(data_type, request.region)
+                    elif source == "copernicus":
+                        readings = await fetch_copernicus_data(data_type, request.region)
+                    else:
+                        continue
+                    
+                    all_readings.extend(readings)
+                    source_stats[f"{source}_{data_type}"] = len(readings)
+                    
+                except Exception as e:
+                    source_stats[f"{source}_{data_type}"] = f"error: {str(e)}"
+        
+        # Broadcast via WebSocket if requested
+        if request.broadcast_websocket and all_readings:
+            try:
+                import aiohttp
+                backend_url = os.getenv("BACKEND_URL", "http://localhost:5000")
+                
+                async with aiohttp.ClientSession() as session:
+                    for reading in all_readings[:10]:  # Limit to avoid flooding
+                        await session.post(
+                            f"{backend_url}/api/oceanography/stream",
+                            json=reading,
+                            timeout=aiohttp.ClientTimeout(total=2)
+                        )
+            except Exception as ws_error:
+                # WebSocket broadcast failure is non-critical
+                pass
+        
+        return {
+            "success": True,
+            "total_readings": len(all_readings),
+            "sources": request.sources,
+            "data_types": request.data_types,
+            "region": request.region,
+            "source_stats": source_stats,
+            "readings": all_readings[:100],  # Limit response size
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Live data fetch failed: {str(e)}"
+        )
+
+
+@app.get("/data/sources")
+async def list_data_sources():
+    """
+    List available real-time data sources.
+    """
+    return {
+        "sources": [
+            {
+                "id": "incois",
+                "name": "INCOIS",
+                "description": "Indian National Centre for Ocean Information Services",
+                "data_types": ["sst", "buoy", "argo"],
+                "coverage": "Indian Ocean, Bay of Bengal, Arabian Sea",
+                "update_frequency": "hourly",
+                "requires_auth": False
+            },
+            {
+                "id": "copernicus",
+                "name": "Copernicus Marine",
+                "description": "European satellite ocean monitoring service",
+                "data_types": ["sst", "chlorophyll", "currents"],
+                "coverage": "Global (Indian Ocean subset available)",
+                "update_frequency": "daily",
+                "requires_auth": True,
+                "auth_configured": bool(os.getenv("COPERNICUS_USERNAME"))
+            }
+        ],
+        "regions": [
+            {"id": "indian_ocean", "name": "Indian Ocean", "bounds": [40, -30, 120, 30]},
+            {"id": "arabian_sea", "name": "Arabian Sea", "bounds": [55, 5, 77, 25]},
+            {"id": "bay_of_bengal", "name": "Bay of Bengal", "bounds": [80, 5, 95, 22]}
+        ]
+    }
+
+
+# ====================================
+# OTOLITH SHAPE ANALYSIS
+# ====================================
+
+@app.post("/otolith/shape/analyze")
+async def analyze_otolith_shape(file: UploadFile = File(...)):
+    """
+    Analyze otolith shape using Elliptic Fourier Descriptors.
+    
+    Extracts the otolith contour and computes:
+    - Fourier shape coefficients (size/rotation invariant)
+    - Shape metrics (area, perimeter, circularity, aspect ratio)
+    
+    These can be stored and used for similarity search.
+    """
+    from otolith.shape_analysis import OtolithShapeAnalyzer
+    import cv2
+    import numpy as np
+    
+    try:
+        # Read image
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image file")
+        
+        # Analyze shape
+        analyzer = OtolithShapeAnalyzer(num_harmonics=20)
+        descriptor = analyzer.analyze_image(image)
+        
+        if descriptor is None:
+            raise HTTPException(
+                status_code=400, 
+                detail="Could not extract otolith contour. Ensure image has clear otolith outline."
+            )
+        
+        return {
+            "success": True,
+            "shape_descriptor": descriptor.to_dict(),
+            "message": "Shape analysis complete. Store this descriptor for similarity search."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Shape analysis failed: {str(e)}")
+
+
+@app.post("/otolith/shape/compare")
+async def compare_otolith_shapes(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...)
+):
+    """
+    Compare two otolith images and return similarity score.
+    
+    Returns:
+    - Similarity score (0-100, higher = more similar)
+    - Shape descriptors for both otoliths
+    """
+    from otolith.shape_analysis import OtolithShapeAnalyzer
+    import cv2
+    import numpy as np
+    
+    try:
+        # Read both images
+        contents1 = await file1.read()
+        contents2 = await file2.read()
+        
+        nparr1 = np.frombuffer(contents1, np.uint8)
+        nparr2 = np.frombuffer(contents2, np.uint8)
+        
+        image1 = cv2.imdecode(nparr1, cv2.IMREAD_COLOR)
+        image2 = cv2.imdecode(nparr2, cv2.IMREAD_COLOR)
+        
+        if image1 is None or image2 is None:
+            raise HTTPException(status_code=400, detail="Invalid image file(s)")
+        
+        # Analyze both
+        analyzer = OtolithShapeAnalyzer(num_harmonics=20)
+        desc1 = analyzer.analyze_image(image1)
+        desc2 = analyzer.analyze_image(image2)
+        
+        if desc1 is None or desc2 is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not extract otolith contour from one or both images"
+            )
+        
+        # Compute similarity
+        similarity = analyzer.compute_similarity(desc1, desc2)
+        
+        return {
+            "success": True,
+            "similarity": similarity,
+            "interpretation": (
+                "Very similar (same species likely)" if similarity > 80 else
+                "Moderately similar" if similarity > 50 else
+                "Different shapes"
+            ),
+            "shape1": {
+                "filename": file1.filename,
+                "circularity": desc1.circularity,
+                "aspect_ratio": desc1.aspect_ratio
+            },
+            "shape2": {
+                "filename": file2.filename,
+                "circularity": desc2.circularity,
+                "aspect_ratio": desc2.aspect_ratio
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
+
+
+class SimilaritySearchRequest(BaseModel):
+    """Request for similarity search."""
+    shape_descriptor: Dict[str, Any]
+    top_k: int = 10
+
+
+@app.post("/otolith/shape/find-similar")
+async def find_similar_otoliths(request: SimilaritySearchRequest):
+    """
+    Find similar otoliths in the database.
+    
+    Takes a shape descriptor (from /otolith/shape/analyze) and 
+    returns the most similar otoliths in the database.
+    """
+    from otolith.shape_analysis import OtolithShapeAnalyzer, ShapeDescriptor
+    
+    try:
+        # Get otoliths from MongoDB
+        from motor.motor_asyncio import AsyncIOMotorClient
+        
+        mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/cmlre_marine")
+        client = AsyncIOMotorClient(mongo_uri)
+        db = client.get_default_database()
+        
+        # Fetch otoliths with shape descriptors
+        cursor = db.otoliths.find(
+            {"shape_descriptor": {"$exists": True}},
+            {"_id": 1, "species": 1, "shape_descriptor": 1, "filename": 1}
+        ).limit(500)
+        
+        database = await cursor.to_list(length=500)
+        
+        if not database:
+            return {
+                "success": True,
+                "message": "No otoliths with shape descriptors in database yet",
+                "matches": []
+            }
+        
+        # Reconstruct query descriptor
+        query_desc = ShapeDescriptor(
+            coefficients=request.shape_descriptor.get("coefficients", []),
+            num_harmonics=request.shape_descriptor.get("num_harmonics", 20),
+            contour_points=request.shape_descriptor.get("contour_points", 0),
+            area=request.shape_descriptor.get("area", 0),
+            perimeter=request.shape_descriptor.get("perimeter", 0),
+            circularity=request.shape_descriptor.get("circularity", 0),
+            aspect_ratio=request.shape_descriptor.get("aspect_ratio", 0)
+        )
+        
+        # Find similar
+        analyzer = OtolithShapeAnalyzer()
+        
+        # Convert MongoDB docs
+        db_list = []
+        for doc in database:
+            doc['id'] = str(doc['_id'])
+            del doc['_id']
+            db_list.append(doc)
+        
+        matches = analyzer.find_similar(query_desc, db_list, top_k=request.top_k)
+        
+        return {
+            "success": True,
+            "query_shape": {
+                "circularity": query_desc.circularity,
+                "aspect_ratio": query_desc.aspect_ratio
+            },
+            "database_size": len(database),
+            "matches": matches
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Similarity search failed: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(

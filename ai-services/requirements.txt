@@ -56,3 +56,7 @@ ollama==0.1.6
 # RAG (Retrieval-Augmented Generation)
 chromadb>=0.4.0
 groq==0.4.2
+
+# Oceanographic Data Sources
+copernicusmarine>=1.0.0
+netCDF4>=1.6.0

@@ -131,6 +131,130 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
     await IngestionJob.findByIdAndUpdate(jobId, { progress: 50 });
 
+    // ====================================
+    // DATA STANDARDISATION VALIDATION
+    // ====================================
+    logger.info('📋 Running data standardisation validation...');
+
+    let validationResults: any = {
+      isValid: true,
+      standard: 'auto',
+      errors: [],
+      warnings: [],
+      completenessScore: 0,
+      validatedRecords: 0,
+      invalidRecords: 0
+    };
+
+    try {
+      const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+      const fetch = (await import('node-fetch')).default;
+
+      // Select validator based on data type
+      let validatorEndpoint = '';
+      let validationPayload: any = {};
+
+      if (dataType === 'species' || dataType === 'Species') {
+        validatorEndpoint = '/validate/darwin-core';
+        // Validate first record as sample
+        const sampleRecord = data[0];
+        validationPayload = {
+          occurrence: {
+            occurrenceID: sampleRecord.id || `sp_${Date.now()}`,
+            scientificName: sampleRecord.scientificName || sampleRecord.scientific_name,
+            eventDate: sampleRecord.date || new Date().toISOString().split('T')[0],
+            decimalLatitude: sampleRecord.latitude || 0,
+            decimalLongitude: sampleRecord.longitude || 0,
+            kingdom: sampleRecord.kingdom,
+            phylum: sampleRecord.phylum,
+            class: sampleRecord.class,
+            order: sampleRecord.order,
+            family: sampleRecord.family,
+            genus: sampleRecord.genus,
+            basisOfRecord: 'HumanObservation'
+          },
+          validation_level: 'standard'
+        };
+      } else if (dataType === 'oceanography' || dataType === 'Oceanography') {
+        validatorEndpoint = '/validate/iso19115';
+        const sampleRecord = data[0];
+        validationPayload = {
+          metadata: {
+            title: `Oceanographic Data - ${new Date().toISOString()}`,
+            abstract: `Ingested oceanographic data from ${filePath}`,
+            language: 'eng',
+            character_set: 'UTF-8',
+            hierarchy_level: 'dataset',
+            date_stamp: new Date().toISOString().split('T')[0],
+            west_bound_longitude: Math.min(...data.map(d => parseFloat(d.longitude || d.lon || 0))),
+            east_bound_longitude: Math.max(...data.map(d => parseFloat(d.longitude || d.lon || 0))),
+            south_bound_latitude: Math.min(...data.map(d => parseFloat(d.latitude || d.lat || 0))),
+            north_bound_latitude: Math.max(...data.map(d => parseFloat(d.latitude || d.lat || 0))),
+            spatial_representation_type: 'point'
+          },
+          validation_level: 'standard'
+        };
+      } else if (dataType === 'edna' || dataType === 'eDNA' || dataType === 'Edna') {
+        validatorEndpoint = '/validate/mixs';
+        const sampleRecord = data[0];
+        validationPayload = {
+          metadata: {
+            sample_name: sampleRecord.id || sampleRecord.sample_id || 'EDNA_SAMPLE',
+            investigation_type: 'metagenome',
+            project_name: 'CMLRE eDNA Survey',
+            lat_lon: `${sampleRecord.latitude || 0}, ${sampleRecord.longitude || 0}`,
+            geo_loc_name: sampleRecord.region || 'Indian Ocean',
+            collection_date: sampleRecord.date || sampleRecord.sampleDate || new Date().toISOString().split('T')[0],
+            env_broad_scale: 'marine biome',
+            env_local_scale: 'ocean water body',
+            env_medium: 'sea water',
+            depth: sampleRecord.depth || 0,
+            temp: sampleRecord.temperature || 25,
+            seq_meth: sampleRecord.method || 'Illumina',
+            target_gene: sampleRecord.gene || sampleRecord.marker || '16S'
+          },
+          sample_type: 'water',
+          validation_level: 'standard'
+        };
+      }
+
+      if (validatorEndpoint) {
+        const response = await fetch(`${AI_SERVICE_URL}${validatorEndpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validationPayload)
+        });
+
+        if (response.ok) {
+          const result = await response.json() as any;
+          validationResults = {
+            isValid: result.is_valid,
+            standard: result.standard,
+            errors: result.errors || [],
+            warnings: result.warnings || [],
+            completenessScore: result.completeness_score || 0,
+            validatedRecords: data.length,
+            invalidRecords: result.is_valid ? 0 : data.length,
+            validatedFields: result.validated_fields || {}
+          };
+
+          if (result.is_valid) {
+            logger.info(`✅ Validation passed: ${result.standard} (${result.completeness_score}% complete)`);
+          } else {
+            logger.warn(`⚠️ Validation issues: ${result.errors.slice(0, 3).join(', ')}`);
+          }
+        }
+      }
+    } catch (validationError: any) {
+      logger.warn(`Validation service unavailable: ${validationError.message}`);
+      validationResults.warnings.push('Validation service unavailable - data imported without validation');
+    }
+
+    await IngestionJob.findByIdAndUpdate(jobId, {
+      progress: 55,
+      metadata: { validation: validationResults }
+    });
+
     // Insert data based on dataType
     if (dataType === 'species' || dataType === 'Species') {
       logger.info('🐟 Processing species data...');
@@ -314,6 +438,23 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
           processed++;
           created++;
+
+          // Stream real-time update via WebSocket
+          try {
+            const { websocketService } = await import('../utils/websocket');
+            websocketService.streamOceanographyData({
+              parameter,
+              value,
+              unit,
+              latitude,
+              longitude,
+              depth,
+              timestamp: new Date(timestamp),
+              source: 'ingestion'
+            });
+          } catch (wsError) {
+            // WebSocket streaming is non-critical, continue on error
+          }
 
           if (processed % 50 === 0 || processed === data.length) {
             logger.info(`  ✓ Processed ${processed}/${data.length} oceanography records`);

@@ -10,16 +10,16 @@ const router = Router();
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const sequelize = getSequelize();
-    const { 
-      parameter, 
-      startDate, 
-      endDate, 
-      minDepth, 
+    const {
+      parameter,
+      startDate,
+      endDate,
+      minDepth,
       maxDepth,
       region,
       source,
       limit = 1000,
-      offset = 0 
+      offset = 0
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -150,7 +150,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response) => {
 
     let whereClause = '';
     const replacements: any = {};
-    
+
     if (parameter) {
       whereClause = 'WHERE parameter = :parameter';
       replacements.parameter = parameter;
@@ -192,9 +192,9 @@ router.get('/heatmap', authenticate, async (req: AuthRequest, res: Response) => 
        FROM oceanographic_data
        WHERE parameter = :parameter
        GROUP BY lng, lat`,
-      { 
+      {
         replacements: { parameter, gridSize: parseFloat(gridSize as string) },
-        type: QueryTypes.SELECT 
+        type: QueryTypes.SELECT
       }
     );
     res.json(result);
@@ -219,6 +219,230 @@ router.get('/sources', authenticate, async (req: AuthRequest, res: Response) => 
   } catch (error) {
     logger.error('Error fetching sources:', error);
     res.json([]);
+  }
+});
+
+// ====================================
+// NOAA ERDDAP REAL DATA ENDPOINTS
+// ====================================
+
+import { erddapService } from '../utils/erddapService';
+import { oceanDataIngestionService } from '../services/oceanDataIngestionService';
+
+// Trigger manual ingestion from external sources to DB
+router.post('/ingest', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { date } = req.body; // Optional date YYYY-MM-DD
+    const result = await oceanDataIngestionService.ingestDailyData(date);
+    res.json(result);
+  } catch (error) {
+    logger.error('Manual ingestion error:', error);
+    res.status(500).json({ error: 'Ingestion triggering failed' });
+  }
+});
+
+// Get real SST data from NOAA ERDDAP
+router.get('/erddap/sst', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      date,
+      stride = 5
+    } = req.query;
+
+    const result = await erddapService.fetchSST({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      date: date as string,
+      stride: parseInt(stride as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching ERDDAP SST:', error);
+    res.status(500).json({ error: 'Failed to fetch SST data from ERDDAP' });
+  }
+});
+
+// Get real Chlorophyll data from NOAA ERDDAP
+router.get('/erddap/chlorophyll', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      date,
+      stride = 10
+    } = req.query;
+
+    const result = await erddapService.fetchChlorophyll({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      date: date as string,
+      stride: parseInt(stride as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching ERDDAP Chlorophyll:', error);
+    res.status(500).json({ error: 'Failed to fetch Chlorophyll data from ERDDAP' });
+  }
+});
+
+// Get real Salinity data from NOAA ERDDAP
+router.get('/erddap/salinity', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      date,
+      stride = 5
+    } = req.query;
+
+    const result = await erddapService.fetchSalinity({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      date: date as string,
+      stride: parseInt(stride as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching ERDDAP Salinity:', error);
+    res.status(500).json({ error: 'Failed to fetch Salinity data from ERDDAP' });
+  }
+});
+
+// Get available external data sources
+router.get('/erddap/sources', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const sources = erddapService.getDataSources();
+    const cacheStats = erddapService.getCacheStats();
+
+    res.json({
+      sources,
+      cache: cacheStats,
+      status: 'online',
+    });
+  } catch (error) {
+    logger.error('Error getting ERDDAP sources:', error);
+    res.status(500).json({ error: 'Failed to get data sources' });
+  }
+});
+
+// Clear ERDDAP cache (for manual refresh)
+router.post('/erddap/refresh', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    erddapService.clearCache();
+    res.json({
+      success: true,
+      message: 'ERDDAP cache cleared. Next requests will fetch fresh data.',
+    });
+  } catch (error) {
+    logger.error('Error clearing ERDDAP cache:', error);
+    res.status(500).json({ error: 'Failed to clear cache' });
+  }
+});
+
+// ====================================
+// REAL-TIME LIVE DATA STREAMING
+// ====================================
+
+// Start live data stream
+router.post('/live/start', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { websocketService } = await import('../utils/websocket');
+
+    const {
+      channel = 'oceanography:live',
+      parameters = ['temperature', 'salinity', 'chlorophyll'],
+      intervalMs = 5000
+    } = req.body;
+
+    // Validate interval (min 1 second, max 30 seconds)
+    const interval = Math.max(1000, Math.min(30000, intervalMs));
+
+    websocketService.startLiveDataStream(channel, parameters, interval);
+
+    logger.info(`Live data stream started: ${channel}`);
+
+    res.json({
+      success: true,
+      message: `Live data stream started on channel: ${channel}`,
+      channel,
+      parameters,
+      intervalMs: interval,
+      note: 'Subscribe to this channel via WebSocket to receive updates'
+    });
+  } catch (error) {
+    logger.error('Error starting live stream:', error);
+    res.status(500).json({ error: 'Failed to start live data stream' });
+  }
+});
+
+// Stop live data stream  
+router.post('/live/stop', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { websocketService } = await import('../utils/websocket');
+
+    const { channel = 'oceanography:live' } = req.body;
+
+    websocketService.stopLiveDataStream(channel);
+
+    logger.info(`Live data stream stopped: ${channel}`);
+
+    res.json({
+      success: true,
+      message: `Live data stream stopped on channel: ${channel}`
+    });
+  } catch (error) {
+    logger.error('Error stopping live stream:', error);
+    res.status(500).json({ error: 'Failed to stop live data stream' });
+  }
+});
+
+// Get live stream status
+router.get('/live/status', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { websocketService } = await import('../utils/websocket');
+
+    const activeStreams = websocketService.getActiveStreams();
+    const connectedUsers = websocketService.getConnectedUsers();
+
+    res.json({
+      success: true,
+      activeStreams,
+      streamCount: activeStreams.length,
+      connectedUsers,
+      availableParameters: [
+        'temperature',
+        'salinity',
+        'chlorophyll',
+        'dissolved_oxygen',
+        'ph'
+      ]
+    });
+  } catch (error) {
+    logger.error('Error getting stream status:', error);
+    res.status(500).json({ error: 'Failed to get stream status' });
   }
 });
 

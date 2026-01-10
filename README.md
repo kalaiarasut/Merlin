@@ -1,5 +1,20 @@
 # CMLRE Marine Data Integration Platform
 
+<div align="center">
+
+**AI-Enabled Unified Marine Data Integration System**
+
+*A comprehensive platform for managing, analyzing, and visualizing marine datasets with integrated AI capabilities*
+
+[![Frontend](https://img.shields.io/badge/Frontend-React%2018-61DAFB?logo=react)](https://reactjs.org/)
+[![Backend](https://img.shields.io/badge/Backend-Node.js%20Express-339933?logo=node.js)](https://nodejs.org/)
+[![AI](https://img.shields.io/badge/AI-FastAPI%20Python-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Database](https://img.shields.io/badge/Database-PostgreSQL%20%2B%20MongoDB-336791?logo=postgresql)](https://www.postgresql.org/)
+
+</div>
+
+---
+
 ## Problem Statement
 
 The Centre for Marine Living Resources and Ecology (CMLRE), under the Ministry of Earth Sciences (India), manages large volumes of heterogeneous marine datasets across multiple scientific domains: physical oceanography, chemical oceanography, biological oceanography, fisheries abundance, taxonomy, species diversity, life-history traits, otolith morphology, ecomorphology, and molecular biology including environmental DNA (eDNA) sequencing.
@@ -8,15 +23,13 @@ These datasets are scattered, stored in incompatible formats, and isolated in si
 
 ### Current Issues
 
-**Data Silos**: Oceanographic, biological, taxonomic, otolith, and molecular datasets exist in disconnected systems and formats (CSV, XLSX, JSON, PDF, FASTA/FASTQ, Images, GIS Layers).
+- **Data Silos**: Oceanographic, biological, taxonomic, otolith, and molecular datasets exist in disconnected systems and formats (CSV, XLSX, JSON, PDF, FASTA/FASTQ, Images, GIS Layers)
+- **No Standardisation**: Metadata formats vary, do not follow global standards like Darwin Core, OBIS, MIxS, ISO 19115
+- **Unstructured & Inconsistent Data**: Species names differ, missing metadata, inconsistent location formats, duplicate fields
+- **No Cross-Domain Analytics**: Scientists cannot correlate ocean parameters with biodiversity, fish distribution, or eDNA detection
+- **No Existing Single Solution**: Tools like OBIS, FishBase, QIIME2, INCOIS, NOAA, ICES provide partial solutions, but no unified AI-enabled platform exists
 
-**No Standardisation**: Metadata formats vary, do not follow global standards like Darwin Core, OBIS, MIxS, ISO 19115, making integration difficult.
-
-**Unstructured & Inconsistent Data**: Species names differ, missing metadata, inconsistent location formats, duplicate fields, handwritten notes, unclassified files.
-
-**No Cross-Domain Analytics**: Scientists cannot correlate ocean parameters with biodiversity, fish distribution, eDNA detection, or otolith morphometrics.
-
-**No Existing Single Solution**: Tools like OBIS, FishBase, QIIME2, INCOIS, NOAA, ICES provide partial solutions, but no unified AI-enabled platform exists.
+---
 
 ## Solution
 
@@ -24,163 +37,263 @@ A comprehensive AI-enabled digital platform that:
 
 - ✅ Integrates all marine datasets into a unified system
 - ✅ Automates data ingestion and metadata tagging using AI
-- ✅ Provides interactive GIS visualizations
-- ✅ Enables species identification via images, otoliths, and eDNA
-- ✅ Supports cross-domain analytics for ecosystem assessment
+- ✅ Provides interactive GIS visualizations with Leaflet and Deck.GL
+- ✅ Enables species identification via AI-powered image recognition
+- ✅ Provides AI-assisted research with RAG-powered methodology generation
+- ✅ Supports cross-domain analytics and niche modeling for ecosystem assessment
+- ✅ Generates professional reports in multiple formats
 - ✅ Follows international standards (Darwin Core, OBIS, MIxS, ISO 19115)
+
+---
 
 ## Tech Stack
 
 ### Frontend
-- **React 18** + **TypeScript**
-- **TailwindCSS** for styling
-- **ShadCN UI** component library
-- **Leaflet** + **Deck.GL** for GIS mapping
-- **Zustand** for state management
-- **React Query** for data fetching
+| Technology | Purpose |
+|------------|---------|
+| **React 18** + **TypeScript** | Core framework |
+| **Vite** | Build tool and dev server |
+| **TailwindCSS** | Styling |
+| **Radix UI** | Accessible UI primitives (Dialog, Dropdown, Tabs, etc.) |
+| **Leaflet** + **Deck.GL** | GIS mapping and visualization |
+| **Recharts** + **Plotly.js** | Data visualization and charts |
+| **TipTap** | Rich text editing |
+| **Zustand** | State management |
+| **TanStack Query** | Data fetching and caching |
+| **React Hook Form** + **Zod** | Form handling and validation |
+| **Vitest** | Testing framework |
 
 ### Backend
-- **Node.js** + **Express** API server
-- **Python FastAPI** microservices for AI/ML
-- **PostgreSQL** with **PostGIS** extension
-- **MongoDB** for flexible document storage
-- **Redis** for caching and sessions
-- **MinIO** for S3-compatible file storage
-- **JWT** authentication
+| Technology | Purpose |
+|------------|---------|
+| **Node.js** + **Express** + **TypeScript** | API server |
+| **MongoDB** (Mongoose) | Document storage (species, eDNA, otoliths, users) |
+| **PostgreSQL** + **PostGIS** (Sequelize) | Relational + geospatial data (oceanography) |
+| **Redis** | Caching and rate limiting |
+| **Socket.IO** | Real-time notifications |
+| **Bull** | Background job queue |
+| **JWT** + **bcrypt** | Authentication |
+| **Swagger** | API documentation |
 
-### AI/ML Stack
-- **Tesseract OCR** for document text extraction
-- **spaCy** + **HuggingFace** for NLP and metadata extraction
-- **BLAST** + **Kraken2** for eDNA sequence analysis
-- **PyTorch** for custom fish/otolith classification models
-- **LLaMA 3** (local) for metadata generation and data cleaning
-- **scikit-learn** for correlation and statistical analysis
+### AI/ML Services
+| Technology | Purpose |
+|------------|---------|
+| **FastAPI** (Python) | AI microservices API |
+| **Ollama** | Local LLM inference (llama3.2) |
+| **Groq API** | Cloud LLM (llama-3.3-70b-versatile) |
+| **ChromaDB** | Vector database for RAG |
+| **Sentence Transformers** | Text embeddings |
+| **PyTorch** + **TensorFlow** | Deep learning frameworks |
+| **EfficientNet-B0** | Custom fish classifier (84.8% accuracy) |
+| **spaCy** + **Transformers** | NLP and text processing |
+| **OpenCV** + **scikit-image** | Image processing |
+| **BioPython** | Sequence analysis |
+| **ReportLab** + **Matplotlib** | Report and chart generation |
+
+### External Integrations
+| Service | Purpose |
+|---------|---------|
+| **FishBase API** | Species data enrichment |
+| **Tavily** | Web search for research |
+| **NOAA ERDDAP** | Real-time satellite ocean data |
+| - JPL MUR SST | Sea Surface Temperature (0.01° resolution) |
+| - VIIRS Chlorophyll-a | Ocean productivity (4km resolution) |
+| - SMAP Salinity | Sea Surface Salinity (0.25° resolution) |
+
+---
 
 ## Project Structure
 
 ```
-Ocean/
-├── frontend/                 # React TypeScript application
+Marlin/
+├── frontend/                 # React + Vite + TypeScript application
 │   ├── src/
-│   │   ├── components/       # Reusable UI components
-│   │   ├── pages/           # Page components
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── store/           # Zustand state management
-│   │   ├── services/        # API service layer
-│   │   ├── types/           # TypeScript definitions
-│   │   └── utils/           # Utility functions
-│   ├── public/
+│   │   ├── components/       # UI components (Header, Sidebar, FloatingAIChat, etc.)
+│   │   ├── pages/            # 16 page components
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── store/            # Zustand stores (auth, map, notifications, theme)
+│   │   ├── services/         # API service layer
+│   │   ├── types/            # TypeScript definitions
+│   │   └── lib/              # Utility functions
 │   └── package.json
 │
-├── backend/                  # Node.js Express server
+├── backend/                  # Node.js + Express + TypeScript server
 │   ├── src/
-│   │   ├── routes/          # API route handlers
-│   │   ├── controllers/     # Business logic
-│   │   ├── models/          # Database models
-│   │   ├── middleware/      # Express middleware
-│   │   ├── services/        # Service layer
-│   │   └── utils/           # Utilities
+│   │   ├── routes/           # 11 API route handlers
+│   │   ├── models/           # MongoDB models (User, Species, IngestionJob, Notification)
+│   │   ├── middleware/       # Auth, rate limiting, error handling
+│   │   ├── config/           # Database connections
+│   │   └── utils/            # Utilities
+│   ├── storage/              # File uploads and processed data
 │   └── package.json
 │
-├── ai-services/              # Python AI/ML microservices
-│   ├── ingestion/           # Data ingestion & cleaning
-│   ├── classification/      # Fish image classifier
-│   ├── otolith/            # Otolith analysis
-│   ├── edna/               # eDNA sequence processing
-│   ├── analytics/          # Cross-domain analytics
-│   ├── llm/                # Local LLM service
+├── ai-services/              # Python FastAPI AI microservices
+│   ├── main.py               # Main FastAPI app (~2600 lines, all endpoints)
+│   ├── chat/                 # LLM service (Ollama/Groq dual-provider)
+│   │   ├── llm_service.py    # Chat completion with streaming
+│   │   ├── progress.py       # Progress tracking
+│   │   └── search_service.py # Web search integration
+│   ├── rag/                  # RAG-powered methodology
+│   │   ├── chromadb_service.py
+│   │   ├── embedding_service.py
+│   │   ├── rag_service.py
+│   │   ├── method_classifier.py
+│   │   └── protocols/        # Scientific protocol documents
+│   ├── research/             # Research assistant
+│   │   ├── paper_search.py   # Academic paper search
+│   │   └── citations.py      # Citation handling
+│   ├── analytics/            # Data analysis
+│   │   ├── correlation_engine.py
+│   │   ├── niche_modeler.py
+│   │   ├── report_generator.py
+│   │   ├── metadata_tagger.py
+│   │   └── data_cleaner.py
+│   ├── classification/       # Fish identification
+│   │   ├── fish_classifier.py
+│   │   ├── species_trainer.py
+│   │   └── models/           # Trained model weights
+│   ├── integrations/         # External APIs
+│   │   └── fishbase_service.py
 │   └── requirements.txt
 │
 ├── database/                 # Database schemas and migrations
-│   ├── mongodb/             # MongoDB collections
-│   ├── postgresql/          # PostgreSQL tables
-│   └── seeds/              # Sample data
-│
-├── storage/                  # File storage structure
-│   ├── uploads/             # Temporary uploads
-│   ├── datasets/            # Processed datasets
-│   ├── images/              # Species/otolith images
-│   └── sequences/           # eDNA sequences
+│   ├── mongodb/              # MongoDB init scripts
+│   ├── postgresql/           # PostgreSQL + PostGIS init
+│   └── seeds/                # Sample data (species, oceanography, etc.)
 │
 ├── docker/                   # Docker configurations
 │   ├── frontend.Dockerfile
 │   ├── backend.Dockerfile
-│   ├── ai-services.Dockerfile
-│   └── docker-compose.yml
+│   └── ai-services.Dockerfile
 │
 ├── docs/                     # Documentation
-│   ├── API.md              # API documentation
-│   ├── SETUP.md            # Setup instructions
-│   └── ARCHITECTURE.md     # System architecture
+│   ├── API.md                # API documentation
+│   ├── API_EXAMPLES.md       # API usage examples
+│   ├── SETUP.md              # Setup instructions
+│   ├── ARCHITECTURE.md       # System architecture
+│   └── DEPLOYMENT.md         # Deployment guide
 │
-└── scripts/                  # Utility scripts
-    ├── setup.sh
-    ├── deploy.sh
-    └── generate-mock-data.py
+├── scripts/                  # Utility scripts
+│   ├── setup.ps1             # PowerShell setup script
+│   └── generate-mock-data.py # Generate sample data
+│
+├── docker-compose.yml        # Docker Compose configuration
+├── PROJECT_DOCUMENTATION.md  # Detailed academic documentation
+├── FEATURES_AND_TESTING.md   # Feature list and testing guide
+└── README.md                 # This file
 ```
+
+---
 
 ## Features
 
-### 1. **Data Ingestion Portal**
-- Multi-format file upload (CSV, Excel, JSON, PDF, Images, FASTA/FASTQ, ZIP)
+### 1. Data Ingestion Portal
+- Multi-format file upload (CSV, Excel, JSON, PDF, Images, FASTA/FASTQ, ZIP, NetCDF, GeoJSON)
 - AI-powered data extraction and cleaning
 - Automatic metadata generation following Darwin Core/OBIS/MIxS standards
 - Taxonomic name standardization and validation
-- Batch processing with progress tracking
+- Background processing with real-time progress tracking
+- "AI Enhanced" badge for processed records
 
-### 2. **Oceanographic Visualization**
-- Interactive GIS maps with multiple layers
-- SST, salinity, chlorophyll, depth, currents visualization
-- Time-series data playback
+### 2. Oceanographic Visualization
+- Interactive GIS maps powered by **Leaflet** and **Deck.GL**
+- Parameters: SST, salinity, chlorophyll-a, dissolved oxygen, pH, currents, depth
+- Time-series data playback with date range filtering
 - Station and survey location mapping
-- Real-time parameter correlations
+- PostGIS-powered spatial queries
+- Heatmap overlays and 3D visualization
 
-### 3. **Species Explorer**
-- Comprehensive species database
-- Taxonomic tree navigation
-- Species distribution maps
-- Image galleries
+### 3. Species Explorer
+- Comprehensive species database (1000+ marine species)
+- Taxonomic tree navigation (Kingdom → Species)
+- Species distribution maps with occurrence data
+- Image galleries with lazy loading
 - Life-history traits and morphological data
-- eDNA detection records
-- Environmental correlations
+- Conservation status (IUCN Red List integration)
+- **FishBase data enrichment** for detailed species information
+- Darwin Core compliant data export
 
-### 4. **Otolith Analysis Module**
+### 4. Fish Identifier (AI-Powered)
+- **Custom EfficientNet-B0 model** trained from scratch
+- **84.8% validation accuracy** on 15 commercially important species
+- Real-time image classification
+- Confidence scoring with alternative suggestions
+- Species include: Yellowfin Tuna, Bigeye Tuna, Mahi-mahi, Groupers, Snappers, Barracuda, Sailfish, Swordfish, and more
+- FishBase integration for identified species details
+
+### 5. Otolith Analysis Module
 - Image upload and preprocessing
-- Automatic segmentation and shape extraction
-- Morphometric measurements
-- ML-based species identification
-- Shape similarity search
-- Comparative analysis tools
+- **Ensemble age estimation** using multiple methods:
+  - Ring counting analysis
+  - Edge detection
+  - Intensity profiling
+  - Morphometric measurements
+- ML-based species identification from otolith shape
+- Shape similarity search across database
+- Visualization of detected growth rings
+- Confidence levels and age range estimation
 
-### 5. **eDNA Sequence Management**
+### 6. eDNA Sequence Management
 - FASTA/FASTQ file processing
-- BLAST and Kraken2 integration
-- Species detection and matching
-- Spatial distribution mapping
-- Temporal trend analysis
+- Species detection from genetic sequences
+- Biodiversity metrics (Simpson's Index, Shannon Index)
+- Spatial distribution mapping of detections
+- Read count analysis and confidence scoring
 - Quality control and filtering
+- *Prepared for BLAST and Kraken2 integration*
 
-### 6. **Cross-Domain Analytics**
+### 7. Cross-Domain Analytics
 - Multi-parameter correlation analysis
-- Statistical modeling
-- Predictive analytics
-- Custom query builder
-- Interactive visualizations (graphs, heatmaps, 3D plots)
-- Export and reporting tools
+- Statistical modeling with R² values
+- Custom query builder for complex analyses
+- Interactive visualizations (scatter plots, heatmaps, line charts)
+- AI-generated insights from data patterns
+- Export results in CSV, JSON, and visualization formats
 
-### 7. **AI Assistant**
-- Natural language queries
-- Automated report generation
-- Data quality insights
-- Trend detection
-- Anomaly identification
+### 8. Niche Modeling
+- **MaxEnt-based habitat suitability modeling**
+- Environmental variable selection (temperature, salinity, depth, etc.)
+- Species distribution prediction maps
+- Probability heatmaps for occurrence
+- Model evaluation metrics
+- Future scenario projections
 
-### 8. **Admin Console**
-- User management
-- System monitoring
+### 9. AI Assistant
+- **Dual LLM provider support**:
+  - **Groq** (cloud): Fast inference, free tier, llama-3.3-70b-versatile
+  - **Ollama** (local): Privacy-focused, no internet required
+- Real-time **streaming responses** via Server-Sent Events
+- Context-aware marine research queries
+- FishBase data enrichment for species questions
+- Multi-session conversation history
+- Floating chat widget accessible from any page
+
+### 10. AI Research Assistant (RAG-Powered)
+- **Methodology generation** with scientific protocol retrieval
+- **Hypothesis formation** assistance
+- **Data analysis** guidance with chart generation
+- **ChromaDB vector database** for document retrieval
+- Source citation with confidence scores
+- Academic paper search integration (Semantic Scholar, CrossRef)
+- Expert review flags for complex queries
+
+### 11. Report Generator
+- Multiple output formats: **PDF, Word, Excel**
+- Customizable report templates
+- Date range and data source selection
+- Embedded charts and visualizations
+- Statistical summaries
+- LLM-powered narrative generation
+
+### 12. Admin Console
+- User management (CRUD operations)
+- Role-based access control (admin, researcher)
+- System monitoring and health checks
 - Data quality dashboard
 - Audit logs
-- Configuration management
+- User statistics and activity tracking
+
+---
 
 ## Quick Start
 
@@ -194,9 +307,9 @@ Ocean/
 
 ### Installation
 
-```bash
+```powershell
 # Clone and navigate to project
-cd Ocean
+cd Marlin
 
 # Install frontend dependencies
 cd frontend
@@ -208,93 +321,235 @@ npm install
 
 # Install AI service dependencies
 cd ../ai-services
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 # Setup environment variables
-cp .env.example .env
+cd ..
+Copy-Item .env.example .env
 # Edit .env with your configurations
 
-# Start with Docker Compose
+# Start with Docker Compose (recommended)
 docker-compose up -d
 ```
 
 ### Access the Application
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **API Documentation**: http://localhost:5000/api-docs
-- **AI Services**: http://localhost:8000
+| Service | URL |
+|---------|-----|
+| **Frontend** | http://localhost:3000 |
+| **Backend API** | http://localhost:5000 |
+| **API Documentation** | http://localhost:5000/api-docs |
+| **AI Services** | http://localhost:8000 |
+| **AI Services Docs** | http://localhost:8000/docs |
+| **MinIO Console** | http://localhost:9001 |
 
 ### Default Credentials
 
-- Username: `admin@cmlre.gov.in`
-- Password: `cmlre2024`
+- **Email**: `admin@cmlre.gov.in`
+- **Password**: `cmlre2024`
+
+---
 
 ## Development
 
-```bash
-# Frontend development
+```powershell
+# Frontend development (with hot reload)
 cd frontend
 npm run dev
 
-# Backend development
+# Backend development (with nodemon)
 cd backend
 npm run dev
 
-# AI services development
+# AI services development (with auto-reload)
 cd ai-services
+.\venv\Scripts\Activate.ps1
 uvicorn main:app --reload --port 8000
 ```
 
-## Deployment
+### Testing
 
-### Production Build
+```powershell
+# Frontend tests
+cd frontend
+npm test
 
-```bash
-# Build all services
-./scripts/deploy.sh production
+# Backend tests
+cd backend
+npm test
+
+# AI services tests
+cd ai-services
+pytest
 ```
 
-### Docker Deployment
-
-```bash
-docker-compose -f docker-compose.prod.yml up -d
-```
+---
 
 ## API Documentation
 
-Comprehensive API documentation is available at `/api-docs` when the server is running.
+### Authentication
+All protected endpoints require JWT token in header:
+```
+Authorization: Bearer <token>
+```
 
-Key endpoints:
-- `POST /api/ingest` - Upload and ingest data
-- `GET /api/species` - Query species database
-- `GET /api/oceanography` - Access oceanographic data
-- `POST /api/otolith/analyze` - Analyze otolith images
-- `POST /api/edna/process` - Process eDNA sequences
-- `GET /api/analytics/correlate` - Cross-domain correlation analysis
+### Key Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| **Auth** |||
+| POST | `/api/auth/login` | User login |
+| POST | `/api/auth/register` | User registration |
+| GET | `/api/auth/users` | List users (admin) |
+| **Species** |||
+| GET | `/api/species` | Query species database |
+| GET | `/api/species/:id` | Get species details |
+| POST | `/api/species` | Create species record |
+| **Oceanography** |||
+| GET | `/api/oceanography` | Query oceanographic data |
+| GET | `/api/oceanography/parameters` | Get available parameters |
+| **Ingestion** |||
+| POST | `/api/ingest` | Upload and ingest data |
+| GET | `/api/ingest/jobs` | Get ingestion job status |
+| DELETE | `/api/ingest/jobs/:id` | Delete ingestion job |
+| **eDNA** |||
+| GET | `/api/edna/samples` | List eDNA samples |
+| POST | `/api/edna/samples` | Create eDNA sample |
+| GET | `/api/edna/statistics` | Get biodiversity statistics |
+| **Otoliths** |||
+| GET | `/api/otoliths` | List otolith records |
+| POST | `/api/otoliths/analyze` | Analyze otolith image |
+| **Analytics** |||
+| GET | `/api/analytics/summary` | Get platform statistics |
+| GET | `/api/correlation/summary` | Cross-domain correlation summary |
+| POST | `/api/correlation/analyze` | Run correlation analysis |
+| **AI Services** (port 8000) |||
+| GET | `/` | API status and endpoints |
+| GET | `/ai-status` | AI system connectivity status |
+| POST | `/chat` | AI chat completion |
+| POST | `/chat-stream` | Streaming AI chat (SSE) |
+| POST | `/classify-fish` | Fish species identification |
+| POST | `/analyze-otolith` | Otolith age estimation |
+| POST | `/methodology` | RAG methodology query |
+| GET | `/species/{name}` | Get species from database |
+| POST | `/niche-model` | Run niche modeling |
+| POST | `/generate-report` | Generate report |
+
+Full API documentation available at `/api-docs` (Swagger UI) when the server is running.
+
+---
 
 ## Database Standards
 
 This platform implements international marine data standards:
 
-- **Darwin Core**: Biodiversity data exchange
-- **OBIS**: Ocean biodiversity information
-- **MIxS**: Minimum information standards for sequencing
-- **ISO 19115**: Geographic metadata standards
-- **CF Conventions**: Climate and forecast metadata
+| Standard | Purpose |
+|----------|---------|
+| **Darwin Core** | Biodiversity data exchange |
+| **OBIS** | Ocean biodiversity information |
+| **MIxS** | Minimum information standards for sequencing |
+| **ISO 19115** | Geographic metadata standards |
+| **CF Conventions** | Climate and forecast metadata |
+
+---
+
+## Deployment
+
+### Docker Deployment (Recommended)
+
+```powershell
+# Build and start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Scale backend for production
+docker-compose up -d --scale backend=3
+```
+
+### Production Build
+
+```powershell
+# Build frontend
+cd frontend
+npm run build
+
+# Build backend
+cd backend
+npm run build
+
+# Build production Docker images
+docker-compose -f docker-compose.prod.yml build
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+---
+
+## Environment Variables
+
+Key configuration in `.env`:
+
+```env
+# Application
+NODE_ENV=development
+BACKEND_PORT=5000
+FRONTEND_PORT=3000
+AI_SERVICES_PORT=8000
+
+# Databases
+POSTGRES_HOST=localhost
+POSTGRES_DB=cmlre_marine
+MONGODB_URI=mongodb://localhost:27017/cmlre_marine
+REDIS_HOST=localhost
+
+# Authentication
+JWT_SECRET=your_jwt_secret_key
+JWT_EXPIRES_IN=24h
+
+# AI Services
+GROQ_API_KEY=your_groq_api_key  # Optional: for cloud LLM
+OLLAMA_URL=http://localhost:11434  # For local LLM
+```
+
+See `.env.example` for complete configuration options.
+
+---
 
 ## Contributing
 
-See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for development guidelines.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+See [docs/SETUP.md](./docs/SETUP.md) for development setup details.
+
+---
 
 ## License
 
 Developed for CMLRE, Ministry of Earth Sciences, Government of India.
 
+---
+
 ## Support
 
-For issues and support, contact: support@cmlre.gov.in
+For issues and support:
+- **Email**: support@cmlre.gov.in
+- **Documentation**: See `docs/` folder
+- **API Docs**: http://localhost:5000/api-docs
+- **AI Docs**: http://localhost:8000/docs
+
+---
 
 ## Acknowledgments
 
-Built with open-source tools and free AI models to ensure complete accessibility and control for CMLRE.
+Built with open-source tools and AI models to ensure complete accessibility and control for CMLRE. Special thanks to:
+- FishBase for species data
+- Groq for cloud LLM API
+- Ollama for local LLM inference
+- The open-source community for the amazing tools and libraries

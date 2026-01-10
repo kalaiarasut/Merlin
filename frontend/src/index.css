@@ -28,7 +28,7 @@
     --input: 214 20% 92%;
     --ring: 199 89% 48%;
     --radius: 0.75rem;
-    
+
     /* Premium Gradients */
     --gradient-from: 199 89% 48%;
     --gradient-to: 199 89% 30%;
@@ -62,21 +62,26 @@
   * {
     @apply border-border;
   }
-  
+
   html {
     @apply antialiased;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
+
   body {
     @apply bg-background text-foreground font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
   /* Premium Typography */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply tracking-tight font-semibold;
   }
 
@@ -104,21 +109,21 @@
     scrollbar-width: thin;
     scrollbar-color: theme('colors.ocean.300') transparent;
   }
-  
+
   .scrollbar-premium::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  
+
   .scrollbar-premium::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
-  
+
   .scrollbar-premium::-webkit-scrollbar-thumb {
     @apply bg-ocean-300/50 rounded-full;
     transition: background-color 0.2s ease;
   }
-  
+
   .scrollbar-premium::-webkit-scrollbar-thumb:hover {
     @apply bg-ocean-400/70;
   }
@@ -127,30 +132,30 @@
     scrollbar-width: thin;
     scrollbar-color: theme('colors.ocean.700') transparent;
   }
-  
+
   .scrollbar-premium-dark::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
-  
+
   .scrollbar-premium-dark::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
-  
+
   .scrollbar-premium-dark::-webkit-scrollbar-thumb {
     @apply bg-ocean-700/50 rounded-full;
     transition: background-color 0.2s ease;
   }
-  
+
   .scrollbar-premium-dark::-webkit-scrollbar-thumb:hover {
     @apply bg-ocean-600/70;
   }
-  
+
   .scrollbar-hidden {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
-  
+
   .scrollbar-hidden::-webkit-scrollbar {
     display: none;
   }
@@ -193,11 +198,11 @@
   .glass {
     @apply bg-white/70 backdrop-blur-xl border border-white/20;
   }
-  
+
   .glass-dark {
     @apply bg-deep-900/70 backdrop-blur-xl border border-white/10;
   }
-  
+
   .glass-card {
     @apply bg-white/80 backdrop-blur-lg border border-gray-200/50 shadow-card;
   }
@@ -210,12 +215,12 @@
 /* Background Patterns for Dark Mode */
 @layer utilities {
   .bg-grid-dark {
-    background-image: 
+    background-image:
       linear-gradient(to right, theme('colors.gray.700') 1px, transparent 1px),
       linear-gradient(to bottom, theme('colors.gray.700') 1px, transparent 1px);
     background-size: 24px 24px;
   }
-  
+
   .bg-mesh-gradient-dark {
     background: radial-gradient(ellipse 80% 50% at 50% -20%, theme('colors.ocean.900/30'), transparent);
   }
@@ -226,12 +231,12 @@
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-ocean-500 to-ocean-700;
   }
-  
+
   .gradient-border {
     position: relative;
     border: none;
   }
-  
+
   .gradient-border::before {
     content: '';
     position: absolute;
@@ -248,7 +253,9 @@
 
 /* Loading animation */
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-spin {
@@ -258,12 +265,10 @@
 /* Premium shimmer effect */
 @layer utilities {
   .shimmer {
-    background: linear-gradient(
-      90deg,
-      theme('colors.gray.100') 0%,
-      theme('colors.gray.50') 50%,
-      theme('colors.gray.100') 100%
-    );
+    background: linear-gradient(90deg,
+        theme('colors.gray.100') 0%,
+        theme('colors.gray.50') 50%,
+        theme('colors.gray.100') 100%);
     background-size: 200% 100%;
     animation: shimmer 2s ease-in-out infinite;
   }
@@ -278,12 +283,74 @@
   @apply w-full h-full rounded-2xl;
 }
 
+/* Live Sensor Marker Pulsing Animation */
+@keyframes live-marker-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+}
+
+@keyframes live-ring-expand {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+.live-pulse-marker {
+  animation: live-marker-pulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.live-pulse-ring {
+  animation: live-ring-expand 2s ease-out infinite;
+}
+
+/* Live Marker Tooltip Styling */
+.live-marker-tooltip {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(16, 185, 129, 0.1) !important;
+  padding: 0 !important;
+}
+
+.live-marker-tooltip::before {
+  border-top-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.live-marker-tooltip .leaflet-tooltip-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.leaflet-tooltip-top.live-marker-tooltip {
+  margin-top: -8px !important;
+}
+
 /* Premium Card Hover Effects */
 @layer utilities {
   .card-hover {
     @apply transition-all duration-300 ease-premium;
   }
-  
+
   .card-hover:hover {
     @apply shadow-card-hover -translate-y-0.5;
   }
@@ -294,15 +361,15 @@
   .status-dot {
     @apply w-2 h-2 rounded-full;
   }
-  
+
   .status-online {
     @apply bg-marine-500 shadow-[0_0_8px_theme('colors.marine.500')];
   }
-  
+
   .status-warning {
     @apply bg-coral-500 shadow-[0_0_8px_theme('colors.coral.500')];
   }
-  
+
   .status-error {
     @apply bg-abyss-500 shadow-[0_0_8px_theme('colors.abyss.500')];
   }
@@ -313,13 +380,13 @@
   .btn-glow {
     @apply relative overflow-hidden;
   }
-  
+
   .btn-glow::after {
     content: '';
     @apply absolute inset-0 opacity-0 transition-opacity duration-300;
     background: radial-gradient(circle at center, theme('colors.white/20') 0%, transparent 70%);
   }
-  
+
   .btn-glow:hover::after {
     @apply opacity-100;
   }
@@ -328,12 +395,12 @@
 /* Section Backgrounds */
 @layer utilities {
   .bg-grid {
-    background-image: 
+    background-image:
       linear-gradient(to right, theme('colors.gray.100') 1px, transparent 1px),
       linear-gradient(to bottom, theme('colors.gray.100') 1px, transparent 1px);
     background-size: 24px 24px;
   }
-  
+
   .bg-dots {
     background-image: radial-gradient(circle, theme('colors.gray.300') 1px, transparent 1px);
     background-size: 20px 20px;

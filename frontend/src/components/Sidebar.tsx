@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Database, Waves, Fish, Circle, Dna, BarChart3,
   MessageSquare, Settings, FileText, ChevronRight, Sparkles, Camera, GraduationCap,
-  Globe, FileOutput, Shield
+  Globe, FileOutput, Shield, Search
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +10,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, description: 'Overview & metrics' },
   { name: 'Data Ingestion', href: '/ingest', icon: Database, description: 'Upload datasets' },
   { name: 'Standards Check', href: '/standards', icon: Shield, badge: 'NEW', description: 'Data compliance' },
+  { name: 'Species Resolver', href: '/taxonomy', icon: Search, badge: 'NEW', description: 'Taxonomic lookup' },
   { name: 'Oceanography', href: '/oceanography', icon: Waves, description: 'GIS & mapping' },
   { name: 'Species Explorer', href: '/species', icon: Fish, description: 'Marine species' },
   { name: 'Fish Identifier', href: '/fish-id', icon: Camera, badge: 'AI', description: 'Photo ID' },

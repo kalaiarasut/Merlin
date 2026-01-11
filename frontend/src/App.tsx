@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import DataIngestion from './pages/DataIngestion';
 import StandardsCompliance from './pages/StandardsCompliance';
+import TaxonomyResolver from './pages/TaxonomyResolver';
 import OceanographyViewer from './pages/OceanographyViewer';
 import SpeciesExplorer from './pages/SpeciesExplorer';
 import SpeciesDetail from './pages/SpeciesDetail';
@@ -48,6 +49,7 @@ function App() {
             <Route index element={<PageErrorBoundary><Dashboard /></PageErrorBoundary>} />
             <Route path="ingest" element={<PageErrorBoundary><DataIngestion /></PageErrorBoundary>} />
             <Route path="standards" element={<PageErrorBoundary><StandardsCompliance /></PageErrorBoundary>} />
+            <Route path="taxonomy" element={<PageErrorBoundary><TaxonomyResolver /></PageErrorBoundary>} />
             <Route path="oceanography" element={<PageErrorBoundary><OceanographyViewer /></PageErrorBoundary>} />
             <Route path="species" element={<PageErrorBoundary><SpeciesExplorer /></PageErrorBoundary>} />
             <Route path="species/:id" element={<PageErrorBoundary><SpeciesDetail /></PageErrorBoundary>} />

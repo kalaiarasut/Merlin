@@ -14,10 +14,13 @@ import {
   DataSourceBadge,
   EnhancedLegend,
   HeatmapLayer,
+  GriddedHeatmapLayer,
   LayerControl,
   NASAOceanColorLayer,
   DataSourceMode,
   VisibleLayer,
+  TemporalAnimationControl,
+  TimeFrame,
 } from '@/components/oceanography';
 import {
   Map as MapIcon, Layers, Thermometer, Droplets, Wind,
@@ -158,6 +161,10 @@ export default function OceanographyViewer() {
   // NEW: Zoom level for dynamic resolution scaling
   const [zoomLevel, setZoomLevel] = useState(5);
 
+  // NEW: Temporal animation state
+  const [animationFrameIndex, setAnimationFrameIndex] = useState(0);
+  const [animationFrames, setAnimationFrames] = useState<TimeFrame[]>([]);
+
   // Calculate stride based on zoom level (professional platforms do this)
   // Lower zoom = higher stride (less data), Higher zoom = lower stride (more data)
   const getStrideForZoom = useCallback((zoom: number) => {
@@ -220,6 +227,35 @@ export default function OceanographyViewer() {
   const handleDataSourceChange = useCallback((source: DataSourceMode) => {
     setDataSourceMode(source);
   }, []);
+
+  // Generate animation frames based on satellite data availability
+  // This creates a sequence of dates for the last 7 days
+  useEffect(() => {
+    if (dataSourceMode === 'erddap') {
+      const frames: TimeFrame[] = [];
+      const today = new Date();
+
+      // Generate last 7 days of dates
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+
+        const isoDate = date.toISOString().split('T')[0];
+        const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        frames.push({
+          date: isoDate,
+          label,
+          timestamp: date.getTime(),
+        });
+      }
+
+      setAnimationFrames(frames);
+      setAnimationFrameIndex(frames.length - 1); // Start at latest date
+    } else {
+      setAnimationFrames([]);
+    }
+  }, [dataSourceMode]);
 
   // Refresh data based on current source
   const handleRefresh = useCallback(() => {
@@ -511,6 +547,20 @@ export default function OceanographyViewer() {
                   />
                 )}
 
+                {/* Gridded Heatmap Layer - Professional grid visualization */}
+                {visibleLayers.includes('gridded_heatmap') && erddapData?.data && (
+                  <GriddedHeatmapLayer
+                    data={erddapData.data.map(p => ({
+                      latitude: p.latitude,
+                      longitude: p.longitude,
+                      value: p.value,
+                    }))}
+                    parameter={selectedParameter as 'temperature' | 'salinity' | 'chlorophyll'}
+                    opacity={0.75}
+                    visible={true}
+                  />
+                )}
+
                 {/* ERDDAP Real Data Markers */}
                 {dataSourceMode === 'erddap' && visibleLayers.includes('markers') && erddapData?.data?.map((point, idx) => (
                   <CircleMarker
@@ -622,8 +672,19 @@ export default function OceanographyViewer() {
           </Card>
         </div>
 
+
+
         {/* Side Panel */}
         <div className="space-y-4">
+          {/* Temporal Animation Controls - Moved Here */}
+          {dataSourceMode === 'erddap' && animationFrames.length > 1 && (
+            <TemporalAnimationControl
+              frames={animationFrames}
+              currentFrameIndex={animationFrameIndex}
+              onFrameChange={setAnimationFrameIndex}
+              isLoading={erddapLoading}
+            />
+          )}
           {/* Parameters Panel */}
           <CollapsiblePanel title="Parameters" icon={Layers} defaultExpanded={false}>
             <div className="space-y-2">

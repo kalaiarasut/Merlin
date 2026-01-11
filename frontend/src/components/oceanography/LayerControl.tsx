@@ -22,12 +22,13 @@ import {
     RefreshCw,
     ChevronDown,
     ChevronUp,
-    Database
+    Database,
+    Grid
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type DataSourceMode = 'erddap' | 'database';
-export type VisibleLayer = 'markers' | 'heatmap' | 'nasa_wms';
+export type VisibleLayer = 'markers' | 'heatmap' | 'gridded_heatmap' | 'nasa_wms';
 
 interface LayerControlProps {
     // Layers
@@ -118,6 +119,16 @@ export function LayerControl({
                                 <Switch
                                     checked={isLayerVisible('heatmap')}
                                     onCheckedChange={() => onLayerToggle('heatmap')}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Grid className="w-3.5 h-3.5 text-ocean-500" />
+                                    <span className="text-sm">Gridded Heatmap</span>
+                                </div>
+                                <Switch
+                                    checked={isLayerVisible('gridded_heatmap')}
+                                    onCheckedChange={() => onLayerToggle('gridded_heatmap')}
                                 />
                             </div>
                             <div className="flex items-center justify-between">

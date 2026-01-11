@@ -90,8 +90,8 @@ The Oceanography page provides an integrated, visual, and analyzable representat
 | Interactive map (Leaflet) | ✅ Done | |
 | Layer toggles (SST, Salinity, Chlorophyll) | ✅ Done | Parameter panel |
 | Marker layer (stations/points) | ✅ Done | Live + static points |
-| Heatmap layer (gridded data) | ❌ Missing | **HIGH PRIORITY** |
-| Temporal animations | ❌ Missing | Time-series playback |
+| Heatmap layer (gridded data) | ✅ **DONE** | `GriddedHeatmapLayer` canvas-based grid |
+| Temporal animations | ✅ **DONE** | `TemporalAnimationControl` with playback |
 
 #### Visual Rules
 | Rule | Status |
@@ -217,3 +217,245 @@ The page must support future correlation with:
 - Temperature-based color coding
 - Tooltip-based data inspection (hover)
 - Premium glass-effect styling
+
+---
+
+## 🚨 Production-Level Critical Requirements
+
+> **Status**: These features are required for CMLRE to operate as a production-grade national marine science platform. Without these, data cannot be shared nationally or internationally.
+
+---
+
+### 1️⃣ TRUE STANDARDS COMPLIANCE ENGINE
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ✅ **DONE** | Production-grade validation implemented |
+| **Priority** | 🔴 CRITICAL | Mandatory for data sharing |
+
+**Implemented Features:**
+- [x] Darwin Core (DwC) field-level validation (40+ terms)
+- [x] OBIS schema validation (marine-specific)
+- [x] MIxS validation for eDNA data (6.0 spec)
+- [x] ISO 19115 metadata completeness checks
+- [x] CF-Convention validation for NetCDF files
+
+**Features Delivered:**
+- Auto-reject invalid uploads with `/api/standards/check-upload`
+- Compliance score per dataset (0-100%) with grade (A-F)
+- Export in DwC-A, OBIS-CSV, MIxS-JSON formats
+
+**API Endpoints:**
+- `POST /api/standards/validate` - Single standard validation
+- `POST /api/standards/validate-all` - All applicable standards
+- `POST /api/standards/report/:datasetId` - Full compliance report
+- `GET /api/standards/info` - Standards information
+
+**Frontend UI:**
+- `pages/StandardsCompliance.tsx` - Full validation dashboard with upload, scoring, and export options
+- Route: `/standards` with sidebar navigation
+
+📌 **Status**: ✅ COMPLETE (Manual UI testing pending by user)
+
+
+---
+
+### 2️⃣ SCIENTIFIC TAXONOMIC AUTHORITY RESOLUTION
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Partial | Species name cleaning only |
+| **Priority** | 🔴 CRITICAL | Required for biodiversity indices |
+
+**Required Implementation:**
+- [ ] WoRMS (World Register of Marine Species) integration
+- [ ] ITIS fallback for non-marine species
+- [ ] Synonym resolution + accepted name locking
+- [ ] Persistent taxon IDs (AphiaID, TSN)
+- [ ] Versioned taxonomy (important for long-term datasets)
+
+📌 **Impact**: Required for policy reports, stock assessments, biodiversity indices
+
+---
+
+### 3️⃣ FULL eDNA ANALYSIS PIPELINE
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ❌ Storage only | eDNA module is storage-oriented, not analysis-oriented |
+| **Priority** | 🔴 CRITICAL | Explicitly required in problem statement |
+
+**Required Implementation:**
+- [ ] Quality filtering (Phred scores, read trimming)
+- [ ] ASV / OTU clustering algorithms
+- [ ] Taxonomic assignment (BLAST / Kraken2 / SILVA)
+- [ ] Contamination detection & flagging
+- [ ] Rarefaction curves generation
+- [ ] Alpha diversity (Shannon, Simpson indices)
+- [ ] Beta diversity (Bray-Curtis dissimilarity)
+- [ ] Confidence scoring per species detection
+
+📌 **Impact**: Core requirement from problem statement
+
+---
+
+### 4️⃣ FISHERIES STOCK & ABUNDANCE MODELING
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ❌ Missing | No fisheries-specific analytics |
+| **Priority** | 🔴 CRITICAL | Core to sustainable fisheries management |
+
+**Required Implementation:**
+- [ ] CPUE (Catch Per Unit Effort) modeling
+- [ ] Length-frequency analysis
+- [ ] Recruitment & mortality estimation
+- [ ] Time-series stock trends with forecasting
+- [ ] Linking fish abundance ↔ ocean parameters
+- [ ] Spatial distribution modeling
+
+📌 **Impact**: Essential for sustainable fisheries management decisions
+
+---
+
+### 5️⃣ CROSS-DOMAIN CAUSAL ANALYSIS
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Partial | Correlation only, no causal explanation |
+| **Priority** | 🟠 HIGH | Scientists must answer "why", not just "what" |
+
+**Required Implementation:**
+- [ ] Multivariate regression models
+- [ ] GAMs (Generalized Additive Models)
+- [ ] Feature importance explanations
+- [ ] Lagged environmental effects modeling
+- [ ] Model confidence & uncertainty reporting
+- [ ] Hypothesis testing interface
+
+📌 **Impact**: Required for scientific publications and policy recommendations
+
+---
+
+### 6️⃣ POLICY-GRADE REPORTING ENGINE
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Partial | Reports exist but not decision-ready |
+| **Priority** | 🔴 CRITICAL | Enables official submissions |
+
+**Required Implementation:**
+- [ ] Ministry-ready report templates (MoES format)
+- [ ] Automated executive summaries
+- [ ] Data provenance section (mandatory)
+- [ ] Methodology traceability documentation
+- [ ] Citation locking (prevent modification after citation)
+- [ ] Reproducibility hash (same data → same result guarantee)
+
+📌 **Impact**: Required for official government submissions
+
+---
+
+### 7️⃣ AUDIT, PROVENANCE & SCIENTIFIC REPRODUCIBILITY
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Partial | Data lineage incomplete |
+| **Priority** | 🔴 CRITICAL | Mandatory for government science platforms |
+
+**Required Implementation:**
+- [ ] Dataset versioning (Git-like history)
+- [ ] Full ingestion audit trail
+- [ ] Who-did-what-when activity logs
+- [ ] Model version tracking
+- [ ] Reproducible analysis snapshots
+- [ ] Data lineage visualization
+
+📌 **Impact**: Mandatory for government science platforms
+
+---
+
+### 8️⃣ MULTI-INSTITUTE, MULTI-USER GOVERNANCE
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Partial | Roles too simple |
+| **Priority** | 🔴 CRITICAL | Required for multi-lab usage |
+
+**Required Implementation:**
+- [ ] Institute-level data isolation
+- [ ] Project-based access control
+- [ ] Reviewer / Approver roles (beyond admin/researcher)
+- [ ] Data embargo periods for pre-publication
+- [ ] Public vs restricted dataset classification
+- [ ] Cross-institute data sharing agreements
+
+📌 **Impact**: Required when multiple national labs use the system
+
+---
+
+### 9️⃣ PERFORMANCE & SCALABILITY HARDENING
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ⚠️ Functional | Not stress-tested for national scale |
+| **Priority** | 🟠 HIGH | Necessary for national-scale datasets |
+
+**Required Implementation:**
+- [ ] Large NetCDF chunking & lazy loading
+- [ ] Background compute orchestration (Redis/Celery)
+- [ ] Async spatial queries optimization
+- [ ] AI job queue prioritization
+- [ ] Load testing & failure recovery
+- [ ] Horizontal scaling architecture
+
+📌 **Impact**: Required for handling national-scale datasets
+
+---
+
+### 🔟 SCIENTIFIC VALIDATION & ACCEPTANCE LAYER
+
+| Aspect | Status | Requirement |
+|--------|--------|-------------|
+| **Current** | ❌ Missing | No human-in-the-loop validation |
+| **Priority** | 🔴 CRITICAL | Required for trustworthy AI in science |
+
+**Required Implementation:**
+- [ ] Expert validation workflows
+- [ ] "AI-suggested vs Human-confirmed" flags
+- [ ] Confidence thresholds for auto-acceptance
+- [ ] Review comments & approval chains
+- [ ] Validation certificate generation
+- [ ] Rejection reasons audit log
+
+📌 **Impact**: Required for trustworthy AI-assisted science
+
+---
+
+## Implementation Priority Matrix
+
+| Priority | Features | Effort |
+|----------|----------|--------|
+| 🔴 P0 (Immediate) | Standards Compliance, Taxonomic Authority, Scientific Validation | High |
+| 🔴 P1 (Critical) | eDNA Pipeline, Fisheries Modeling, Audit/Provenance | Very High |
+| 🟠 P2 (High) | Policy Reporting, Governance, Causal Analysis | High |
+| 🟡 P3 (Medium) | Scalability Hardening | Medium |
+
+---
+
+## Estimated Implementation Effort
+
+| Component | Backend | Frontend | Total |
+|-----------|---------|----------|-------|
+| Standards Engine | 3 weeks | 1 week | 4 weeks |
+| Taxonomic API | 2 weeks | 1 week | 3 weeks |
+| eDNA Pipeline | 4 weeks | 2 weeks | 6 weeks |
+| Fisheries Modeling | 3 weeks | 2 weeks | 5 weeks |
+| Causal Analysis | 3 weeks | 1 week | 4 weeks |
+| Reporting Engine | 2 weeks | 2 weeks | 4 weeks |
+| Audit System | 2 weeks | 1 week | 3 weeks |
+| Governance | 2 weeks | 2 weeks | 4 weeks |
+| Scalability | 3 weeks | - | 3 weeks |
+| Validation Layer | 2 weeks | 2 weeks | 4 weeks |
+| **Total** | **26 weeks** | **14 weeks** | **~40 weeks** |
+

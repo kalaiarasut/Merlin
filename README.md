@@ -178,8 +178,6 @@ Marlin/
 │   └── generate-mock-data.py # Generate sample data
 │
 ├── docker-compose.yml        # Docker Compose configuration
-├── PROJECT_DOCUMENTATION.md  # Detailed academic documentation
-├── FEATURES_AND_TESTING.md   # Feature list and testing guide
 └── README.md                 # This file
 ```
 

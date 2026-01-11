@@ -27,6 +27,7 @@ import notificationRoutes from './routes/notifications';
 import exportRoutes from './routes/export';
 import correlationRoutes from './routes/correlation';
 import publicApiRoutes from './routes/publicApi';
+import standardsRoutes from './routes/standards';
 
 // Load env from multiple candidates to ensure root-level .env is picked up
 const candidateEnvPaths = [
@@ -96,6 +97,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/correlation', correlationRoutes);
+app.use('/api/standards', standardsRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

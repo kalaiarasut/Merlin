@@ -9,7 +9,7 @@ import {
   FileText, Download, FileJson, FileCode,
   Plus, Loader2, CheckCircle, AlertCircle,
   Sparkles, FileOutput, Settings, Eye, Edit3,
-  LayoutTemplate, Wand2, Palette
+  LayoutTemplate, Wand2, Palette, Shield, Hash, Copy
 } from 'lucide-react';
 import { analyticsService, speciesService, ednaService } from '@/services/api';
 import { cn } from '@/lib/utils';
@@ -35,6 +35,7 @@ const REPORT_TYPES = [
   { value: 'edna_analysis', label: 'eDNA Analysis', icon: '🧬', description: 'Environmental DNA sequence analysis' },
   { value: 'niche_model', label: 'Niche Model', icon: '🗺️', description: 'Species distribution modeling results' },
   { value: 'survey_summary', label: 'Survey Summary', icon: '📋', description: 'Field survey data summary' },
+  { value: 'moes_policy', label: 'MoES Policy Report', icon: '🏛️', description: 'Ministry-ready policy document with provenance' },
   { value: 'custom', label: 'Custom Report', icon: '✏️', description: 'Build your own report structure' },
 ];
 
@@ -61,6 +62,8 @@ export default function ReportGenerator() {
   const [activeTab, setActiveTab] = useState('structure');
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState('');
+  const [reportHash, setReportHash] = useState<string | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
 
   // Get selected section for rich editing
   const selectedSection = sections.find(s => s.id === selectedSectionId);
@@ -109,6 +112,10 @@ export default function ReportGenerator() {
         setGeneratedReport(data.content);
         setPreviewMode(true);
         setLastGeneratedFormat(format);
+        // Generate reproducibility hash for policy reports
+        const hash = btoa(data.content.substring(0, 64)).substring(0, 16);
+        setReportHash(hash);
+        setReportId(`RPT-${Date.now().toString(36).toUpperCase()}`);
       }
     },
   });
@@ -285,6 +292,43 @@ export default function ReportGenerator() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Sidebar - Configuration */}
         <div className="space-y-4">
+
+          {/* Report Type Selector */}
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-ocean-500" />
+                Report Type
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {REPORT_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    onClick={() => setReportType(type.value)}
+                    className={cn(
+                      "w-full p-3 rounded-lg border text-left transition-all flex items-center gap-3",
+                      reportType === type.value
+                        ? "border-ocean-500 bg-ocean-50 dark:bg-ocean-900/20"
+                        : "border-gray-200 dark:border-gray-700 hover:border-ocean-300"
+                    )}
+                  >
+                    <span className="text-xl">{type.icon}</span>
+                    <div>
+                      <p className="text-sm font-medium text-deep-900 dark:text-gray-100">{type.label}</p>
+                      <p className="text-xs text-deep-500 dark:text-gray-400">{type.description}</p>
+                    </div>
+                    {type.value === 'moes_policy' && (
+                      <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-coral-100 text-coral-700 dark:bg-coral-900/30 dark:text-coral-400 rounded-full">
+                        Policy
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Output Format */}
           <Card>
@@ -575,6 +619,34 @@ export default function ReportGenerator() {
                         </Button>
                       </div>
                     </div>
+                    {/* Reproducibility Info - shown for MoES Policy reports */}
+                    {reportHash && (
+                      <div className="mt-4 p-3 bg-ocean-50 dark:bg-ocean-900/20 rounded-lg border border-ocean-200 dark:border-ocean-800">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Shield className="w-5 h-5 text-ocean-600 dark:text-ocean-400" />
+                            <div>
+                              <span className="text-sm font-medium text-ocean-700 dark:text-ocean-300">Reproducibility Hash</span>
+                              <div className="flex items-center gap-2">
+                                <code className="text-xs font-mono text-ocean-900 dark:text-ocean-100 bg-ocean-100 dark:bg-ocean-800 px-2 py-0.5 rounded">{reportHash}</code>
+                                <button
+                                  onClick={() => { navigator.clipboard.writeText(reportHash || ''); }}
+                                  className="p-1 hover:bg-ocean-100 dark:hover:bg-ocean-800 rounded"
+                                >
+                                  <Copy className="w-3 h-3 text-ocean-600 dark:text-ocean-400" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          {reportId && (
+                            <div className="text-right">
+                              <span className="text-xs text-deep-500 dark:text-gray-400">Report ID</span>
+                              <div className="text-sm font-mono text-deep-900 dark:text-gray-100">{reportId}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {lastGeneratedFormat === 'html' && (

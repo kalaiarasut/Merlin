@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Home, Database, Waves, Fish, Circle, Dna, BarChart3,
   MessageSquare, Settings, FileText, ChevronRight, Sparkles, Camera, GraduationCap,
-  Globe, FileOutput, Shield, Search
+  Globe, FileOutput, Shield, Search, Anchor, GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,9 +16,12 @@ const navigation = [
   { name: 'Fish Identifier', href: '/fish-id', icon: Camera, badge: 'AI', description: 'Photo ID' },
   { name: 'Otolith Analysis', href: '/otolith', icon: Circle, description: 'Image analysis' },
   { name: 'eDNA Manager', href: '/edna', icon: Dna, description: 'Sequence data' },
+  { name: 'Fisheries', href: '/fisheries', icon: Anchor, badge: 'NEW', description: 'Stock & CPUE' },
+  { name: 'Causal Analysis', href: '/causal', icon: GitBranch, badge: 'NEW', description: 'Correlations' },
   { name: 'Analytics', href: '/analytics', icon: BarChart3, description: 'Insights & reports' },
   { name: 'Niche Modeling', href: '/niche-modeling', icon: Globe, badge: 'NEW', description: 'Species distribution' },
-  { name: 'Report Generator', href: '/reports', icon: FileOutput, badge: 'NEW', description: 'Export reports' },
+  { name: 'Report Generator', href: '/reports', icon: FileOutput, badge: 'NEW', description: 'MoES & custom reports' },
+  { name: 'Validation', href: '/validation', icon: Shield, badge: 'NEW', description: 'Scientific review' },
   { name: 'AI Assistant', href: '/ai-assistant', icon: MessageSquare, badge: 'AI', description: 'Natural language' },
   { name: 'Research Assistant', href: '/research-assistant', icon: GraduationCap, badge: 'AI', description: 'Literature & methods' },
 ];

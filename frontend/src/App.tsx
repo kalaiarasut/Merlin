@@ -25,6 +25,9 @@ import NicheModeling from './pages/NicheModeling';
 import ReportGenerator from './pages/ReportGenerator';
 import AdminConsole from './pages/AdminConsole';
 import ApiDocs from './pages/ApiDocs';
+import FisheriesAnalytics from './pages/FisheriesAnalytics';
+import CausalAnalysis from './pages/CausalAnalysis';
+import ValidationDashboard from './pages/ValidationDashboard';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -59,6 +62,9 @@ function App() {
             <Route path="analytics" element={<PageErrorBoundary><Analytics /></PageErrorBoundary>} />
             <Route path="niche-modeling" element={<PageErrorBoundary><NicheModeling /></PageErrorBoundary>} />
             <Route path="reports" element={<PageErrorBoundary><ReportGenerator /></PageErrorBoundary>} />
+            <Route path="fisheries" element={<PageErrorBoundary><FisheriesAnalytics /></PageErrorBoundary>} />
+            <Route path="causal" element={<PageErrorBoundary><CausalAnalysis /></PageErrorBoundary>} />
+            <Route path="validation" element={<PageErrorBoundary><ValidationDashboard /></PageErrorBoundary>} />
             <Route path="ai-assistant" element={<PageErrorBoundary><AIAssistant /></PageErrorBoundary>} />
             <Route path="research-assistant" element={<PageErrorBoundary><AIResearchAssistant /></PageErrorBoundary>} />
             <Route path="admin" element={<PageErrorBoundary><AdminConsole /></PageErrorBoundary>} />

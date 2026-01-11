@@ -29,6 +29,14 @@ import correlationRoutes from './routes/correlation';
 import publicApiRoutes from './routes/publicApi';
 import standardsRoutes from './routes/standards';
 import taxonomyRoutes from './routes/taxonomy';
+import ednaAnalysisRoutes from './routes/ednaAnalysis';
+import fisheriesRoutes from './routes/fisheries';
+import causalRoutes from './routes/causal';
+import reportingRoutes from './routes/reporting';
+import auditRoutes from './routes/audit';
+import validationRoutes from './routes/validation';
+import governanceRoutes from './routes/governance';
+import performanceRoutes from './routes/performance';
 
 // Load env from multiple candidates to ensure root-level .env is picked up
 const candidateEnvPaths = [
@@ -100,6 +108,14 @@ app.use('/api/export', exportRoutes);
 app.use('/api/correlation', correlationRoutes);
 app.use('/api/standards', standardsRoutes);
 app.use('/api/taxonomy', taxonomyRoutes);
+app.use('/api/edna-analysis', ednaAnalysisRoutes);
+app.use('/api/fisheries', fisheriesRoutes);
+app.use('/api/causal', causalRoutes);
+app.use('/api/reporting', reportingRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/validation', validationRoutes);
+app.use('/api/governance', governanceRoutes);
+app.use('/api/performance', performanceRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

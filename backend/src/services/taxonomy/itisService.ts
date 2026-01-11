@@ -105,7 +105,8 @@ export async function searchByName(scientificName: string): Promise<ITISSearchRe
         const data = parseITISResponse(response.data);
 
         if (data.scientificNames && Array.isArray(data.scientificNames)) {
-            return data.scientificNames.filter((item: any) => item.tsn);
+            // Filter out null items and items without tsn
+            return data.scientificNames.filter((item: any) => item && item.tsn);
         }
 
         return [];

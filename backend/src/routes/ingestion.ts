@@ -575,6 +575,62 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
       logger.info(`✅ eDNA import complete: processed ${processed}, created ${created}, updated ${updated}, failed ${failed}`);
       recordsProcessedCount = processed;
+    } else if (dataType === 'fisheries' || dataType === 'Fisheries') {
+      // ============================================================
+      // FISHERIES DATA INGESTION
+      // Routes to dataStorage service for Fisheries Analytics access
+      // ============================================================
+      logger.info('🐟 Processing fisheries data...');
+      const { dataStorage } = await import('../services/fisheries');
+
+      // Detect if this is catch data or length data based on field presence
+      const hasCatchFields = data.some(r =>
+        r.catch !== undefined || r.Catch !== undefined || r.CATCH !== undefined ||
+        r.effort !== undefined || r.Effort !== undefined || r.EFFORT !== undefined
+      );
+      const hasLengthFields = data.some(r =>
+        r.length !== undefined || r.Length !== undefined || r.LENGTH !== undefined
+      );
+
+      let datasetType: 'catch' | 'length' | 'mixed' = 'mixed';
+      if (hasCatchFields && !hasLengthFields) {
+        datasetType = 'catch';
+      } else if (hasLengthFields && !hasCatchFields) {
+        datasetType = 'length';
+      }
+
+      logger.info(`  📋 Detected fisheries data type: ${datasetType}`);
+      logger.info(`  📋 Has catch fields: ${hasCatchFields}, Has length fields: ${hasLengthFields}`);
+
+      try {
+        // Create dataset using the fisheries dataStorage service
+        const dataset = dataStorage.createDataset({
+          name: `Ingested Fisheries Data - ${new Date().toISOString().split('T')[0]}`,
+          type: datasetType,
+          records: data,
+          uploadedBy: userId,
+        });
+
+        logger.info(`✅ Fisheries import complete: ${data.length} records stored in dataset ${dataset.id}`);
+        logger.info(`  📈 Species in dataset: ${dataset.species.join(', ')}`);
+        logger.info(`  📅 Date range: ${dataset.dateRange.start} to ${dataset.dateRange.end}`);
+
+        recordsProcessedCount = data.length;
+
+        // Update job metadata with dataset info
+        await IngestionJob.findByIdAndUpdate(jobId, {
+          metadata: {
+            datasetId: dataset.id,
+            datasetType,
+            species: dataset.species,
+            dateRange: dataset.dateRange,
+            ...metadataResult.extracted_metadata
+          }
+        });
+      } catch (fishError: any) {
+        logger.error(`Fisheries data storage error: ${fishError.message}`);
+        throw fishError;
+      }
     } else {
       // For other data types, just mark as complete for now
       logger.info(`📦 Processing ${dataType} data (basic handling)...`);
@@ -648,6 +704,10 @@ function detectDataType(data: any[]): DataTypeDetection {
   const surveyFields = ['station', 'survey', 'transect', 'quadrat', 'plot', 'observer', 'recorded_by', 'sampling'];
   const surveyMatches = fields.filter(f => surveyFields.some(sf => f.includes(sf)));
 
+  // Fisheries indicators (catch data, length data, stock assessment)
+  const fisheriesFields = ['catch', 'effort', 'cpue', 'stock', 'fishing', 'vessel', 'gear', 'tow', 'haul', 'landings', 'biomass', 'weight', 'maturity', 'effortunit', 'effort_unit'];
+  const fisheriesMatches = fields.filter(f => fisheriesFields.some(ff => f.includes(ff)));
+
   // Calculate scores
   const scores = [
     { type: 'species', score: speciesMatches.length, matches: speciesMatches },
@@ -655,6 +715,7 @@ function detectDataType(data: any[]): DataTypeDetection {
     { type: 'edna', score: ednaMatches.length, matches: ednaMatches },
     { type: 'otolith', score: otolithMatches.length, matches: otolithMatches },
     { type: 'survey', score: surveyMatches.length, matches: surveyMatches },
+    { type: 'fisheries', score: fisheriesMatches.length, matches: fisheriesMatches },
   ].sort((a, b) => b.score - a.score);
 
   const bestMatch = scores[0];

@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 const DATA_TYPES = [
   { value: 'species', label: 'Species Records', icon: '🐟', description: 'Taxonomic and species data' },
   { value: 'oceanography', label: 'Oceanographic Data', icon: '🌊', description: 'CTD, temperature, salinity' },
+  { value: 'fisheries', label: 'Fisheries Catch Data', icon: '⚓', description: 'Catch, effort, length records' },
   { value: 'otolith', label: 'Otolith Images', icon: '🔬', description: 'Fish ear bone images' },
   { value: 'edna', label: 'eDNA Sequences', icon: '🧬', description: 'FASTA/FASTQ files' },
   { value: 'survey', label: 'Survey Data', icon: '📊', description: 'Field survey records' },

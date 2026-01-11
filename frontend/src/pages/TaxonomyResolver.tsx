@@ -70,13 +70,25 @@ export default function TaxonomyResolver() {
             return response.json();
         },
         onSuccess: (data) => {
-            if (data.success) {
+            // Always set result so UI shows feedback
+            if (data.result) {
                 setResult(data.result);
                 if (data.result.success) {
                     toast.success(`Found: ${data.result.resolvedName}`);
                 } else {
-                    toast.error(data.result.error || 'Name not found');
+                    toast.error('No matching species found in WoRMS or ITIS');
                 }
+            } else {
+                // API error case
+                setResult({
+                    success: false,
+                    source: 'unknown',
+                    originalName: searchName,
+                    isSynonym: false,
+                    confidence: 0,
+                    error: data.error || 'Resolution failed',
+                });
+                toast.error(data.error || 'Resolution failed');
             }
         },
         onError: () => toast.error('Failed to resolve name'),
@@ -258,13 +270,16 @@ export default function TaxonomyResolver() {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="p-4 bg-abyss-50 dark:bg-abyss-900/20 rounded-xl border border-abyss-200">
-                                                <div className="flex items-center gap-2">
-                                                    <XCircle className="w-5 h-5 text-abyss-600" />
-                                                    <span className="font-medium text-abyss-700 dark:text-abyss-300">
-                                                        {result.error || 'Name not found'}
+                                            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <XCircle className="w-5 h-5 text-red-600" />
+                                                    <span className="font-medium text-red-700 dark:text-red-300">
+                                                        No matching species found
                                                     </span>
                                                 </div>
+                                                <p className="text-sm text-red-600 dark:text-red-400">
+                                                    No matching species found in WoRMS or ITIS. Please check spelling or try another name.
+                                                </p>
                                             </div>
                                         )}
                                     </div>

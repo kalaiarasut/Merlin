@@ -15,8 +15,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response, next) => {
         { commonName: { $regex: search, $options: 'i' } },
       ];
     }
-    if (phylum) filter.phylum = phylum;
     if (className) filter.class = className;
+
+    // Visibility Policy Enforcement: 
+    // Researchers/Viewers only see validated data. Admins/Experts see everything.
+    const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
+    if (!isStaff) {
+      filter['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+    }
 
     const species = await Species.find(filter)
       .limit(Number(limit))
@@ -41,7 +47,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response, next) => {
 
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
-    const species = await Species.findById(req.params.id);
+    const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
+    const query: any = { _id: req.params.id };
+
+    if (!isStaff) {
+      query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+    }
+
+    const species = await Species.findOne(query);
     if (!species) {
       return res.status(404).json({ error: 'Species not found' });
     }

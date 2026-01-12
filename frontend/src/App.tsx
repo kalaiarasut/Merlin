@@ -28,6 +28,7 @@ import ApiDocs from './pages/ApiDocs';
 import FisheriesAnalytics from './pages/FisheriesAnalytics';
 import CausalAnalysis from './pages/CausalAnalysis';
 import ValidationDashboard from './pages/ValidationDashboard';
+import { CurationDashboard } from './pages/CurationDashboard';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -39,6 +40,17 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function StaffRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role !== 'admin' && user?.role !== 'expert') {
     return <Navigate to="/" replace />;
   }
 
@@ -77,6 +89,11 @@ function App() {
             <Route path="causal" element={<PageErrorBoundary><CausalAnalysis /></PageErrorBoundary>} />
             <Route path="validation" element={<PageErrorBoundary><ValidationDashboard /></PageErrorBoundary>} />
             <Route path="ai-assistant" element={<PageErrorBoundary><AIAssistant /></PageErrorBoundary>} />
+            <Route path="curation" element={
+              <StaffRoute>
+                <PageErrorBoundary><CurationDashboard /></PageErrorBoundary>
+              </StaffRoute>
+            } />
             <Route path="research-assistant" element={<PageErrorBoundary><AIResearchAssistant /></PageErrorBoundary>} />
             <Route path="admin" element={
               <AdminRoute>

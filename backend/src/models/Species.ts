@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { IValidationStatus, ValidationStatusSchema } from './ValidationStatus';
 
 export interface ISpecies extends Document {
   scientificName: string;
@@ -105,6 +106,9 @@ export interface ISpecies extends Document {
     cleaningApplied?: string[];
     dataClassification?: string;
   };
+
+  validationStatus?: IValidationStatus;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -203,6 +207,8 @@ const SpeciesSchema = new Schema<ISpecies>(
       cleaningApplied: [String],
       dataClassification: String,
     },
+
+    validationStatus: ValidationStatusSchema,
   },
   { timestamps: true }
 );

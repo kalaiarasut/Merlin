@@ -6,6 +6,7 @@
  */
 
 import mongoose, { Schema, Document } from 'mongoose';
+import { IValidationStatus, ValidationStatusSchema } from './ValidationStatus';
 
 // ============================================
 // CATCH RECORD MODEL
@@ -29,6 +30,7 @@ export interface ICatchRecord extends Document {
     vesselId?: string;
     vessel?: string;
     uploadedAt: Date;
+    validationStatus?: IValidationStatus;
 }
 
 const CatchRecordSchema = new Schema<ICatchRecord>({
@@ -54,6 +56,7 @@ const CatchRecordSchema = new Schema<ICatchRecord>({
     vesselId: String,
     vessel: String,
     uploadedAt: { type: Date, default: Date.now },
+    validationStatus: ValidationStatusSchema,
 }, { timestamps: true });
 
 CatchRecordSchema.index({ species: 1, date: 1 });
@@ -75,6 +78,7 @@ export interface ILengthRecord extends Document {
     location?: string;
     age?: number;
     uploadedAt: Date;
+    validationStatus?: IValidationStatus;
 }
 
 const LengthRecordSchema = new Schema<ILengthRecord>({
@@ -91,6 +95,7 @@ const LengthRecordSchema = new Schema<ILengthRecord>({
     location: String,
     age: Number,
     uploadedAt: { type: Date, default: Date.now },
+    validationStatus: ValidationStatusSchema,
 }, { timestamps: true });
 
 LengthRecordSchema.index({ species: 1, date: 1 });
@@ -112,6 +117,7 @@ export interface IFisheriesDataset extends Document {
         start: string;
         end: string;
     };
+    validationStatus?: IValidationStatus;
 }
 
 const FisheriesDatasetSchema = new Schema<IFisheriesDataset>({
@@ -129,6 +135,7 @@ const FisheriesDatasetSchema = new Schema<IFisheriesDataset>({
         start: String,
         end: String,
     },
+    validationStatus: ValidationStatusSchema,
 }, { timestamps: true });
 
 FisheriesDatasetSchema.index({ uploadedBy: 1 });

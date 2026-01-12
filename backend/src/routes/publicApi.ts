@@ -130,6 +130,9 @@ router.get('/species', async (req: Request, res: Response) => {
         if (req.query.conservationStatus) filters.conservationStatus = req.query.conservationStatus;
         if (req.query.habitat) filters.habitat = { $regex: req.query.habitat, $options: 'i' };
 
+        // Scientific Validation Enforcement: Public only sees validated data
+        filters['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+
         const [species, total] = await Promise.all([
             Species.find(filters)
                 .select('scientificName commonName family genus conservationStatus habitat distribution')
@@ -177,7 +180,8 @@ router.get('/species/search', async (req: Request, res: Response) => {
                 { commonName: { $regex: query, $options: 'i' } },
                 { genus: { $regex: query, $options: 'i' } },
                 { family: { $regex: query, $options: 'i' } }
-            ]
+            ],
+            'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] }
         })
             .select('scientificName commonName family genus conservationStatus')
             .limit(limit)
@@ -201,12 +205,24 @@ router.get('/species/search', async (req: Request, res: Response) => {
  */
 router.get('/species/:id', async (req: Request, res: Response) => {
     try {
-        const species = await Species.findById(req.params.id)
+        const species = await Species.findOne({
+            _id: req.params.id,
+            'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] }
+        })
             .select('-__v -jobId')
             .lean();
 
         if (!species) {
             return res.status(404).json({ error: 'Species not found' });
+        }
+
+        // Partial Verification Rule: Mask unverified fields for public
+        if (species.validationStatus?.scope === 'taxonomy') {
+            const maskedSpecies = { ...species } as any;
+            maskedSpecies.habitat = '[Unverified] ' + (species.habitat || '');
+            maskedSpecies.distribution = []; // Mask complex arrays
+            maskedSpecies.isPartiallyVerified = true;
+            return res.json({ success: true, data: maskedSpecies });
         }
 
         res.json({
@@ -228,7 +244,9 @@ router.get('/species/export', async (req: Request, res: Response) => {
         const format = (req.query.format as string) || 'json';
         const limit = Math.min(parseInt(req.query.limit as string) || 1000, 5000);
 
-        const species = await Species.find({})
+        const species = await Species.find({
+            'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] }
+        })
             .select('scientificName commonName family genus order class phylum kingdom conservationStatus habitat distribution')
             .limit(limit)
             .lean();
@@ -564,7 +582,9 @@ router.get('/statistics', async (req: Request, res: Response) => {
         const EdnaSample = mongoose.models.EdnaSample || mongoose.model('EdnaSample', new mongoose.Schema({}, { strict: false }));
 
         const [speciesCount, ednaCount, oceanResult] = await Promise.all([
-            Species.countDocuments({}),
+            Species.countDocuments({
+                'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] }
+            }),
             EdnaSample.countDocuments({}),
             sequelize.query('SELECT COUNT(*) as count FROM oceanographic_data')
         ]);
@@ -573,6 +593,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
         // Get family distribution
         const familyDistribution = await Species.aggregate([
+            { $match: { 'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] } } },
             { $group: { _id: '$family', count: { $sum: 1 } } },
             { $sort: { count: -1 } },
             { $limit: 10 }
@@ -580,6 +601,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
 
         // Get conservation status distribution
         const conservationDistribution = await Species.aggregate([
+            { $match: { 'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] } } },
             { $group: { _id: '$conservationStatus', count: { $sum: 1 } } },
             { $sort: { count: -1 } }
         ]);

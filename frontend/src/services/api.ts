@@ -559,6 +559,25 @@ export const auditService = {
     apiClient.get<any>(`/audit/snapshot/${id}/export`),
 };
 
+// Curation Service (Scientific Review)
+export const curationService = {
+  getQueue: () =>
+    apiClient.get<any[]>('/curation/queue'),
+
+  getDetail: (entityType: string, id: string) =>
+    apiClient.get<any>(`/curation/detail/${entityType}/${id}`),
+
+  submitAction: (entityType: string, id: string, action: 'approve' | 'reject' | 'flag', data: {
+    comment?: string;
+    scope?: string;
+    snapshot?: {
+      fieldsValidated: string[];
+      previousValues?: Record<string, any>;
+    };
+  }) =>
+    apiClient.post<any>(`/curation/${entityType}/${id}/${action}`, data),
+};
+
 // Notification service
 export const notificationService = {
   getAll: (params?: { page?: number; limit?: number; unreadOnly?: boolean }) =>

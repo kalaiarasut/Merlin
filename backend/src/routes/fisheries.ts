@@ -11,6 +11,7 @@ import {
     stockAssessment,
     abundanceTrends
 } from '../services/fisheries';
+import { authenticate, AuthRequest } from '../middleware/auth';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -60,7 +61,7 @@ function calculateMaturityOgive(lengthRecords: any[]): { lengthClass: number; pe
  * POST /api/fisheries/cpue
  * Calculate CPUE from catch records
  */
-router.post('/cpue', async (req: Request, res: Response) => {
+router.post('/cpue', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { records, species, period } = req.body;
 
@@ -104,7 +105,7 @@ router.post('/cpue', async (req: Request, res: Response) => {
  * POST /api/fisheries/length-analysis
  * Analyze length-frequency distribution
  */
-router.post('/length-analysis', async (req: Request, res: Response) => {
+router.post('/length-analysis', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { records, species, binSize = 5 } = req.body;
 
@@ -148,7 +149,7 @@ router.post('/length-analysis', async (req: Request, res: Response) => {
  * POST /api/fisheries/stock-assessment
  * Comprehensive stock assessment
  */
-router.post('/stock-assessment', async (req: Request, res: Response) => {
+router.post('/stock-assessment', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { catchRecords, lengthRecords, species, options = {} } = req.body;
 
@@ -198,7 +199,7 @@ router.post('/stock-assessment', async (req: Request, res: Response) => {
  * POST /api/fisheries/trends
  * Analyze abundance trends
  */
-router.post('/trends', async (req: Request, res: Response) => {
+router.post('/trends', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { records, species } = req.body;
 
@@ -238,7 +239,7 @@ router.post('/trends', async (req: Request, res: Response) => {
  * POST /api/fisheries/forecast
  * Generate abundance forecast
  */
-router.post('/forecast', async (req: Request, res: Response) => {
+router.post('/forecast', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { records, species, horizonMonths = 12, method = 'linear' } = req.body;
 
@@ -276,7 +277,7 @@ router.post('/forecast', async (req: Request, res: Response) => {
  * POST /api/fisheries/multi-species
  * Multi-species stock summary
  */
-router.post('/multi-species', async (req: Request, res: Response) => {
+router.post('/multi-species', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { catchRecords, lengthRecords } = req.body;
 
@@ -338,7 +339,7 @@ router.get('/info', (req: Request, res: Response) => {
  * POST /api/fisheries/datasets
  * Upload a new fisheries dataset (catch/length records)
  */
-router.post('/datasets', async (req: Request, res: Response) => {
+router.post('/datasets', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { name, type, records, uploadedBy } = req.body;
 
@@ -382,10 +383,11 @@ router.post('/datasets', async (req: Request, res: Response) => {
  * GET /api/fisheries/datasets
  * Get all uploaded fisheries datasets
  */
-router.get('/datasets', async (req: Request, res: Response) => {
+router.get('/datasets', authenticate, async (req: AuthRequest, res: Response) => {
     try {
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
         const { dataStorage } = await import('../services/fisheries');
-        const datasets = await dataStorage.getAllDatasets();
+        const datasets = await dataStorage.getAllDatasets(!isStaff);
         const stats = await dataStorage.getStorageStats();
 
         res.json({
@@ -438,9 +440,10 @@ router.delete('/datasets/:id', async (req: Request, res: Response) => {
  * GET /api/fisheries/data/catch
  * Get stored catch records for analysis
  */
-router.get('/data/catch', async (req: Request, res: Response) => {
+router.get('/data/catch', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species, datasetId, startDate, endDate } = req.query;
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
         const { dataStorage } = await import('../services/fisheries');
 
         const records = await dataStorage.getCatchRecords({
@@ -448,6 +451,7 @@ router.get('/data/catch', async (req: Request, res: Response) => {
             datasetId: datasetId as string,
             startDate: startDate as string,
             endDate: endDate as string,
+            validatedOnly: !isStaff,
         });
 
         res.json({
@@ -469,14 +473,16 @@ router.get('/data/catch', async (req: Request, res: Response) => {
  * GET /api/fisheries/data/length
  * Get stored length records for analysis
  */
-router.get('/data/length', async (req: Request, res: Response) => {
+router.get('/data/length', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species, datasetId } = req.query;
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
         const { dataStorage } = await import('../services/fisheries');
 
         const records = await dataStorage.getLengthRecords({
             species: species as string,
             datasetId: datasetId as string,
+            validatedOnly: !isStaff,
         });
 
         res.json({
@@ -498,9 +504,10 @@ router.get('/data/length', async (req: Request, res: Response) => {
  * POST /api/fisheries/analyze-with-data
  * Run CPUE analysis using stored data (from uploaded datasets)
  */
-router.post('/analyze-with-data', async (req: Request, res: Response) => {
+router.post('/analyze-with-data', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species, datasetId } = req.body;
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
 
         if (!species) {
             return res.status(400).json({
@@ -510,8 +517,8 @@ router.post('/analyze-with-data', async (req: Request, res: Response) => {
         }
 
         const { dataStorage } = await import('../services/fisheries');
-        const catchRecords = await dataStorage.getCatchRecords({ species, datasetId });
-        const lengthRecords = await dataStorage.getLengthRecords({ species, datasetId });
+        const catchRecords = await dataStorage.getCatchRecords({ species, datasetId, validatedOnly: !isStaff });
+        const lengthRecords = await dataStorage.getLengthRecords({ species, datasetId, validatedOnly: !isStaff });
 
         if (catchRecords.length === 0) {
             return res.status(404).json({
@@ -633,13 +640,15 @@ router.post('/analyze-with-data', async (req: Request, res: Response) => {
  * GET /api/fisheries/spatial-cpue
  * Get spatial CPUE data for heatmap visualization
  */
-router.get('/spatial-cpue', async (req: Request, res: Response) => {
+router.get('/spatial-cpue', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species } = req.query;
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
         const { dataStorage } = await import('../services/fisheries');
 
         const catchRecords = await dataStorage.getCatchRecords({
             species: species as string,
+            validatedOnly: !isStaff
         });
 
         // Group by location and calculate CPUE
@@ -708,13 +717,15 @@ router.get('/spatial-cpue', async (req: Request, res: Response) => {
  * GET /api/fisheries/depth-distribution
  * Get species catch distribution by depth
  */
-router.get('/depth-distribution', async (req: Request, res: Response) => {
+router.get('/depth-distribution', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species } = req.query;
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
         const { dataStorage } = await import('../services/fisheries');
 
         const catchRecords = await dataStorage.getCatchRecords({
             species: species as string,
+            validatedOnly: !isStaff
         });
 
         // Group by depth bins (25m intervals)
@@ -774,15 +785,17 @@ router.get('/depth-distribution', async (req: Request, res: Response) => {
  * POST /api/fisheries/environment-correlate
  * Correlate fisheries data with environmental parameters (SST, Chl-a)
  */
-router.post('/environment-correlate', async (req: Request, res: Response) => {
+router.post('/environment-correlate', authenticate, async (req: AuthRequest, res: Response) => {
     try {
         const { species, environmentData } = req.body;
         // environmentData format: [{ lat, lon, sst, chla, date }]
+        const isStaff = req.user?.role === 'admin' || req.user?.role === 'expert';
 
         const { dataStorage } = await import('../services/fisheries');
 
         const catchRecords = await dataStorage.getCatchRecords({
             species: species as string,
+            validatedOnly: !isStaff
         });
 
         if (!environmentData || environmentData.length === 0) {

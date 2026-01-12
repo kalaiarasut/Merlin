@@ -112,6 +112,8 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
     recordsProcessedCount = data.length;
     await IngestionJob.findByIdAndUpdate(jobId, { progress: 30, recordsTotal: data.length });
 
+    const AUTO_VALIDATION_THRESHOLD = parseFloat(process.env.AUTO_VALIDATION_THRESHOLD || '0.9');
+
     // AI-powered metadata extraction
     logger.info('🤖 Extracting metadata using AI...');
     const metadataResult = await aiServiceClient.extractMetadata(filePath);
@@ -347,6 +349,24 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
               dataClassification: metadataResult.data_classification || 'unknown',
               fishbaseEnhanced: finalConservationStatus !== 'DD',
             },
+            validationStatus: {
+              status: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validated' : 'pending',
+              scope: 'full-record',
+              history: [{
+                action: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validate' : 'approve',
+                userId: 'system',
+                userName: 'Marlin AI System',
+                timestamp: new Date(),
+                comment: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD
+                  ? `Auto-validated by AI (Confidence ${Math.round(metadataResult.confidence * 100)}% >= ${Math.round(AUTO_VALIDATION_THRESHOLD * 100)}%)`
+                  : 'Pending scientific review',
+                snapshot: {
+                  fieldsValidated: ['full-record'],
+                  thresholdUsed: AUTO_VALIDATION_THRESHOLD,
+                  confidence: metadataResult.confidence
+                }
+              }]
+            }
           };
 
           const result = await Species.updateOne(
@@ -611,6 +631,24 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           type: datasetType,
           records: data,
           uploadedBy: userId,
+          validationStatus: {
+            status: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validated' : 'pending',
+            scope: 'full-record',
+            history: [{
+              action: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validate' : 'approve',
+              userId: 'system',
+              userName: 'Marlin AI System',
+              timestamp: new Date(),
+              comment: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD
+                ? `Auto-validated by AI (Confidence ${Math.round(metadataResult.confidence * 100)}% >= ${Math.round(AUTO_VALIDATION_THRESHOLD * 100)}%)`
+                : 'Pending scientific review',
+              snapshot: {
+                fieldsValidated: ['full-record'],
+                thresholdUsed: AUTO_VALIDATION_THRESHOLD,
+                confidence: metadataResult.confidence
+              }
+            }]
+          }
         });
 
         logger.info(`✅ Fisheries import complete: ${data.length} records stored in dataset ${dataset.id}`);

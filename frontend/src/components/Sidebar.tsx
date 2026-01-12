@@ -10,19 +10,20 @@ import { useAuthStore } from '@/store/authStore';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, description: 'Overview & metrics' },
   { name: 'Data Ingestion', href: '/ingest', icon: Database, description: 'Upload datasets' },
-  { name: 'Standards Check', href: '/standards', icon: Shield, badge: 'NEW', description: 'Data compliance' },
-  { name: 'Species Resolver', href: '/taxonomy', icon: Search, badge: 'NEW', description: 'Taxonomic lookup' },
+  { name: 'Standards Check', href: '/standards', icon: Shield, description: 'Data compliance' },
+  { name: 'Species Resolver', href: '/taxonomy', icon: Search, description: 'Taxonomic lookup' },
   { name: 'Oceanography', href: '/oceanography', icon: Waves, description: 'GIS & mapping' },
   { name: 'Species Explorer', href: '/species', icon: Fish, description: 'Marine species' },
   { name: 'Fish Identifier', href: '/fish-id', icon: Camera, badge: 'AI', description: 'Photo ID' },
   { name: 'Otolith Analysis', href: '/otolith', icon: Circle, description: 'Image analysis' },
   { name: 'eDNA Manager', href: '/edna', icon: Dna, description: 'Sequence data' },
-  { name: 'Fisheries', href: '/fisheries', icon: Anchor, badge: 'NEW', description: 'Stock & CPUE' },
-  { name: 'Causal Analysis', href: '/causal', icon: GitBranch, badge: 'NEW', description: 'Correlations' },
+  { name: 'Fisheries', href: '/fisheries', icon: Anchor, description: 'Stock & CPUE' },
+  { name: 'Causal Analysis', href: '/causal', icon: GitBranch, description: 'Correlations' },
   { name: 'Analytics', href: '/analytics', icon: BarChart3, description: 'Insights & reports' },
-  { name: 'Niche Modeling', href: '/niche-modeling', icon: Globe, badge: 'NEW', description: 'Species distribution' },
-  { name: 'Report Generator', href: '/reports', icon: FileOutput, badge: 'NEW', description: 'MoES & custom reports' },
-  { name: 'Validation', href: '/validation', icon: Shield, badge: 'NEW', description: 'Scientific review' },
+  { name: 'Niche Modeling', href: '/niche-modeling', icon: Globe, description: 'Species distribution' },
+  { name: 'Report Generator', href: '/reports', icon: FileOutput, description: 'MoES & custom reports' },
+  { name: 'Validation', href: '/validation', icon: Shield, description: 'Compliance dashboard' },
+  { name: 'Scientific Curation', href: '/curation', icon: Shield, badge: 'STAFF', description: 'Expert review queue' },
   { name: 'AI Assistant', href: '/ai-assistant', icon: MessageSquare, badge: 'AI', description: 'Natural language' },
   { name: 'Research Assistant', href: '/research-assistant', icon: GraduationCap, badge: 'AI', description: 'Literature & methods' },
 ];
@@ -38,6 +39,13 @@ export default function Sidebar() {
 
   const filteredBottomNavigation = bottomNavigation.filter(item => {
     if (item.name === 'Admin Console' && user?.role !== 'admin') {
+      return false;
+    }
+    return true;
+  });
+
+  const filteredNavigation = navigation.filter(item => {
+    if (item.href === '/curation' && user?.role !== 'admin' && user?.role !== 'expert') {
       return false;
     }
     return true;
@@ -70,7 +78,7 @@ export default function Sidebar() {
         <p className="px-3 py-2 text-xs font-semibold text-deep-400 dark:text-gray-500 uppercase tracking-wider">
           Main Menu
         </p>
-        {navigation.map((item) => {
+        {filteredNavigation.map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link

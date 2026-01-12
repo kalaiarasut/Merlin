@@ -64,7 +64,7 @@ export interface FisheriesDataset {
 /**
  * Parse uploaded CSV/JSON data into catch records and save to MongoDB
  */
-async function saveCatchRecords(data: any[], datasetId: string): Promise<number> {
+async function saveCatchRecords(data: any[], datasetId: string, validationStatus?: any): Promise<number> {
     const records: Partial<ICatchRecord>[] = [];
 
     for (const row of data) {
@@ -92,6 +92,7 @@ async function saveCatchRecords(data: any[], datasetId: string): Promise<number>
             vesselId: row.vesselId || row.vessel_id || undefined,
             vessel: row.vessel || row.Vessel || undefined,
             uploadedAt: new Date(),
+            validationStatus,
         });
     }
 
@@ -105,7 +106,7 @@ async function saveCatchRecords(data: any[], datasetId: string): Promise<number>
 /**
  * Parse uploaded CSV/JSON data into length records and save to MongoDB
  */
-async function saveLengthRecords(data: any[], datasetId: string): Promise<number> {
+async function saveLengthRecords(data: any[], datasetId: string, validationStatus?: any): Promise<number> {
     const records: Partial<ILengthRecord>[] = [];
     const validMaturity = ['immature', 'maturing', 'mature', 'spawning', 'spent'];
 
@@ -126,6 +127,7 @@ async function saveLengthRecords(data: any[], datasetId: string): Promise<number
             location: row.location || row.Location || undefined,
             age: parseFloat(row.age || row.Age) || undefined,
             uploadedAt: new Date(),
+            validationStatus,
         });
     }
 
@@ -144,6 +146,7 @@ export async function createDataset(params: {
     uploadedBy: string;
     type: 'catch' | 'length' | 'mixed';
     records: any[];
+    validationStatus?: any;
 }): Promise<FisheriesDataset> {
     // Extract species and date range from records
     const speciesSet = new Set<string>();
@@ -167,6 +170,7 @@ export async function createDataset(params: {
         recordCount: params.records.length,
         species: Array.from(speciesSet),
         dateRange: { start: minDate, end: maxDate },
+        validationStatus: params.validationStatus,
     });
 
     await datasetDoc.save();
@@ -174,10 +178,10 @@ export async function createDataset(params: {
 
     // Save records based on type
     if (params.type === 'catch' || params.type === 'mixed') {
-        await saveCatchRecords(params.records, datasetId);
+        await saveCatchRecords(params.records, datasetId, params.validationStatus);
     }
     if (params.type === 'length' || params.type === 'mixed') {
-        await saveLengthRecords(params.records, datasetId);
+        await saveLengthRecords(params.records, datasetId, params.validationStatus);
     }
 
     logger.info(`Created fisheries dataset ${datasetId}: ${params.records.length} records in MongoDB`);
@@ -197,8 +201,12 @@ export async function createDataset(params: {
 /**
  * Get all datasets from MongoDB
  */
-export async function getAllDatasets(): Promise<FisheriesDataset[]> {
-    const docs = await DatasetModel.find().sort({ uploadedAt: -1 }).lean();
+export async function getAllDatasets(validatedOnly?: boolean): Promise<FisheriesDataset[]> {
+    const query: any = {};
+    if (validatedOnly) {
+        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+    }
+    const docs = await DatasetModel.find(query).sort({ uploadedAt: -1 }).lean();
     return docs.map(d => ({
         id: d._id.toString(),
         name: d.name,
@@ -219,8 +227,13 @@ export async function getCatchRecords(filters?: {
     datasetId?: string;
     startDate?: string;
     endDate?: string;
+    validatedOnly?: boolean;
 }): Promise<CatchRecord[]> {
     const query: any = {};
+
+    if (filters?.validatedOnly) {
+        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+    }
 
     if (filters?.species) {
         query.species = { $regex: filters.species, $options: 'i' };
@@ -260,8 +273,13 @@ export async function getCatchRecords(filters?: {
 export async function getLengthRecords(filters?: {
     species?: string;
     datasetId?: string;
+    validatedOnly?: boolean;
 }): Promise<LengthRecord[]> {
     const query: any = {};
+
+    if (filters?.validatedOnly) {
+        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+    }
 
     if (filters?.species) {
         query.species = { $regex: filters.species, $options: 'i' };

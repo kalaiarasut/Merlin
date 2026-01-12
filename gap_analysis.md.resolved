@@ -519,3 +519,40 @@ The page must support future correlation with:
 | Validation Layer | 2 weeks | 2 weeks | 4 weeks |
 | **Total** | **26 weeks** | **14 weeks** | **~40 weeks** |
 
+---
+
+## 🔮 Future Scope - Fisheries Analytics
+
+> **Status**: These features are explicitly excluded from current implementation and reserved for future development.
+
+### Advanced Stock Assessment Models
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **MSY / BMSY / FMSY** | Maximum Sustainable Yield reference points | Future |
+| **Yield-per-Recruit Curves** | Optimal fishing effort analysis | Future |
+| **Beverton-Holt Stock-Recruitment** | Population dynamics modeling | Future |
+| **Virtual Population Analysis (VPA)** | Cohort reconstruction | Future |
+
+### Spatial & Temporal Advanced Features
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **CPUE Spatial Heatmaps** | Geographic distribution of catch efficiency | Future |
+| **Gear-wise Comparisons** | Analysis by fishing gear type | Future |
+| **Fleet Dynamics Modeling** | Multi-vessel effort allocation | Future |
+
+### Management Decision Support
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Quota Recommendations** | Science-based catch limits | Future |
+| **Harvest Control Rules** | Automated management triggers | Future |
+| **Economic Impact Assessment** | Fishery value projections | Future |
+
+### Forecasting & Prediction
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Time-Series Forecasting** | ARIMA/Prophet abundance predictions | Future |
+| **Climate-Linked Projections** | SST-correlated stock predictions | Future |
+| **Recruitment Forecasting** | Early cohort detection | Future |
+
+📌 **Note**: These features require additional data sources (fleet monitoring, economic data, climate models) and scientific validation before implementation.
+

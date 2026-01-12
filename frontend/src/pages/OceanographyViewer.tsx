@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, CircleMarker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +25,7 @@ import {
 import {
   Map as MapIcon, Layers, Thermometer, Droplets, Wind,
   Download, RefreshCw, MapPin, Eye, EyeOff,
-  Waves, Loader, Satellite, ChevronDown, ChevronUp, Database
+  Waves, Loader, Satellite, ChevronDown, ChevronUp, Database, Fish
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import 'leaflet/dist/leaflet.css';
@@ -36,6 +36,7 @@ const MAP_LAYERS = [
   { id: 'chlorophyll', name: 'Chlorophyll', icon: Waves, color: 'marine', enabled: false },
   { id: 'dissolved_oxygen', name: 'Dissolved Oxygen', icon: Wind, color: 'deep', enabled: false },
   { id: 'pH', name: 'pH Level', icon: MapPin, color: 'abyss', enabled: false },
+  { id: 'fisheries_cpue', name: 'Fisheries CPUE', icon: Fish, color: 'coral', enabled: false },
 ];
 
 // Helper function to safely format numbers
@@ -70,6 +71,15 @@ const getParameterColor = (param: string, value: number) => {
     return '#16a34a';
   }
   return '#0ea5e9';
+};
+
+// Color scale for CPUE (catch per unit effort) - blue to red gradient
+const getCpueColor = (cpue: number, maxCpue: number = 20) => {
+  const normalized = Math.min(cpue / maxCpue, 1);
+  if (normalized < 0.25) return '#3b82f6'; // blue - low catch
+  if (normalized < 0.5) return '#22c55e';  // green
+  if (normalized < 0.75) return '#f97316'; // orange
+  return '#ef4444'; // red - high catch
 };
 
 // Map center control component
@@ -143,6 +153,7 @@ function ZoomChangeHandler({ onZoomChange }: { onZoomChange: (zoom: number) => v
 
 export default function OceanographyViewer() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [layers, setLayers] = useState(MAP_LAYERS);
   const [selectedParameter, setSelectedParameter] = useState('temperature');
   const [selectedPoint, setSelectedPoint] = useState<any>(null);
@@ -152,6 +163,26 @@ export default function OceanographyViewer() {
   // NEW: Data source and layer controls
   const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('erddap');
   const [visibleLayers, setVisibleLayers] = useState<VisibleLayer[]>(['markers']);
+
+  // Handle navigation from other pages (e.g. Fisheries Stock Tab)
+  useEffect(() => {
+    if (location.state) {
+      const { parameter, center, zoom, mode } = location.state as any;
+
+      if (mode) setDataSourceMode(mode);
+      if (parameter) {
+        setSelectedParameter(parameter);
+        setLayers(prev => prev.map(l => ({
+          ...l,
+          enabled: l.id === parameter
+        })));
+      }
+      if (center) setMapCenter(center);
+      // Zoom is handled by MapContainer or initial state, MapCenterControl should update it if needed. 
+      // If we really need zoom update we might need to expose it to MapCenterControl or use a separate effect.
+      // But for now let's just set center.
+    }
+  }, [location.state]);
 
   // Filter states
   const [depthRange, setDepthRange] = useState<[number, number]>([0, 500]);
@@ -209,8 +240,21 @@ export default function OceanographyViewer() {
       (result as any).estimatedTotalCells = estimateTotalGridCells(selectedParameter);
       return result;
     },
-    enabled: dataSourceMode === 'erddap',
+    enabled: dataSourceMode === 'erddap' && selectedParameter !== 'fisheries_cpue',
     staleTime: 1000 * 60 * 30, // 30 min cache (refresh on zoom change)
+    refetchOnWindowFocus: false,
+  });
+
+  // NEW: Fetch Fisheries CPUE spatial data
+  const { data: fisheriesCpueData, isLoading: fisheriesCpueLoading } = useQuery({
+    queryKey: ['fisheries-cpue-spatial'],
+    queryFn: async () => {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const res = await fetch(`${API_BASE}/api/fisheries/spatial-cpue`);
+      return res.json();
+    },
+    enabled: selectedParameter === 'fisheries_cpue',
+    staleTime: 1000 * 60 * 10, // 10 min cache for faster re-navigation
     refetchOnWindowFocus: false,
   });
 
@@ -503,9 +547,12 @@ export default function OceanographyViewer() {
         <div className="xl:col-span-3">
           <Card variant="default" className="overflow-hidden">
             <div className="relative h-[600px]">
-              {isLoading && (
-                <div className="absolute inset-0 z-[1000] bg-white/80 flex items-center justify-center">
+              {(isLoading || (selectedParameter === 'fisheries_cpue' && fisheriesCpueLoading)) && (
+                <div className="absolute inset-0 z-[1000] bg-white/80 dark:bg-gray-900/80 flex flex-col items-center justify-center">
                   <Loader className="w-8 h-8 animate-spin text-ocean-500" />
+                  {selectedParameter === 'fisheries_cpue' && fisheriesCpueLoading && (
+                    <p className="mt-3 text-sm text-deep-600 dark:text-gray-400">Loading Fisheries CPUE data...</p>
+                  )}
                 </div>
               )}
 
@@ -629,6 +676,47 @@ export default function OceanographyViewer() {
                   </CircleMarker>
                 ))}
 
+                {/* Fisheries CPUE Markers - Show catch locations with CPUE intensity */}
+                {selectedParameter === 'fisheries_cpue' && fisheriesCpueData?.data?.map((point: any, idx: number) => (
+                  <CircleMarker
+                    key={`cpue-${idx}`}
+                    center={[point.lat, point.lon]}
+                    radius={Math.max(6, Math.min(15, point.cpue * 2))} // Size based on CPUE
+                    pathOptions={{
+                      fillColor: getCpueColor(point.cpue),
+                      fillOpacity: 0.75,
+                      color: '#fff',
+                      weight: 2
+                    }}
+                    eventHandlers={{
+                      click: () => setSelectedPoint({
+                        latitude: point.lat,
+                        longitude: point.lon,
+                        value: point.cpue,
+                        unit: 'kg/hour',
+                        parameter: 'CPUE',
+                        totalCatch: point.totalCatch,
+                        samples: point.samples,
+                        depth: point.avgDepth,
+                        source: 'FISHERIES',
+                        dataType: 'observed',
+                      })
+                    }}
+                  >
+                    <Tooltip direction="top" offset={[0, -5]} opacity={0.95}>
+                      <div className="text-xs">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Fish className="w-3 h-3 text-orange-500" />
+                          <span className="font-semibold text-orange-600">Fisheries Data</span>
+                        </div>
+                        <p className="text-sm font-bold">CPUE: {point.cpue.toFixed(2)} kg/hour</p>
+                        <p className="text-gray-600">Total Catch: {point.totalCatch.toFixed(1)} kg</p>
+                        <p className="text-gray-500 text-[10px]">{point.samples} samples</p>
+                      </div>
+                    </Tooltip>
+                  </CircleMarker>
+                ))}
+
               </MapContainer>
 
               {/* Enhanced Legend with Source Attribution - Moved right to avoid zoom controls */}
@@ -688,39 +776,41 @@ export default function OceanographyViewer() {
           {/* Parameters Panel */}
           <CollapsiblePanel title="Parameters" icon={Layers} defaultExpanded={false}>
             <div className="space-y-2">
-              {layers.map((layer) => (
-                <button
-                  key={layer.id}
-                  onClick={() => toggleLayer(layer.id)}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-xl border transition-all",
-                    layer.enabled
-                      ? "border-ocean-200 bg-ocean-50"
-                      : "border-gray-100 bg-white hover:bg-gray-50"
-                  )}
-                >
-                  <div className={cn(
-                    "p-2 rounded-lg transition-colors",
-                    layer.enabled ? "bg-ocean-100" : "bg-gray-100"
-                  )}>
-                    <layer.icon className={cn(
-                      "w-4 h-4",
-                      layer.enabled ? "text-ocean-600" : "text-gray-400"
-                    )} />
-                  </div>
-                  <span className={cn(
-                    "flex-1 text-left text-sm font-medium",
-                    layer.enabled ? "text-ocean-700" : "text-deep-600"
-                  )}>
-                    {layer.name}
-                  </span>
-                  {layer.enabled ? (
-                    <Eye className="w-4 h-4 text-ocean-500" />
-                  ) : (
-                    <EyeOff className="w-4 h-4 text-gray-400" />
-                  )}
-                </button>
-              ))}
+              {layers
+                .filter(layer => dataSourceMode === 'database' || layer.id !== 'fisheries_cpue')
+                .map((layer) => (
+                  <button
+                    key={layer.id}
+                    onClick={() => toggleLayer(layer.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-3 rounded-xl border transition-all",
+                      layer.enabled
+                        ? "border-ocean-200 bg-ocean-50"
+                        : "border-gray-100 bg-white hover:bg-gray-50"
+                    )}
+                  >
+                    <div className={cn(
+                      "p-2 rounded-lg transition-colors",
+                      layer.enabled ? "bg-ocean-100" : "bg-gray-100"
+                    )}>
+                      <layer.icon className={cn(
+                        "w-4 h-4",
+                        layer.enabled ? "text-ocean-600" : "text-gray-400"
+                      )} />
+                    </div>
+                    <span className={cn(
+                      "flex-1 text-left text-sm font-medium",
+                      layer.enabled ? "text-ocean-700" : "text-deep-600"
+                    )}>
+                      {layer.name}
+                    </span>
+                    {layer.enabled ? (
+                      <Eye className="w-4 h-4 text-ocean-500" />
+                    ) : (
+                      <EyeOff className="w-4 h-4 text-gray-400" />
+                    )}
+                  </button>
+                ))}
             </div>
           </CollapsiblePanel>
 

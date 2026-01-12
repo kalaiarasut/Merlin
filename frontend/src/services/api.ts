@@ -506,6 +506,59 @@ export const aiService = {
   },
 };
 
+// Audit & Provenance Service
+export const auditService = {
+  // Activity Logs
+  getLogs: (params?: {
+    page?: number;
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+    userId?: string;
+    entityType?: string;
+    action?: string;
+    severity?: string;
+  }) => apiClient.get<{
+    logs: any[];
+    pagination: { total: number; page: number; limit: number; pages: number; }
+  }>('/audit/activity', params),
+
+  getStats: (params?: { startDate?: string; endDate?: string }) =>
+    apiClient.get<any>('/audit/stats', params),
+
+  // Dataset Versioning
+  getDatasetVersions: (datasetId: string) =>
+    apiClient.get<any>(`/audit/versioning/${datasetId}/history`),
+
+  getVersion: (datasetId: string, version: number) =>
+    apiClient.get<any>(`/audit/versioning/${datasetId}/version/${version}`),
+
+  restoreVersion: (datasetId: string, version: number) =>
+    apiClient.post<any>(`/audit/versioning/${datasetId}/restore`, { version }),
+
+  compareVersions: (datasetId: string, v1: number, v2: number) =>
+    apiClient.get<any>(`/audit/versioning/${datasetId}/compare`, { v1, v2 }),
+
+  // Analysis Snapshots
+  getSnapshots: (params?: { analysisType?: string; status?: string; limit?: number }) =>
+    apiClient.get<{ snapshots: any[] }>('/audit/snapshot', params),
+
+  getSnapshotById: (id: string) =>
+    apiClient.get<any>(`/audit/snapshot/${id}`),
+
+  verifySnapshot: (id: string) =>
+    apiClient.post<{
+      verified: boolean;
+      matches: boolean;
+      details: string;
+      checksum_generated: string;
+      checksum_recorded: string;
+    }>(`/audit/snapshot/${id}/verify`, {}),
+
+  exportSnapshot: (id: string) =>
+    apiClient.get<any>(`/audit/snapshot/${id}/export`),
+};
+
 // Notification service
 export const notificationService = {
   getAll: (params?: { page?: number; limit?: number; unreadOnly?: boolean }) =>

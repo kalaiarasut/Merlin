@@ -1,91 +1,82 @@
 /**
  * Activity Logger Service
  * Tracks who-did-what-when for complete audit trails
+ * Persistence: MongoDB (ActivityLog model)
  */
 
 import { Request } from 'express';
+import { ActivityLog, IActivityLog, ActivityAction, EntityType } from '../../models/ActivityLog';
 
-// Activity types
-export type ActivityAction =
-    | 'create' | 'read' | 'update' | 'delete'
-    | 'upload' | 'download' | 'export' | 'import'
-    | 'validate' | 'approve' | 'reject'
-    | 'login' | 'logout' | 'api_call';
-
-export type EntityType =
-    | 'dataset' | 'species' | 'sample' | 'report'
-    | 'user' | 'project' | 'institute' | 'analysis';
-
-export interface ActivityLog {
-    id: string;
-    timestamp: Date;
-    userId: string;
-    userName: string;
-    userRole: string;
-    action: ActivityAction;
-    entityType: EntityType;
-    entityId: string;
-    entityName?: string;
-    details: Record<string, any>;
-    ipAddress?: string;
-    userAgent?: string;
-    duration?: number;
-    success: boolean;
-    errorMessage?: string;
-}
-
-// In-memory store (in production, use MongoDB)
-const activityLogs: ActivityLog[] = [];
+// Re-export types for consumers
+export type { ActivityAction, EntityType };
 
 /**
  * Log an activity event
  */
-export function logActivity(params: {
+export async function logActivity(params: {
     userId: string;
     userName: string;
     userRole: string;
     action: ActivityAction;
+    actionType?: 'INGEST' | 'ANALYZE' | 'EXPORT' | 'DELETE' | 'VIEW' | 'OTHER'; // Optional to allow backward compatibility or default per action
     entityType: EntityType;
     entityId: string;
     entityName?: string;
     details?: Record<string, any>;
     req?: Request;
     success?: boolean;
+    severity?: 'INFO' | 'WARNING' | 'ERROR';
     errorMessage?: string;
+    requestId?: string;
     duration?: number;
-}): ActivityLog {
-    const log: ActivityLog = {
-        id: `ACT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-        timestamp: new Date(),
-        userId: params.userId,
-        userName: params.userName,
-        userRole: params.userRole,
-        action: params.action,
-        entityType: params.entityType,
-        entityId: params.entityId,
-        entityName: params.entityName,
-        details: params.details || {},
-        ipAddress: params.req?.ip || params.req?.socket?.remoteAddress,
-        userAgent: params.req?.get('User-Agent'),
-        duration: params.duration,
-        success: params.success ?? true,
-        errorMessage: params.errorMessage,
-    };
+}): Promise<void> { // Changed return type to void as we don't want to await the result in the caller blocking flow
+    try {
+        const severity = params.severity || (params.success === false ? 'ERROR' : 'INFO');
+        const actionType = params.actionType || mapActionToType(params.action);
 
-    activityLogs.unshift(log); // Add to beginning for recent-first
+        const log = new ActivityLog({
+            userId: params.userId,
+            userName: params.userName,
+            userRole: params.userRole,
+            action: params.action,
+            actionType: actionType,
+            entityType: params.entityType,
+            entityId: params.entityId,
+            entityName: params.entityName,
+            details: params.details || {},
+            ipAddress: params.req?.ip || params.req?.socket?.remoteAddress,
+            userAgent: params.req?.get('User-Agent'),
+            duration: params.duration,
+            success: params.success ?? true,
+            severity: severity,
+            errorMessage: params.errorMessage,
+            requestId: params.requestId || params.req?.headers['x-request-id'] as string,
+            timestamp: new Date()
+        });
 
-    // Keep only last 10000 logs in memory
-    if (activityLogs.length > 10000) {
-        activityLogs.pop();
+        // Fire and forget (but we await here inside the async function, caller shouldn't await strictly if they want true non-blocking)
+        // Actually, best practice for "don't crash user action" is to swallow error here.
+        await log.save();
+    } catch (error) {
+        // Silently fail or log to console so as not to disrupt the main application flow
+        console.error('FAILED TO WRITE AUDIT LOG:', error);
     }
+}
 
-    return log;
+// Helper to deduce actionType from action if not provided
+function mapActionToType(action: ActivityAction): string {
+    if (['upload', 'import', 'create'].includes(action)) return 'INGEST';
+    if (['validate', 'approve', 'reject'].includes(action)) return 'ANALYZE'; // Or REVIEW
+    if (['download', 'export'].includes(action)) return 'EXPORT';
+    if (['delete'].includes(action)) return 'DELETE';
+    if (['read', 'login', 'logout'].includes(action)) return 'VIEW';
+    return 'OTHER';
 }
 
 /**
  * Query activity logs with filters
  */
-export function queryActivities(filters: {
+export async function queryActivities(filters: {
     userId?: string;
     action?: ActivityAction;
     entityType?: EntityType;
@@ -95,61 +86,54 @@ export function queryActivities(filters: {
     success?: boolean;
     limit?: number;
     offset?: number;
-}): { activities: ActivityLog[]; total: number } {
-    let filtered = [...activityLogs];
+}): Promise<{ activities: IActivityLog[]; total: number }> {
+    const query: any = {};
 
-    if (filters.userId) {
-        filtered = filtered.filter(a => a.userId === filters.userId);
-    }
-    if (filters.action) {
-        filtered = filtered.filter(a => a.action === filters.action);
-    }
-    if (filters.entityType) {
-        filtered = filtered.filter(a => a.entityType === filters.entityType);
-    }
-    if (filters.entityId) {
-        filtered = filtered.filter(a => a.entityId === filters.entityId);
-    }
-    if (filters.startDate) {
-        filtered = filtered.filter(a => a.timestamp >= filters.startDate!);
-    }
-    if (filters.endDate) {
-        filtered = filtered.filter(a => a.timestamp <= filters.endDate!);
-    }
-    if (filters.success !== undefined) {
-        filtered = filtered.filter(a => a.success === filters.success);
+    if (filters.userId) query.userId = filters.userId;
+    if (filters.action) query.action = filters.action;
+    if (filters.entityType) query.entityType = filters.entityType;
+    if (filters.entityId) query.entityId = filters.entityId;
+    if (filters.success !== undefined) query.success = filters.success;
+
+    // Date range query
+    if (filters.startDate || filters.endDate) {
+        query.timestamp = {};
+        if (filters.startDate) query.timestamp.$gte = filters.startDate;
+        if (filters.endDate) query.timestamp.$lte = filters.endDate;
     }
 
-    const total = filtered.length;
-    const offset = filters.offset || 0;
     const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
 
-    return {
-        activities: filtered.slice(offset, offset + limit),
-        total,
-    };
+    const [activities, total] = await Promise.all([
+        ActivityLog.find(query)
+            .sort({ timestamp: -1 })
+            .skip(offset)
+            .limit(limit),
+        ActivityLog.countDocuments(query)
+    ]);
+
+    return { activities, total };
 }
 
 /**
  * Get activity history for a specific entity
  */
-export function getEntityHistory(entityType: EntityType, entityId: string): ActivityLog[] {
-    return activityLogs.filter(
-        a => a.entityType === entityType && a.entityId === entityId
-    );
+export async function getEntityHistory(entityType: EntityType, entityId: string): Promise<IActivityLog[]> {
+    return await ActivityLog.find({ entityType, entityId }).sort({ timestamp: -1 });
 }
 
 /**
  * Get user activity summary
  */
-export function getUserActivitySummary(userId: string): {
+export async function getUserActivitySummary(userId: string): Promise<{
     totalActions: number;
     byAction: Record<string, number>;
     byEntityType: Record<string, number>;
-    recentActivity: ActivityLog[];
+    recentActivity: IActivityLog[];
     lastActive: Date | null;
-} {
-    const userLogs = activityLogs.filter(a => a.userId === userId);
+}> {
+    const userLogs = await ActivityLog.find({ userId }).sort({ timestamp: -1 });
 
     const byAction: Record<string, number> = {};
     const byEntityType: Record<string, number> = {};
@@ -170,79 +154,87 @@ export function getUserActivitySummary(userId: string): {
 
 /**
  * Get system-wide activity statistics
+ * Optimized with aggregation pipeline for performance
  */
-export function getActivityStats(): {
+export async function getActivityStats(): Promise<{
     totalLogs: number;
     todayCount: number;
     byAction: Record<string, number>;
     byEntityType: Record<string, number>;
     topUsers: Array<{ userId: string; userName: string; count: number }>;
     errorRate: number;
-} {
+}> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todayLogs = activityLogs.filter(a => a.timestamp >= today);
-    const errors = activityLogs.filter(a => !a.success);
+    const [totalLogs, todayCount, stats, topUsersRaw, errorCount] = await Promise.all([
+        ActivityLog.countDocuments(),
+        ActivityLog.countDocuments({ timestamp: { $gte: today } }),
+        ActivityLog.aggregate([
+            {
+                $facet: {
+                    byAction: [
+                        { $group: { _id: '$action', count: { $sum: 1 } } }
+                    ],
+                    byEntityType: [
+                        { $group: { _id: '$entityType', count: { $sum: 1 } } }
+                    ]
+                }
+            }
+        ]),
+        ActivityLog.aggregate([
+            { $group: { _id: { userId: '$userId', userName: '$userName' }, count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+        ]),
+        ActivityLog.countDocuments({ success: false })
+    ]);
 
     const byAction: Record<string, number> = {};
     const byEntityType: Record<string, number> = {};
-    const userCounts: Record<string, { userName: string; count: number }> = {};
 
-    activityLogs.forEach(log => {
-        byAction[log.action] = (byAction[log.action] || 0) + 1;
-        byEntityType[log.entityType] = (byEntityType[log.entityType] || 0) + 1;
+    stats[0].byAction.forEach((item: any) => { byAction[item._id] = item.count; });
+    stats[0].byEntityType.forEach((item: any) => { byEntityType[item._id] = item.count; });
 
-        if (!userCounts[log.userId]) {
-            userCounts[log.userId] = { userName: log.userName, count: 0 };
-        }
-        userCounts[log.userId].count++;
-    });
-
-    const topUsers = Object.entries(userCounts)
-        .map(([userId, data]) => ({ userId, ...data }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
+    const topUsers = topUsersRaw.map((u: any) => ({
+        userId: u._id.userId,
+        userName: u._id.userName,
+        count: u.count
+    }));
 
     return {
-        totalLogs: activityLogs.length,
-        todayCount: todayLogs.length,
+        totalLogs,
+        todayCount,
         byAction,
         byEntityType,
         topUsers,
-        errorRate: activityLogs.length > 0 ? (errors.length / activityLogs.length) * 100 : 0,
+        errorRate: totalLogs > 0 ? (errorCount / totalLogs) * 100 : 0
     };
 }
 
 /**
  * Export activities to JSON
  */
-export function exportActivities(filters?: {
+export async function exportActivities(filters?: {
     startDate?: Date;
     endDate?: Date;
-}): string {
-    let toExport = [...activityLogs];
-
+}): Promise<string> {
+    const query: any = {};
     if (filters?.startDate) {
-        toExport = toExport.filter(a => a.timestamp >= filters.startDate!);
+        query.timestamp = { $gte: filters.startDate };
     }
     if (filters?.endDate) {
-        toExport = toExport.filter(a => a.timestamp <= filters.endDate!);
+        query.timestamp = { ...query.timestamp, $lte: filters.endDate };
     }
 
-    return JSON.stringify(toExport, null, 2);
+    const logs = await ActivityLog.find(query).sort({ timestamp: -1 });
+    return JSON.stringify(logs, null, 2);
 }
 
 /**
  * Clear old logs (for maintenance)
  */
-export function clearOldLogs(olderThan: Date): number {
-    const before = activityLogs.length;
-    const cutoffIndex = activityLogs.findIndex(a => a.timestamp < olderThan);
-
-    if (cutoffIndex > -1) {
-        activityLogs.splice(cutoffIndex);
-    }
-
-    return before - activityLogs.length;
+export async function clearOldLogs(olderThan: Date): Promise<number> {
+    const result = await ActivityLog.deleteMany({ timestamp: { $lt: olderThan } });
+    return result.deletedCount || 0;
 }

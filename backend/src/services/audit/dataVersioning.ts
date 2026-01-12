@@ -1,40 +1,14 @@
 /**
  * Data Versioning Service
  * Git-like version control for datasets
+ * Persistence: MongoDB (DataVersion model)
  */
 
-export interface DataVersion {
-    id: string;
-    datasetId: string;
-    version: number;
-    createdAt: Date;
-    createdBy: string;
-    createdByName: string;
-    changeType: 'create' | 'update' | 'append' | 'delete' | 'restore';
-    description: string;
-    recordCount: number;
-    sizeBytes: number;
-    parentVersion?: number;
-    checksum: string;
-    changes: {
-        added: number;
-        modified: number;
-        deleted: number;
-    };
-    metadata: Record<string, any>;
-    isActive: boolean;
-}
+import { DataVersion, IDataVersion, DatasetVersionHistory } from '../../models/DataVersion';
 
-export interface DatasetVersionHistory {
-    datasetId: string;
-    datasetName: string;
-    currentVersion: number;
-    versions: DataVersion[];
-    totalVersions: number;
-}
-
-// In-memory store
-const versionStore: Map<string, DataVersion[]> = new Map();
+// Re-export types for consumers
+export type { DatasetVersionHistory };
+export type { IDataVersion as DataVersion };
 
 /**
  * Generate a checksum for data
@@ -53,7 +27,7 @@ function generateChecksum(data: any): string {
 /**
  * Create initial version for a new dataset
  */
-export function createInitialVersion(params: {
+export async function createInitialVersion(params: {
     datasetId: string;
     createdBy: string;
     createdByName: string;
@@ -62,9 +36,15 @@ export function createInitialVersion(params: {
     sizeBytes: number;
     data: any;
     metadata?: Record<string, any>;
-}): DataVersion {
-    const version: DataVersion = {
-        id: `VER-${Date.now().toString(36).toUpperCase()}`,
+}): Promise<IDataVersion> {
+    // Initialize counter
+    await DatasetCounter.findOneAndUpdate(
+        { datasetId: params.datasetId },
+        { latestVersion: 1 },
+        { upsert: true, new: true }
+    );
+
+    const version = new DataVersion({
         datasetId: params.datasetId,
         version: 1,
         createdAt: new Date(),
@@ -78,16 +58,17 @@ export function createInitialVersion(params: {
         changes: { added: params.recordCount, modified: 0, deleted: 0 },
         metadata: params.metadata || {},
         isActive: true,
-    };
+    });
 
-    versionStore.set(params.datasetId, [version]);
-    return version;
+    return await version.save();
 }
+
+import { DatasetCounter } from '../../models/DatasetCounter';
 
 /**
  * Create a new version of an existing dataset
  */
-export function createVersion(params: {
+export async function createVersion(params: {
     datasetId: string;
     createdBy: string;
     createdByName: string;
@@ -98,20 +79,36 @@ export function createVersion(params: {
     data: any;
     changes: { added: number; modified: number; deleted: number };
     metadata?: Record<string, any>;
-}): DataVersion | null {
-    const versions = versionStore.get(params.datasetId);
-    if (!versions || versions.length === 0) {
-        return null;
-    }
+}): Promise<IDataVersion | null> {
+    // 1. Atomically get next version number
+    const counter = await DatasetCounter.findOneAndUpdate(
+        { datasetId: params.datasetId },
+        { $inc: { latestVersion: 1 } },
+        { upsert: true, new: true }
+    );
 
-    // Deactivate previous active version
-    versions.forEach(v => v.isActive = false);
+    const nextVersion = counter.latestVersion;
 
-    const currentMax = Math.max(...versions.map(v => v.version));
-    const newVersion: DataVersion = {
-        id: `VER-${Date.now().toString(36).toUpperCase()}`,
+    // Note: If the code fails after this point but before saving the new DataVersion,
+    // we will have a gap in version numbers (e.g., v1 -> v3). This is acceptable behavior
+    // to avoid complex transactions in non-replica-set environments, as long as version
+    // ordering remains consistent.
+
+    // Deactivate previous active version (still needed for logic)
+    // Note: This might theoretically miss if a new version was JUST created, but strictly speaking 
+    // version numbers are now unique and ordered. The concept of "active" usually implies "HEAD".
+    // Better to mark all previous versions as inactive.
+    await DataVersion.updateMany(
+        { datasetId: params.datasetId, version: { $lt: nextVersion }, isActive: true },
+        { isActive: false }
+    );
+
+    // Get parent version (previous version)
+    const parentVer = nextVersion > 1 ? nextVersion - 1 : undefined;
+
+    const newVersion = new DataVersion({
         datasetId: params.datasetId,
-        version: currentMax + 1,
+        version: nextVersion,
         createdAt: new Date(),
         createdBy: params.createdBy,
         createdByName: params.createdByName,
@@ -119,32 +116,34 @@ export function createVersion(params: {
         description: params.description,
         recordCount: params.recordCount,
         sizeBytes: params.sizeBytes,
-        parentVersion: currentMax,
+        parentVersion: parentVer,
         checksum: generateChecksum(params.data),
         changes: params.changes,
         metadata: params.metadata || {},
         isActive: true,
-    };
+    });
 
-    versions.push(newVersion);
-    return newVersion;
+    return await newVersion.save();
 }
 
 /**
  * Get version history for a dataset
  */
-export function getVersionHistory(datasetId: string): DatasetVersionHistory | null {
-    const versions = versionStore.get(datasetId);
+export async function getVersionHistory(datasetId: string): Promise<DatasetVersionHistory | null> {
+    const versions = await DataVersion.find({ datasetId }).sort({ version: -1 });
+
     if (!versions || versions.length === 0) {
         return null;
     }
 
-    const activeVersion = versions.find(v => v.isActive);
+    const activeVersion = versions.find(v => v.isActive) || versions[0];
+    const initialVersion = versions[versions.length - 1]; // Last by negative sort is first created
+
     return {
         datasetId,
-        datasetName: versions[0].metadata?.name || datasetId,
-        currentVersion: activeVersion?.version || versions[versions.length - 1].version,
-        versions: [...versions].reverse(), // Most recent first
+        datasetName: initialVersion.metadata?.name || datasetId,
+        currentVersion: activeVersion.version,
+        versions: versions,
         totalVersions: versions.length,
     };
 }
@@ -152,64 +151,74 @@ export function getVersionHistory(datasetId: string): DatasetVersionHistory | nu
 /**
  * Get a specific version
  */
-export function getVersion(datasetId: string, versionNumber: number): DataVersion | null {
-    const versions = versionStore.get(datasetId);
-    return versions?.find(v => v.version === versionNumber) || null;
+export async function getVersion(datasetId: string, versionNumber: number): Promise<IDataVersion | null> {
+    return await DataVersion.findOne({ datasetId, version: versionNumber });
 }
 
 /**
  * Restore a previous version (creates new version with restored content)
  */
-export function restoreVersion(params: {
+export async function restoreVersion(params: {
     datasetId: string;
     targetVersion: number;
     restoredBy: string;
     restoredByName: string;
-}): DataVersion | null {
-    const versions = versionStore.get(params.datasetId);
-    const targetVer = versions?.find(v => v.version === params.targetVersion);
+}): Promise<IDataVersion | null> {
+    const targetVer = await DataVersion.findOne({
+        datasetId: params.datasetId,
+        version: params.targetVersion
+    });
 
-    if (!versions || !targetVer) {
+    const latestVer = await DataVersion.findOne({ datasetId: params.datasetId })
+        .sort({ version: -1 });
+
+    if (!targetVer || !latestVer) {
         return null;
     }
 
     // Deactivate all versions
-    versions.forEach(v => v.isActive = false);
+    await DataVersion.updateMany(
+        { datasetId: params.datasetId, isActive: true },
+        { isActive: false }
+    );
 
-    const currentMax = Math.max(...versions.map(v => v.version));
-    const restoredVersion: DataVersion = {
-        ...targetVer,
-        id: `VER-${Date.now().toString(36).toUpperCase()}`,
-        version: currentMax + 1,
+    const restoredVersion = new DataVersion({
+        datasetId: params.datasetId,
+        version: latestVer.version + 1,
         createdAt: new Date(),
         createdBy: params.restoredBy,
         createdByName: params.restoredByName,
         changeType: 'restore',
         description: `Restored from version ${params.targetVersion}`,
-        parentVersion: currentMax,
-        isActive: true,
-    };
+        recordCount: targetVer.recordCount,
+        sizeBytes: targetVer.sizeBytes,
+        parentVersion: latestVer.version,
+        checksum: targetVer.checksum,
+        changes: { added: 0, modified: 0, deleted: 0 }, // It's a restore, changes logic might need more thought but 0 is safe
+        metadata: targetVer.metadata,
+        isActive: true, // New active
+    });
 
-    versions.push(restoredVersion);
-    return restoredVersion;
+    return await restoredVersion.save();
 }
 
 /**
  * Compare two versions
  */
-export function compareVersions(datasetId: string, v1: number, v2: number): {
-    version1: DataVersion | null;
-    version2: DataVersion | null;
+export async function compareVersions(datasetId: string, v1: number, v2: number): Promise<{
+    version1: IDataVersion | null;
+    version2: IDataVersion | null;
     diff: {
         recordCountDelta: number;
         sizeDelta: number;
         checksumMatch: boolean;
         changesSummary: string;
     } | null;
-} {
-    const versions = versionStore.get(datasetId);
-    const ver1 = versions?.find(v => v.version === v1);
-    const ver2 = versions?.find(v => v.version === v2);
+}> {
+    const [ver1, ver2] = await Promise.all([
+        DataVersion.findOne({ datasetId, version: v1 }),
+        DataVersion.findOne({ datasetId, version: v2 })
+    ]);
 
     if (!ver1 || !ver2) {
         return { version1: ver1 || null, version2: ver2 || null, diff: null };
@@ -230,59 +239,66 @@ export function compareVersions(datasetId: string, v1: number, v2: number): {
 /**
  * Get versioning statistics
  */
-export function getVersioningStats(): {
+export async function getVersioningStats(): Promise<{
     totalDatasets: number;
     totalVersions: number;
     datasetsWithMultipleVersions: number;
     avgVersionsPerDataset: number;
-    recentVersions: DataVersion[];
-} {
-    let totalVersions = 0;
-    let multipleVersions = 0;
-    const allVersions: DataVersion[] = [];
-
-    versionStore.forEach((versions) => {
-        totalVersions += versions.length;
-        if (versions.length > 1) multipleVersions++;
-        allVersions.push(...versions);
-    });
-
-    allVersions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    recentVersions: IDataVersion[];
+}> {
+    const [totalDatasets, totalVersions, multipleVersions, recentVersions] = await Promise.all([
+        DataVersion.distinct('datasetId').then(ids => ids.length),
+        DataVersion.countDocuments(),
+        // Count distinct datasetIds where count > 1 (requires aggregate)
+        DataVersion.aggregate([
+            { $group: { _id: '$datasetId', count: { $sum: 1 } } },
+            { $match: { count: { $gt: 1 } } },
+            { $count: 'count' }
+        ]).then(res => res[0]?.count || 0),
+        DataVersion.find().sort({ createdAt: -1 }).limit(10)
+    ]);
 
     return {
-        totalDatasets: versionStore.size,
+        totalDatasets,
         totalVersions,
         datasetsWithMultipleVersions: multipleVersions,
-        avgVersionsPerDataset: versionStore.size > 0 ? totalVersions / versionStore.size : 0,
-        recentVersions: allVersions.slice(0, 10),
+        avgVersionsPerDataset: totalDatasets > 0 ? totalVersions / totalDatasets : 0,
+        recentVersions,
     };
 }
 
 /**
  * List all versioned datasets
  */
-export function listVersionedDatasets(): Array<{
+export async function listVersionedDatasets(): Promise<Array<{
     datasetId: string;
     currentVersion: number;
     totalVersions: number;
     lastUpdated: Date;
-}> {
-    const result: Array<{
-        datasetId: string;
-        currentVersion: number;
-        totalVersions: number;
-        lastUpdated: Date;
-    }> = [];
+}>> {
+    // Aggregation to get latest summary per dataset
+    const start = Date.now();
+    const result = await DataVersion.aggregate([
+        {
+            $sort: { version: -1 } // Sort versions descending first
+        },
+        {
+            $group: {
+                _id: '$datasetId',
+                currentVersion: { $first: '$version' }, // First is latest because of sort
+                totalVersions: { $sum: 1 },
+                lastUpdated: { $first: '$createdAt' }
+            }
+        },
+        {
+            $sort: { lastUpdated: -1 }
+        }
+    ]);
 
-    versionStore.forEach((versions, datasetId) => {
-        const activeVer = versions.find(v => v.isActive) || versions[versions.length - 1];
-        result.push({
-            datasetId,
-            currentVersion: activeVer.version,
-            totalVersions: versions.length,
-            lastUpdated: activeVer.createdAt,
-        });
-    });
-
-    return result.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
+    return result.map(g => ({
+        datasetId: g._id,
+        currentVersion: g.currentVersion,
+        totalVersions: g.totalVersions,
+        lastUpdated: g.lastUpdated
+    }));
 }

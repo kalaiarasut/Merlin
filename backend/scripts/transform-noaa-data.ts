@@ -49,6 +49,7 @@ const SVCAT_FILE = path.join(INPUT_DIR, '22562_UNION_FSCS_SVCAT.csv');
 const SVLEN_FILE = path.join(INPUT_DIR, '22562_UNION_FSCS_SVLEN.csv');
 const SVBIO_FILE = path.join(INPUT_DIR, '22562_UNION_FSCS_SVBIO.csv');
 const CRUISES_FILE = path.join(INPUT_DIR, '22562_SVDBS_CRUISES.csv');
+const SVSTA_FILE = path.join(INPUT_DIR, '22562_UNION_FSCS_SVSTA.csv');  // Station data with lat/lon/depth
 
 // ============================================================
 // UTILITIES
@@ -113,6 +114,29 @@ function generateSummerDate(year: number): string {
     return `${year}-06-01`;
 }
 
+/**
+ * Convert NOAA latitude format (DDMM.M) to decimal degrees
+ * e.g., 4303 (43°03') → 43.05
+ */
+function convertLatitude(noaaLat: number): number {
+    if (isNaN(noaaLat)) return NaN;
+    const degrees = Math.floor(noaaLat / 100);
+    const minutes = noaaLat % 100;
+    return degrees + (minutes / 60);
+}
+
+/**
+ * Convert NOAA longitude format (DDDMM.M) to decimal degrees (negative for West)
+ * e.g., 7023 (70°23') → -70.38
+ */
+function convertLongitude(noaaLon: number): number {
+    if (isNaN(noaaLon)) return NaN;
+    const degrees = Math.floor(noaaLon / 100);
+    const minutes = noaaLon % 100;
+    // NOAA US East Coast data is Western longitude (negative)
+    return -(degrees + (minutes / 60));
+}
+
 // ============================================================
 // INTERFACES
 // ============================================================
@@ -121,10 +145,13 @@ interface MarlinCatchRecord {
     date: string;
     species: string;
     catch: number;      // kg
-    effort: number;     // 1 tow = 1 effort
+    effort: number;     // tow duration in minutes, or 1 if not available
     effortUnit: string;
     location?: {
+        lat?: number;
+        lon?: number;
         area?: string;
+        depth?: number;  // Average depth in meters
     };
 }
 
@@ -139,11 +166,85 @@ interface MarlinLengthRecord {
 }
 
 // ============================================================
+// STATION DATA LOOKUP (for lat/lon/depth joining)
+// ============================================================
+
+interface StationData {
+    lat: number;
+    lon: number;
+    depth: number;
+    towDur: number;  // Tow duration in minutes
+}
+
+/**
+ * Load station data from SVSTA file to create lookup map
+ * Key: "CRUISE6-TOW-STATION"
+ */
+function loadStationData(): Map<string, StationData> {
+    console.log('\n📍 Loading station data from SVSTA...');
+    const stationMap = new Map<string, StationData>();
+
+    if (!fs.existsSync(SVSTA_FILE)) {
+        console.error(`  ❌ Station file not found: ${SVSTA_FILE}`);
+        return stationMap;
+    }
+
+    const content = fs.readFileSync(SVSTA_FILE, 'utf-8');
+    const lines = content.split('\n').filter(l => l.trim());
+
+    // Parse header
+    const header = parseCSVLine(lines[0]);
+    const colIndex = {
+        CRUISE6: header.findIndex(h => h.includes('CRUISE6')),
+        TOW: header.findIndex(h => h === 'TOW' || h.includes('TOW')),
+        STATION: header.findIndex(h => h.includes('STATION')),
+        BEGLAT: header.findIndex(h => h.includes('BEGLAT')),
+        BEGLON: header.findIndex(h => h.includes('BEGLON')),
+        AVGDEPTH: header.findIndex(h => h.includes('AVGDEPTH')),
+        BOTDEPTH: header.findIndex(h => h.includes('BOTDEPTH')),
+        TOWDUR: header.findIndex(h => h.includes('TOWDUR') || h.includes('TOW_DURATION')),
+    };
+
+    console.log(`  📋 Station columns: BEGLAT=${colIndex.BEGLAT}, BEGLON=${colIndex.BEGLON}, AVGDEPTH=${colIndex.AVGDEPTH}, TOWDUR=${colIndex.TOWDUR}`);
+
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        if (cols.length < 5) continue;
+
+        const cruise6 = cols[colIndex.CRUISE6]?.replace(/"/g, '') || '';
+        const tow = cols[colIndex.TOW]?.replace(/"/g, '') || '';
+        const station = cols[colIndex.STATION]?.replace(/"/g, '') || '';
+        const key = `${cruise6}-${tow}-${station}`;
+
+        const rawLat = colIndex.BEGLAT >= 0 ? parseFloat(cols[colIndex.BEGLAT]) : NaN;
+        const rawLon = colIndex.BEGLON >= 0 ? parseFloat(cols[colIndex.BEGLON]) : NaN;
+        const lat = convertLatitude(rawLat);
+        const lon = convertLongitude(rawLon);
+        const depth = colIndex.AVGDEPTH >= 0 ? parseFloat(cols[colIndex.AVGDEPTH]) :
+            (colIndex.BOTDEPTH >= 0 ? parseFloat(cols[colIndex.BOTDEPTH]) : NaN);
+        const towDur = colIndex.TOWDUR >= 0 ? parseFloat(cols[colIndex.TOWDUR]) : 0;
+
+        if (!isNaN(lat) && !isNaN(lon)) {
+            stationMap.set(key, {
+                lat,
+                lon,
+                depth: isNaN(depth) ? 0 : depth,
+                towDur: isNaN(towDur) ? 0 : towDur,
+            });
+        }
+    }
+
+    console.log(`  ✅ Loaded ${stationMap.size} station records with location data`);
+    return stationMap;
+}
+
+// ============================================================
 // TRANSFORMERS
 // ============================================================
 
 /**
  * Transform SVCAT (catch data) into Marlin CPUE format
+ * Joins with SVSTA station data to get lat/lon/depth
  */
 function transformCatchData(): MarlinCatchRecord[] {
     console.log('\n📊 Transforming SVCAT (Catch Data)...');
@@ -152,6 +253,9 @@ function transformCatchData(): MarlinCatchRecord[] {
         console.error(`  ❌ File not found: ${SVCAT_FILE}`);
         return [];
     }
+
+    // First, load station data for joining
+    const stationMap = loadStationData();
 
     const content = fs.readFileSync(SVCAT_FILE, 'utf-8');
     const lines = content.split('\n').filter(l => l.trim());
@@ -167,12 +271,13 @@ function transformCatchData(): MarlinCatchRecord[] {
         STRATUM: header.findIndex(h => h.includes('STRATUM')),
     };
 
-    console.log(`  📋 Columns found: CRUISE6=${colIndex.CRUISE6}, TOW=${colIndex.TOW}, EXPCATCHWT=${colIndex.EXPCATCHWT}, SCIENTIFIC_NAME=${colIndex.SCIENTIFIC_NAME}`);
+    console.log(`  📋 Columns: CRUISE6=${colIndex.CRUISE6}, TOW=${colIndex.TOW}, STATION=${colIndex.STATION}, EXPCATCHWT=${colIndex.EXPCATCHWT}`);
 
     const records: MarlinCatchRecord[] = [];
     const speciesCounts: Record<string, number> = {};
     let totalRows = 0;
     let filteredRows = 0;
+    let matchedStations = 0;
 
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
@@ -188,24 +293,46 @@ function transformCatchData(): MarlinCatchRecord[] {
         filteredRows++;
         speciesCounts[species] = (speciesCounts[species] || 0) + 1;
 
-        const cruise6 = cols[colIndex.CRUISE6] || '';
+        const cruise6 = (cols[colIndex.CRUISE6] || '').replace(/"/g, '');
+        const tow = (cols[colIndex.TOW] || '').replace(/"/g, '');
+        const station = (cols[colIndex.STATION] || '').replace(/"/g, '');
         const year = parseCruiseYear(cruise6);
         const catchWt = parseFloat(cols[colIndex.EXPCATCHWT]) || 0;
+
+        // Lookup station data for lat/lon/depth
+        const stationKey = `${cruise6}-${tow}-${station}`;
+        const stationData = stationMap.get(stationKey);
+
+        if (stationData) {
+            matchedStations++;
+        }
+
+        // Use station data if available
+        const lat = stationData?.lat;
+        const lon = stationData?.lon;
+        const depth = stationData?.depth;
+        const towDur = stationData?.towDur || 0;
+
+        const effortUnit = towDur > 0 ? 'hours' : 'tows';
 
         records.push({
             date: generateSummerDate(year),
             species: species,
             catch: catchWt,
-            effort: 1,  // 1 tow = 1 effort unit
-            effortUnit: 'trips',
+            effort: towDur > 0 ? towDur / 60 : 1,  // Convert minutes to hours, or 1 tow
+            effortUnit: effortUnit,
             location: {
+                lat: lat && !isNaN(lat) ? lat : undefined,
+                lon: lon && !isNaN(lon) ? lon : undefined,
                 area: cols[colIndex.STRATUM]?.replace(/"/g, '') || 'Gulf of Maine',
+                depth: depth && !isNaN(depth) ? depth : undefined,
             },
         });
     }
 
     console.log(`  ✅ Processed ${totalRows} rows → ${filteredRows} records for selected species`);
-    console.log(`  📈 Species breakdown:`, speciesCounts);
+    console.log(`  � Matched ${matchedStations}/${filteredRows} records with station location data (${Math.round(matchedStations / filteredRows * 100)}%)`);
+    console.log(`  �📈 Species breakdown:`, speciesCounts);
 
     return records;
 }
@@ -378,11 +505,6 @@ function ensureOutputDir() {
     }
 }
 
-function writeJSON(filename: string, data: any) {
-    const filepath = path.join(OUTPUT_DIR, filename);
-    fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
-    console.log(`  💾 Saved: ${filepath} (${Array.isArray(data) ? data.length : 0} records)`);
-}
 
 function writeCSV(filename: string, data: any[], headers: string[]) {
     const filepath = path.join(OUTPUT_DIR, filename);
@@ -390,6 +512,12 @@ function writeCSV(filename: string, data: any[], headers: string[]) {
 
     for (const row of data) {
         const values = headers.map(h => {
+            // Handle nested location object
+            if (h === 'lat') return row.location?.lat ?? '';
+            if (h === 'lon') return row.location?.lon ?? '';
+            if (h === 'area') return row.location?.area ?? '';
+            if (h === 'depth') return row.location?.depth ?? '';
+
             const val = row[h];
             if (val === undefined || val === null) return '';
             if (typeof val === 'object') return JSON.stringify(val);
@@ -417,22 +545,18 @@ async function main() {
 
     // Transform catch data
     const catchRecords = transformCatchData();
-    writeJSON('catch_records.json', catchRecords);
-    writeCSV('catch_records.csv', catchRecords, ['date', 'species', 'catch', 'effort', 'effortUnit']);
+    writeCSV('catch_records.csv', catchRecords, ['date', 'species', 'catch', 'effort', 'effortUnit', 'lat', 'lon', 'area', 'depth']);
 
     // Transform length frequency data
     const lengthRecords = transformLengthData();
-    writeJSON('length_records.json', lengthRecords);
     writeCSV('length_records.csv', lengthRecords, ['date', 'species', 'length']);
 
     // Transform biological data
     const bioRecords = transformBioData();
-    writeJSON('bio_records.json', bioRecords);
     writeCSV('bio_records.csv', bioRecords, ['date', 'species', 'length', 'weight', 'sex', 'maturity', 'age']);
 
     // Combined length data (length frequency + bio)
     const combinedLength = [...lengthRecords, ...bioRecords];
-    writeJSON('combined_length_records.json', combinedLength);
     writeCSV('combined_length_records.csv', combinedLength, ['date', 'species', 'length', 'weight', 'sex', 'maturity', 'age']);
 
     console.log('\n✅ Transformation complete!');

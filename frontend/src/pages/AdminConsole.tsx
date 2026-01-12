@@ -13,9 +13,10 @@ import {
   Cpu, MemoryStick, Wifi, AlertTriangle, CheckCircle2, XCircle,
   Clock, RefreshCw, Download, Search, X,
   UserPlus, Edit, Trash2, Lock, Mail,
-  FileText, BarChart3, Zap, Loader, Building, KeyRound
+  FileText, BarChart3, Zap, Loader, Building, KeyRound, GitCommit
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AuditLogViewer, ReproducibilityDashboard } from '@/components/audit';
 
 // Types
 interface User {
@@ -39,10 +40,10 @@ interface UserFormData {
 }
 
 // Modal Component
-function Modal({ isOpen, onClose, title, children }: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  title: string; 
+function Modal({ isOpen, onClose, title, children }: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
   children: React.ReactNode;
 }) {
   if (!isOpen) return null;
@@ -94,9 +95,9 @@ function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, isLoading }
           <Button variant="outline" onClick={onClose} disabled={isLoading}>
             Cancel
           </Button>
-          <Button 
-            variant="default" 
-            onClick={onConfirm} 
+          <Button
+            variant="default"
+            onClick={onConfirm}
             disabled={isLoading}
             className="bg-abyss-600 hover:bg-abyss-700"
           >
@@ -124,7 +125,7 @@ export default function AdminConsole() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  
+
   // Modal states
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
@@ -132,7 +133,7 @@ export default function AdminConsole() {
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState('');
-  
+
   // Form state
   const [formData, setFormData] = useState<UserFormData>({
     name: '',
@@ -143,16 +144,16 @@ export default function AdminConsole() {
     organization: '',
   });
   const [formErrors, setFormErrors] = useState<Partial<UserFormData>>({});
-  
+
   const queryClient = useQueryClient();
 
   // Fetch users from API
   const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useQuery({
     queryKey: ['admin-users', searchQuery, roleFilter, statusFilter],
-    queryFn: () => userService.getAll({ 
-      search: searchQuery || undefined, 
-      role: roleFilter || undefined, 
-      status: statusFilter || undefined 
+    queryFn: () => userService.getAll({
+      search: searchQuery || undefined,
+      role: roleFilter || undefined,
+      status: statusFilter || undefined
     }),
   });
 
@@ -181,7 +182,7 @@ export default function AdminConsole() {
 
   // Update user mutation
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<UserFormData> }) => 
+    mutationFn: ({ id, data }: { id: string; data: Partial<UserFormData> }) =>
       userService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
@@ -205,7 +206,7 @@ export default function AdminConsole() {
 
   // Reset password mutation
   const resetPasswordMutation = useMutation({
-    mutationFn: ({ id, password }: { id: string; password: string }) => 
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
       userService.resetPassword(id, password),
     onSuccess: () => {
       setIsResetPasswordOpen(false);
@@ -234,7 +235,7 @@ export default function AdminConsole() {
 
   const validateForm = (isEdit = false): boolean => {
     const errors: Partial<UserFormData> = {};
-    
+
     if (!formData.name.trim()) errors.name = 'Name is required';
     if (!formData.email.trim()) errors.email = 'Email is required';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -245,7 +246,7 @@ export default function AdminConsole() {
       errors.password = 'Password must be at least 6 characters';
     }
     if (!formData.organization.trim()) errors.organization = 'Organization is required';
-    
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -316,6 +317,7 @@ export default function AdminConsole() {
     { id: 'users', label: 'Users', icon: Users },
     { id: 'system', label: 'System', icon: Server },
     { id: 'audit', label: 'Audit Logs', icon: FileText },
+    { id: 'reproducibility', label: 'Reproducibility', icon: GitCommit },
   ];
 
   return (
@@ -521,7 +523,7 @@ export default function AdminConsole() {
                 icon={<Search className="w-4 h-4" />}
               />
             </div>
-            <Select 
+            <Select
               className="w-40"
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
@@ -531,7 +533,7 @@ export default function AdminConsole() {
               <option value="researcher">Researcher</option>
               <option value="viewer">Viewer</option>
             </Select>
-            <Select 
+            <Select
               className="w-40"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -598,8 +600,8 @@ export default function AdminConsole() {
                             </Badge>
                           </td>
                           <td className="py-4 px-6">
-                            <Badge 
-                              variant={user.status === 'active' ? 'success' : user.status === 'pending' ? 'warning' : 'outline'} 
+                            <Badge
+                              variant={user.status === 'active' ? 'success' : user.status === 'pending' ? 'warning' : 'outline'}
                               dot
                             >
                               {user.status}
@@ -610,25 +612,25 @@ export default function AdminConsole() {
                           </td>
                           <td className="py-4 px-6">
                             <div className="flex items-center justify-end gap-1">
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="icon-sm"
                                 onClick={() => openEditModal(user)}
                                 title="Edit user"
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="icon-sm"
                                 onClick={() => openResetPasswordModal(user)}
                                 title="Reset password"
                               >
                                 <KeyRound className="w-4 h-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon-sm" 
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
                                 className="text-abyss-600 hover:text-abyss-700"
                                 onClick={() => openDeleteModal(user)}
                                 title="Delete user"
@@ -771,61 +773,18 @@ export default function AdminConsole() {
         </div>
       )}
 
-      {/* Audit Tab */}
+      {/* Audit Tab (REAL IMPLEMENTATION) */}
       {activeTab === 'audit' && (
-        <Card variant="default">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Audit Logs</CardTitle>
-                <CardDescription>Complete activity history and system events</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-analytics-stats'] })}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {displayAuditLogs.map((log: any) => (
-                <div key={log.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    log.status === 'success' ? "bg-marine-100" : "bg-abyss-100"
-                  )}>
-                    {log.status === 'success' ? (
-                      <CheckCircle2 className="w-5 h-5 text-marine-600" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-abyss-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-deep-900">{log.action}</p>
-                      <Badge variant={log.status === 'success' ? 'success' : 'destructive'} size="sm">
-                        {log.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-deep-500 mt-0.5">
-                      {log.user} • IP: {log.ip}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-deep-700">{log.timestamp.toLocaleDateString()}</p>
-                    <p className="text-xs text-deep-400">{log.timestamp.toLocaleTimeString()}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <AuditLogViewer />
+        </div>
+      )}
+
+      {/* Reproducibility Tab */}
+      {activeTab === 'reproducibility' && (
+        <div className="space-y-6">
+          <ReproducibilityDashboard />
+        </div>
       )}
 
       {/* Add User Modal */}
@@ -841,7 +800,7 @@ export default function AdminConsole() {
             />
             {formErrors.name && <p className="text-sm text-abyss-600 mt-1">{formErrors.name}</p>}
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">Email Address</label>
             <Input
@@ -853,7 +812,7 @@ export default function AdminConsole() {
             />
             {formErrors.email && <p className="text-sm text-abyss-600 mt-1">{formErrors.email}</p>}
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">Password</label>
             <Input
@@ -865,7 +824,7 @@ export default function AdminConsole() {
             />
             {formErrors.password && <p className="text-sm text-abyss-600 mt-1">{formErrors.password}</p>}
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">Organization</label>
             <Input
@@ -876,7 +835,7 @@ export default function AdminConsole() {
             />
             {formErrors.organization && <p className="text-sm text-abyss-600 mt-1">{formErrors.organization}</p>}
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-deep-700 mb-1">Role</label>
@@ -901,14 +860,14 @@ export default function AdminConsole() {
               </Select>
             </div>
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" onClick={() => setIsAddUserOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              variant="premium" 
-              className="flex-1" 
+            <Button
+              variant="premium"
+              className="flex-1"
               onClick={handleAddUser}
               disabled={createUserMutation.isPending}
             >
@@ -916,7 +875,7 @@ export default function AdminConsole() {
               Add User
             </Button>
           </div>
-          
+
           {createUserMutation.isError && (
             <p className="text-sm text-abyss-600 text-center">
               {(createUserMutation.error as any)?.response?.data?.message || 'Failed to create user'}
@@ -938,7 +897,7 @@ export default function AdminConsole() {
             />
             {formErrors.name && <p className="text-sm text-abyss-600 mt-1">{formErrors.name}</p>}
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">Email Address</label>
             <Input
@@ -950,7 +909,7 @@ export default function AdminConsole() {
             />
             {formErrors.email && <p className="text-sm text-abyss-600 mt-1">{formErrors.email}</p>}
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">Organization</label>
             <Input
@@ -961,7 +920,7 @@ export default function AdminConsole() {
             />
             {formErrors.organization && <p className="text-sm text-abyss-600 mt-1">{formErrors.organization}</p>}
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-deep-700 mb-1">Role</label>
@@ -986,14 +945,14 @@ export default function AdminConsole() {
               </Select>
             </div>
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" onClick={() => setIsEditUserOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              variant="premium" 
-              className="flex-1" 
+            <Button
+              variant="premium"
+              className="flex-1"
               onClick={handleEditUser}
               disabled={updateUserMutation.isPending}
             >
@@ -1001,7 +960,7 @@ export default function AdminConsole() {
               Save Changes
             </Button>
           </div>
-          
+
           {updateUserMutation.isError && (
             <p className="text-sm text-abyss-600 text-center">
               {(updateUserMutation.error as any)?.response?.data?.message || 'Failed to update user'}
@@ -1016,7 +975,7 @@ export default function AdminConsole() {
           <p className="text-sm text-deep-500">
             Reset password for <span className="font-semibold text-deep-900">{selectedUser?.name}</span>
           </p>
-          
+
           <div>
             <label className="block text-sm font-medium text-deep-700 mb-1">New Password</label>
             <Input
@@ -1030,14 +989,14 @@ export default function AdminConsole() {
               <p className="text-sm text-abyss-600 mt-1">Password must be at least 6 characters</p>
             )}
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" onClick={() => setIsResetPasswordOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              variant="premium" 
-              className="flex-1" 
+            <Button
+              variant="premium"
+              className="flex-1"
               onClick={handleResetPassword}
               disabled={resetPasswordMutation.isPending || newPassword.length < 6}
             >
@@ -1045,7 +1004,7 @@ export default function AdminConsole() {
               Reset Password
             </Button>
           </div>
-          
+
           {resetPasswordMutation.isError && (
             <p className="text-sm text-abyss-600 text-center">
               Failed to reset password

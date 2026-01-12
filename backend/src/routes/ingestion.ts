@@ -8,6 +8,8 @@ import { IngestionJob } from '../models/IngestionJob';
 import { Species } from '../models/Species';
 import logger from '../utils/logger';
 import notificationService from '../utils/notificationService';
+import * as audit from '../services/audit/dataVersioning';
+import * as activityLog from '../services/audit/activityLogger';
 import aiServiceClient from '../utils/aiServiceClient';
 import { lookupSpecies } from '../utils/fishbaseClient';
 
@@ -603,8 +605,8 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       logger.info(`  📋 Has catch fields: ${hasCatchFields}, Has length fields: ${hasLengthFields}`);
 
       try {
-        // Create dataset using the fisheries dataStorage service
-        const dataset = dataStorage.createDataset({
+        // Create dataset using the fisheries dataStorage service (MongoDB-backed)
+        const dataset = await dataStorage.createDataset({
           name: `Ingested Fisheries Data - ${new Date().toISOString().split('T')[0]}`,
           type: datasetType,
           records: data,
@@ -636,6 +638,56 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       logger.info(`📦 Processing ${dataType} data (basic handling)...`);
       recordsProcessedCount = data.length;
       logger.info(`✅ ${dataType} import complete: ${data.length} records`);
+    }
+
+    // Create or update dataset version history
+    try {
+      const filename = path.basename(filePath);
+      const cleanFilename = filename.replace(/^\d+-/, ''); // Remove the Date.now() prefix
+
+      const history = await audit.getVersionHistory(cleanFilename);
+      const isInitial = !history || history.versions.length === 0;
+
+      if (isInitial) {
+        await audit.createInitialVersion({
+          datasetId: cleanFilename,
+          createdBy: userId,
+          createdByName: 'System (Ingestion)',
+          description: `Initial ingestion of ${cleanFilename}`,
+          recordCount: recordsProcessedCount,
+          sizeBytes: fs.statSync(filePath).size,
+          data: data.slice(0, 100), // Store sample
+          metadata: { jobId, dataType }
+        });
+      } else {
+        await audit.createVersion({
+          datasetId: cleanFilename,
+          createdBy: userId,
+          createdByName: 'System (Ingestion)',
+          changeType: 'append',
+          description: `Incremental update via ingestion job ${jobId}`,
+          recordCount: recordsProcessedCount,
+          sizeBytes: fs.statSync(filePath).size,
+          data: data.slice(0, 100),
+          changes: { added: recordsProcessedCount, modified: 0, deleted: 0 },
+          metadata: { jobId, dataType }
+        });
+      }
+
+      await activityLog.logActivity({
+        userId,
+        userName: 'System (Ingestion)',
+        userRole: 'system',
+        action: isInitial ? 'create' : 'update',
+        actionType: 'INGEST',
+        entityId: cleanFilename,
+        entityType: 'dataset',
+        severity: 'INFO',
+        success: true,
+        details: { jobId, dataType, records: recordsProcessedCount }
+      });
+    } catch (auditError: any) {
+      logger.error(`Failed to record dataset versioning: ${auditError.message}`);
     }
 
     await IngestionJob.findByIdAndUpdate(jobId, {

@@ -9,11 +9,13 @@ import {
   Upload, FileIcon, Loader, CheckCircle2, XCircle, Clock,
   Database, FileText, Image, FileCode, Archive, Trash2,
   RefreshCw, ChevronRight, AlertCircle, Sparkles, Zap,
-  AlertTriangle, Info, Eye
+  AlertTriangle, Info, Eye, History
 } from 'lucide-react';
 import { ingestionService } from '@/services/api';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { DatasetVersionControl } from '@/components/audit';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const DATA_TYPES = [
   { value: 'species', label: 'Species Records', icon: '🐟', description: 'Taxonomic and species data' },
@@ -47,6 +49,7 @@ export default function DataIngestion() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<any>(null);
+  const [historyJob, setHistoryJob] = useState<any>(null);
   const queryClient = useQueryClient();
 
   const { data: jobs, refetch: refetchJobs } = useQuery({
@@ -403,6 +406,15 @@ export default function DataIngestion() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          onClick={() => setHistoryJob(job)}
+                          className="opacity-0 group-hover:opacity-100 text-deep-400 hover:text-indigo-600 dark:text-gray-500 dark:hover:text-indigo-400 transition-opacity"
+                          title="View Version History"
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
                           onClick={() => confirmDeleteJob(job)}
                           className="opacity-0 group-hover:opacity-100 text-deep-400 hover:text-abyss-600 dark:text-gray-500 dark:hover:text-abyss-400 transition-opacity"
                         >
@@ -743,6 +755,23 @@ export default function DataIngestion() {
           </div>
         </div>
       )}
+
+      {/* History Dialog */}
+      <Dialog open={!!historyJob} onOpenChange={(open) => !open && setHistoryJob(null)}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+          <DialogHeader className="px-6 py-4 border-b">
+            <DialogTitle>Version History: {historyJob?.filename}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-6">
+            {historyJob && (
+              <DatasetVersionControl
+                datasetId={historyJob.filename}
+                isOwner={true}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

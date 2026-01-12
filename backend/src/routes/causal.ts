@@ -11,9 +11,163 @@ import {
     causalInference,
     TimeSeries
 } from '../services/causal';
+import { dataStorage } from '../services/fisheries';
 import logger from '../utils/logger';
 
 const router = Router();
+
+// ============================================================
+// TIME SERIES DATA ENDPOINTS (for Causal Analysis Integration)
+// ============================================================
+
+/**
+ * GET /api/causal/available-series
+ * List available time series for causal analysis
+ * Returns oceanographic (SST, salinity, chlorophyll) and fisheries (CPUE) series
+ */
+router.get('/available-series', async (req: Request, res: Response) => {
+    try {
+        // Get available fisheries data (species list)
+        const catchRecords = await dataStorage.getCatchRecords({});
+        const speciesSet = new Set<string>();
+        for (const rec of catchRecords) {
+            if (rec.species) speciesSet.add(rec.species);
+        }
+        const species = Array.from(speciesSet);
+
+        // Build available series list
+        const oceanographicSeries = [
+            { id: 'sst', name: 'Sea Surface Temperature', unit: '°C', source: 'erddap', available: true },
+            { id: 'salinity', name: 'Sea Surface Salinity', unit: 'PSU', source: 'erddap', available: true },
+            { id: 'chlorophyll', name: 'Chlorophyll-a', unit: 'mg/m³', source: 'erddap', available: true },
+        ];
+
+        const fisheriesSeries = species.map(sp => ({
+            id: `cpue_${sp.toLowerCase().replace(/\s+/g, '_')}`,
+            name: `CPUE - ${sp}`,
+            species: sp,
+            unit: 'kg/hour',
+            source: 'uploaded',
+            available: true,
+        }));
+
+        // Check if we have enough data points for analysis
+        const totalRecords = catchRecords.length;
+        const hasUploadedData = totalRecords > 10;
+
+        res.json({
+            success: true,
+            oceanographic: oceanographicSeries,
+            fisheries: fisheriesSeries,
+            aggregationOptions: ['monthly', 'weekly'],
+            defaultAggregation: 'monthly',
+            dataStatus: {
+                hasUploadedData,
+                totalCatchRecords: totalRecords,
+                speciesCount: species.length,
+            },
+        });
+
+    } catch (error: any) {
+        logger.error('Available series error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to get available series',
+        });
+    }
+});
+
+/**
+ * GET /api/causal/time-series/:seriesId
+ * Extract time series data for a specific parameter
+ * Query params: aggregation=monthly|weekly, species=<name>
+ */
+router.get('/time-series/:seriesId', async (req: Request, res: Response) => {
+    try {
+        const { seriesId } = req.params;
+        const { aggregation = 'monthly', species } = req.query;
+
+        let timeSeries: { date: string; value: number }[] = [];
+        let metadata: any = {};
+
+        // Handle fisheries CPUE series
+        if (seriesId.startsWith('cpue_')) {
+            const targetSpecies = species as string || seriesId.replace('cpue_', '').replace(/_/g, ' ');
+
+            const catchRecords = await dataStorage.getCatchRecords({ species: targetSpecies });
+
+            // Aggregate by time period
+            const periodMap = new Map<string, { totalCatch: number; totalEffort: number; count: number }>();
+
+            for (const rec of catchRecords) {
+                if (!rec.date) continue;
+
+                // Get period key based on aggregation
+                let periodKey: string;
+                const date = new Date(rec.date);
+                if (aggregation === 'weekly') {
+                    // ISO week
+                    const week = Math.ceil((date.getDate() + new Date(date.getFullYear(), date.getMonth(), 1).getDay()) / 7);
+                    periodKey = `${date.getFullYear()}-W${week.toString().padStart(2, '0')}`;
+                } else {
+                    // Monthly (default)
+                    periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+                }
+
+                if (!periodMap.has(periodKey)) {
+                    periodMap.set(periodKey, { totalCatch: 0, totalEffort: 0, count: 0 });
+                }
+                const p = periodMap.get(periodKey)!;
+                p.totalCatch += rec.catch || 0;
+                p.totalEffort += rec.effort || 1;
+                p.count++;
+            }
+
+            // Convert to time series
+            timeSeries = Array.from(periodMap.entries())
+                .map(([date, data]) => ({
+                    date,
+                    value: Math.round((data.totalCatch / data.totalEffort) * 100) / 100, // CPUE
+                }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            metadata = {
+                seriesId,
+                name: `CPUE - ${targetSpecies}`,
+                unit: 'kg/hour',
+                aggregation,
+                dataPoints: timeSeries.length,
+                species: targetSpecies,
+            };
+        }
+        // Oceanographic series would be fetched from ERDDAP here
+        // For now, return a placeholder
+        else if (['sst', 'salinity', 'chlorophyll'].includes(seriesId)) {
+            metadata = {
+                seriesId,
+                name: seriesId === 'sst' ? 'Sea Surface Temperature' :
+                    seriesId === 'salinity' ? 'Sea Surface Salinity' : 'Chlorophyll-a',
+                unit: seriesId === 'sst' ? '°C' : seriesId === 'salinity' ? 'PSU' : 'mg/m³',
+                aggregation,
+                dataPoints: 0,
+                note: 'Oceanographic data integration pending - use ERDDAP source directly',
+            };
+        }
+
+        res.json({
+            success: true,
+            timeSeries,
+            metadata,
+        });
+
+    } catch (error: any) {
+        logger.error('Time series extraction error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to extract time series',
+        });
+    }
+});
 
 /**
  * POST /api/causal/correlate

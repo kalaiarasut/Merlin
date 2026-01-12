@@ -19,7 +19,8 @@ router.get('/info', (_req: Request, res: Response) => {
         success: true,
         module: {
             name: 'Audit & Provenance',
-            version: '1.0.0',
+            version: '2.0.0', // Updated version
+            persistence: 'MongoDB',
             features: ['activity-logging', 'data-versioning', 'snapshots', 'lineage'],
             endpoints: {
                 activities: ['/activities', '/activities/:entityId', '/log', '/stats'],
@@ -34,7 +35,7 @@ router.get('/info', (_req: Request, res: Response) => {
  * GET /api/audit/activities
  * Query activity logs
  */
-router.get('/activities', (req: Request, res: Response) => {
+router.get('/activities', async (req: Request, res: Response) => {
     try {
         const filters = {
             userId: req.query.userId as string | undefined,
@@ -48,7 +49,7 @@ router.get('/activities', (req: Request, res: Response) => {
             offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
         };
 
-        const result = audit.queryActivities(filters);
+        const result = await audit.queryActivities(filters);
         res.json({ success: true, ...result });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -59,9 +60,9 @@ router.get('/activities', (req: Request, res: Response) => {
  * GET /api/audit/activities/:entityId
  * Get entity activity history
  */
-router.get('/activities/:entityType/:entityId', (req: Request, res: Response) => {
+router.get('/activities/:entityType/:entityId', async (req: Request, res: Response) => {
     try {
-        const history = audit.getEntityHistory(
+        const history = await audit.getEntityHistory(
             req.params.entityType as any,
             req.params.entityId
         );
@@ -75,22 +76,25 @@ router.get('/activities/:entityType/:entityId', (req: Request, res: Response) =>
  * POST /api/audit/log
  * Log a new activity
  */
-router.post('/log', (req: Request, res: Response) => {
+router.post('/log', async (req: Request, res: Response) => {
     try {
-        const log = audit.logActivity({
+        await audit.logActivity({
             userId: req.body.userId || 'system',
             userName: req.body.userName || 'System',
             userRole: req.body.userRole || 'system',
             action: req.body.action,
+            actionType: req.body.actionType,
             entityType: req.body.entityType,
             entityId: req.body.entityId,
             entityName: req.body.entityName,
             details: req.body.details,
             req,
             success: req.body.success ?? true,
+            severity: req.body.severity,
             errorMessage: req.body.errorMessage,
         });
-        res.json({ success: true, log });
+        // We don't wait for the return value but we know it didn't throw (or caught internally)
+        res.json({ success: true, message: 'Activity logged' });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -100,11 +104,13 @@ router.post('/log', (req: Request, res: Response) => {
  * GET /api/audit/stats
  * Get activity statistics
  */
-router.get('/stats', (_req: Request, res: Response) => {
+router.get('/stats', async (_req: Request, res: Response) => {
     try {
-        const activityStats = audit.getActivityStats();
-        const versioningStats = audit.getVersioningStats();
-        const snapshotStats = audit.getSnapshotStats();
+        const [activityStats, versioningStats, snapshotStats] = await Promise.all([
+            audit.getActivityStats(),
+            audit.getVersioningStats(),
+            audit.getSnapshotStats()
+        ]);
 
         res.json({
             success: true,
@@ -123,9 +129,9 @@ router.get('/stats', (_req: Request, res: Response) => {
  * GET /api/audit/user/:userId
  * Get user activity summary
  */
-router.get('/user/:userId', (req: Request, res: Response) => {
+router.get('/user/:userId', async (req: Request, res: Response) => {
     try {
-        const summary = audit.getUserActivitySummary(req.params.userId);
+        const summary = await audit.getUserActivitySummary(req.params.userId);
         res.json({ success: true, summary });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -138,9 +144,9 @@ router.get('/user/:userId', (req: Request, res: Response) => {
  * GET /api/audit/versions
  * List all versioned datasets
  */
-router.get('/versions', (_req: Request, res: Response) => {
+router.get('/versions', async (_req: Request, res: Response) => {
     try {
-        const datasets = audit.listVersionedDatasets();
+        const datasets = await audit.listVersionedDatasets();
         res.json({ success: true, datasets });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -151,9 +157,9 @@ router.get('/versions', (_req: Request, res: Response) => {
  * GET /api/audit/versions/:datasetId
  * Get version history for a dataset
  */
-router.get('/versions/:datasetId', (req: Request, res: Response) => {
+router.get('/versions/:datasetId', async (req: Request, res: Response) => {
     try {
-        const history = audit.getVersionHistory(req.params.datasetId);
+        const history = await audit.getVersionHistory(req.params.datasetId);
         if (!history) {
             return res.status(404).json({ success: false, error: 'Dataset not found' });
         }
@@ -167,9 +173,9 @@ router.get('/versions/:datasetId', (req: Request, res: Response) => {
  * POST /api/audit/versions
  * Create initial version for a new dataset
  */
-router.post('/versions', (req: Request, res: Response) => {
+router.post('/versions', async (req: Request, res: Response) => {
     try {
-        const version = audit.createInitialVersion({
+        const version = await audit.createInitialVersion({
             datasetId: req.body.datasetId,
             createdBy: req.body.createdBy || 'system',
             createdByName: req.body.createdByName || 'System',
@@ -189,9 +195,9 @@ router.post('/versions', (req: Request, res: Response) => {
  * POST /api/audit/versions/:datasetId
  * Create new version for existing dataset
  */
-router.post('/versions/:datasetId', (req: Request, res: Response) => {
+router.post('/versions/:datasetId', async (req: Request, res: Response) => {
     try {
-        const version = audit.createVersion({
+        const version = await audit.createVersion({
             datasetId: req.params.datasetId,
             createdBy: req.body.createdBy || 'system',
             createdByName: req.body.createdByName || 'System',
@@ -217,9 +223,9 @@ router.post('/versions/:datasetId', (req: Request, res: Response) => {
  * POST /api/audit/versions/:datasetId/restore
  * Restore a previous version
  */
-router.post('/versions/:datasetId/restore', (req: Request, res: Response) => {
+router.post('/versions/:datasetId/restore', async (req: Request, res: Response) => {
     try {
-        const version = audit.restoreVersion({
+        const version = await audit.restoreVersion({
             datasetId: req.params.datasetId,
             targetVersion: req.body.targetVersion,
             restoredBy: req.body.restoredBy || 'system',
@@ -239,12 +245,12 @@ router.post('/versions/:datasetId/restore', (req: Request, res: Response) => {
  * GET /api/audit/versions/:datasetId/compare
  * Compare two versions
  */
-router.get('/versions/:datasetId/compare', (req: Request, res: Response) => {
+router.get('/versions/:datasetId/compare', async (req: Request, res: Response) => {
     try {
         const v1 = parseInt(req.query.v1 as string);
         const v2 = parseInt(req.query.v2 as string);
 
-        const comparison = audit.compareVersions(req.params.datasetId, v1, v2);
+        const comparison = await audit.compareVersions(req.params.datasetId, v1, v2);
         res.json({ success: true, comparison });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -257,7 +263,7 @@ router.get('/versions/:datasetId/compare', (req: Request, res: Response) => {
  * GET /api/audit/snapshots
  * List analysis snapshots
  */
-router.get('/snapshots', (req: Request, res: Response) => {
+router.get('/snapshots', async (req: Request, res: Response) => {
     try {
         const filters = {
             createdBy: req.query.createdBy as string | undefined,
@@ -267,7 +273,7 @@ router.get('/snapshots', (req: Request, res: Response) => {
             limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
         };
 
-        const snapshots = audit.listSnapshots(filters);
+        const snapshots = await audit.listSnapshots(filters);
         res.json({ success: true, snapshots });
     } catch (error: any) {
         res.status(500).json({ success: false, error: error.message });
@@ -278,9 +284,9 @@ router.get('/snapshots', (req: Request, res: Response) => {
  * GET /api/audit/snapshots/:id
  * Get a specific snapshot
  */
-router.get('/snapshots/:id', (req: Request, res: Response) => {
+router.get('/snapshots/:id', async (req: Request, res: Response) => {
     try {
-        const snapshot = audit.getSnapshot(req.params.id);
+        const snapshot = await audit.getSnapshot(req.params.id);
         if (!snapshot) {
             return res.status(404).json({ success: false, error: 'Snapshot not found' });
         }
@@ -294,9 +300,9 @@ router.get('/snapshots/:id', (req: Request, res: Response) => {
  * POST /api/audit/snapshots
  * Create a new snapshot
  */
-router.post('/snapshots', (req: Request, res: Response) => {
+router.post('/snapshots', async (req: Request, res: Response) => {
     try {
-        const snapshot = audit.createSnapshot({
+        const snapshot = await audit.createSnapshot({
             name: req.body.name,
             description: req.body.description || '',
             createdBy: req.body.createdBy || 'system',
@@ -317,9 +323,9 @@ router.post('/snapshots', (req: Request, res: Response) => {
  * POST /api/audit/snapshots/:id/archive
  * Archive a snapshot
  */
-router.post('/snapshots/:id/archive', (req: Request, res: Response) => {
+router.post('/snapshots/:id/archive', async (req: Request, res: Response) => {
     try {
-        const success = audit.archiveSnapshot(req.params.id);
+        const success = await audit.archiveSnapshot(req.params.id);
         if (!success) {
             return res.status(404).json({ success: false, error: 'Snapshot not found' });
         }
@@ -333,9 +339,9 @@ router.post('/snapshots/:id/archive', (req: Request, res: Response) => {
  * POST /api/audit/snapshots/:id/clone
  * Clone a snapshot
  */
-router.post('/snapshots/:id/clone', (req: Request, res: Response) => {
+router.post('/snapshots/:id/clone', async (req: Request, res: Response) => {
     try {
-        const cloned = audit.cloneSnapshot(req.params.id, {
+        const cloned = await audit.cloneSnapshot(req.params.id, {
             name: req.body.name,
             createdBy: req.body.createdBy || 'system',
             createdByName: req.body.createdByName || 'System',
@@ -355,9 +361,9 @@ router.post('/snapshots/:id/clone', (req: Request, res: Response) => {
  * GET /api/audit/snapshots/:id/export
  * Export snapshot as JSON
  */
-router.get('/snapshots/:id/export', (req: Request, res: Response) => {
+router.get('/snapshots/:id/export', async (req: Request, res: Response) => {
     try {
-        const exported = audit.exportSnapshot(req.params.id);
+        const exported = await audit.exportSnapshot(req.params.id);
         if (!exported) {
             return res.status(404).json({ success: false, error: 'Snapshot not found' });
         }

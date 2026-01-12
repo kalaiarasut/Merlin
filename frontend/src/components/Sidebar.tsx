@@ -5,6 +5,7 @@ import {
   Globe, FileOutput, Shield, Search, Anchor, GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, description: 'Overview & metrics' },
@@ -32,7 +33,15 @@ const bottomNavigation = [
 ];
 
 export default function Sidebar() {
+  const { user } = useAuthStore();
   const location = useLocation();
+
+  const filteredBottomNavigation = bottomNavigation.filter(item => {
+    if (item.name === 'Admin Console' && user?.role !== 'admin') {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="w-72 bg-white/80 dark:bg-deep-900/80 backdrop-blur-xl border-r border-gray-200/50 dark:border-gray-700/50 flex flex-col shadow-lg">
@@ -108,7 +117,7 @@ export default function Sidebar() {
 
       {/* Bottom Navigation */}
       <div className="p-4 border-t border-gray-200/50 dark:border-gray-700/50 space-y-1">
-        {bottomNavigation.map((item) => {
+        {filteredBottomNavigation.map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link

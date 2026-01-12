@@ -1,65 +1,29 @@
 /**
  * Snapshot Manager Service
  * Creates reproducible analysis state snapshots
+ * Persistence: MongoDB (AnalysisSnapshot model)
  */
 
-export interface AnalysisSnapshot {
-    id: string;
-    name: string;
-    description: string;
-    createdAt: Date;
-    createdBy: string;
-    createdByName: string;
-    analysisType: 'biodiversity' | 'fisheries' | 'causal' | 'edna' | 'niche' | 'custom';
+import { AnalysisSnapshot, IAnalysisSnapshot } from '../../models/AnalysisSnapshot';
 
-    // Input data references
-    inputDatasets: Array<{
-        datasetId: string;
-        version: number;
-        checksum: string;
-    }>;
-
-    // Parameters used
-    parameters: Record<string, any>;
-
-    // Environment info for reproducibility
-    environment: {
-        platformVersion: string;
-        nodeVersion: string;
-        timestamp: string;
-        timezone: string;
-    };
-
-    // Results summary
-    resultsSummary: Record<string, any>;
-    resultsChecksum: string;
-
-    // Status
-    status: 'active' | 'archived' | 'invalidated';
-    tags: string[];
-}
-
-// In-memory store
-const snapshots: Map<string, AnalysisSnapshot> = new Map();
+// Re-export type
+export type { IAnalysisSnapshot as AnalysisSnapshot };
 
 /**
  * Create an analysis snapshot
  */
-export function createSnapshot(params: {
+export async function createSnapshot(params: {
     name: string;
     description: string;
     createdBy: string;
     createdByName: string;
-    analysisType: AnalysisSnapshot['analysisType'];
-    inputDatasets: AnalysisSnapshot['inputDatasets'];
+    analysisType: IAnalysisSnapshot['analysisType'];
+    inputDatasets: IAnalysisSnapshot['inputDatasets'];
     parameters: Record<string, any>;
     resultsSummary: Record<string, any>;
     tags?: string[];
-}): AnalysisSnapshot {
-    const id = `SNAP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-    const snapshot: AnalysisSnapshot = {
-        id,
+}): Promise<IAnalysisSnapshot> {
+    const snapshot = new AnalysisSnapshot({
         name: params.name,
         description: params.description,
         createdAt: new Date(),
@@ -78,10 +42,9 @@ export function createSnapshot(params: {
         resultsChecksum: generateResultsChecksum(params.resultsSummary),
         status: 'active',
         tags: params.tags || [],
-    };
+    });
 
-    snapshots.set(id, snapshot);
-    return snapshot;
+    return await snapshot.save();
 }
 
 /**
@@ -101,77 +64,72 @@ function generateResultsChecksum(results: any): string {
 /**
  * Get a snapshot by ID
  */
-export function getSnapshot(id: string): AnalysisSnapshot | null {
-    return snapshots.get(id) || null;
+export async function getSnapshot(id: string): Promise<IAnalysisSnapshot | null> {
+    // Support searching by Mongo _id or our custom ID format if we kept it? 
+    // We switched to Mongo _id in the model (auto-generated). 
+    // But existing frontend might expect string IDs. Mongoose handles string->ObjectId casting usually.
+    return await AnalysisSnapshot.findById(id);
 }
 
 /**
  * List snapshots with filtering
  */
-export function listSnapshots(filters?: {
+export async function listSnapshots(filters?: {
     createdBy?: string;
     analysisType?: string;
     status?: string;
     tags?: string[];
     limit?: number;
-}): AnalysisSnapshot[] {
-    let result = Array.from(snapshots.values());
+}): Promise<IAnalysisSnapshot[]> {
+    const query: any = {};
 
-    if (filters?.createdBy) {
-        result = result.filter(s => s.createdBy === filters.createdBy);
-    }
-    if (filters?.analysisType) {
-        result = result.filter(s => s.analysisType === filters.analysisType);
-    }
-    if (filters?.status) {
-        result = result.filter(s => s.status === filters.status);
-    }
+    if (filters?.createdBy) query.createdBy = filters.createdBy;
+    if (filters?.analysisType) query.analysisType = filters.analysisType;
+    if (filters?.status) query.status = filters.status;
     if (filters?.tags && filters.tags.length > 0) {
-        result = result.filter(s => filters.tags!.some(t => s.tags.includes(t)));
+        query.tags = { $in: filters.tags };
     }
 
-    result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const cursor = AnalysisSnapshot.find(query).sort({ createdAt: -1 });
 
     if (filters?.limit) {
-        result = result.slice(0, filters.limit);
+        cursor.limit(filters.limit);
     }
 
-    return result;
+    return await cursor;
 }
 
 /**
  * Archive a snapshot
  */
-export function archiveSnapshot(id: string): boolean {
-    const snapshot = snapshots.get(id);
-    if (snapshot) {
-        snapshot.status = 'archived';
-        return true;
-    }
-    return false;
+export async function archiveSnapshot(id: string): Promise<boolean> {
+    const result = await AnalysisSnapshot.findByIdAndUpdate(id, { status: 'archived' });
+    return !!result;
 }
 
 /**
  * Invalidate a snapshot (data has changed)
  */
-export function invalidateSnapshot(id: string, reason: string): boolean {
-    const snapshot = snapshots.get(id);
-    if (snapshot) {
-        snapshot.status = 'invalidated';
-        snapshot.tags.push(`invalidated: ${reason}`);
-        return true;
-    }
-    return false;
+export async function invalidateSnapshot(id: string, reason: string): Promise<boolean> {
+    const result = await AnalysisSnapshot.findByIdAndUpdate(id, {
+        status: 'invalidated',
+        $push: { tags: `invalidated: ${reason}` }
+    });
+    return !!result;
 }
 
 /**
  * Verify if a snapshot is still reproducible
  */
-export function verifySnapshot(snapshot: AnalysisSnapshot, currentDatasets: Array<{ datasetId: string; version: number; checksum: string }>): {
+export async function verifySnapshot(snapshot: IAnalysisSnapshot, currentDatasets: Array<{ datasetId: string; version: number; checksum: string }>): Promise<{
     reproducible: boolean;
     issues: string[];
-} {
+}> {
     const issues: string[] = [];
+
+    // This logic operates on the passed snapshot object, not DB query, so it stays sync mostly, 
+    // but the function itself is async enabled for consistence.
+    // Actually, no DB calls here, but I'll make it async Promise resolving for consistency.
 
     for (const input of snapshot.inputDatasets) {
         const current = currentDatasets.find(d => d.datasetId === input.datasetId);
@@ -194,68 +152,77 @@ export function verifySnapshot(snapshot: AnalysisSnapshot, currentDatasets: Arra
 /**
  * Clone a snapshot with new parameters
  */
-export function cloneSnapshot(id: string, modifications: {
+export async function cloneSnapshot(id: string, modifications: {
     name: string;
     createdBy: string;
     createdByName: string;
     parameterOverrides?: Record<string, any>;
-}): AnalysisSnapshot | null {
-    const original = snapshots.get(id);
+}): Promise<IAnalysisSnapshot | null> {
+    const original = await AnalysisSnapshot.findById(id);
     if (!original) return null;
 
-    return createSnapshot({
+    return await createSnapshot({
         name: modifications.name,
-        description: `Cloned from ${original.id}: ${original.name}`,
+        description: `Cloned from snapshot: ${original.name}`,
         createdBy: modifications.createdBy,
         createdByName: modifications.createdByName,
         analysisType: original.analysisType,
         inputDatasets: original.inputDatasets,
         parameters: { ...original.parameters, ...modifications.parameterOverrides },
         resultsSummary: {}, // Results need to be recomputed
-        tags: [...original.tags, `cloned-from:${original.id}`],
+        tags: [...original.tags, `cloned-from:${original._id}`],
     });
 }
 
 /**
  * Get snapshot statistics
  */
-export function getSnapshotStats(): {
+export async function getSnapshotStats(): Promise<{
     total: number;
     active: number;
     archived: number;
     invalidated: number;
     byType: Record<string, number>;
     byUser: Array<{ userId: string; userName: string; count: number }>;
-} {
-    const all = Array.from(snapshots.values());
+}> {
+    const [total, active, archived, invalidated, typeStats, userStats] = await Promise.all([
+        AnalysisSnapshot.countDocuments(),
+        AnalysisSnapshot.countDocuments({ status: 'active' }),
+        AnalysisSnapshot.countDocuments({ status: 'archived' }),
+        AnalysisSnapshot.countDocuments({ status: 'invalidated' }),
+        AnalysisSnapshot.aggregate([
+            { $group: { _id: '$analysisType', count: { $sum: 1 } } }
+        ]),
+        AnalysisSnapshot.aggregate([
+            { $group: { _id: { userId: '$createdBy', userName: '$createdByName' }, count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+        ])
+    ]);
+
     const byType: Record<string, number> = {};
-    const userCounts: Map<string, { userName: string; count: number }> = new Map();
+    typeStats.forEach((t: any) => { byType[t._id] = t.count; });
 
-    all.forEach(s => {
-        byType[s.analysisType] = (byType[s.analysisType] || 0) + 1;
-
-        const uc = userCounts.get(s.createdBy) || { userName: s.createdByName, count: 0 };
-        uc.count++;
-        userCounts.set(s.createdBy, uc);
-    });
+    const byUser = userStats.map((u: any) => ({
+        userId: u._id.userId,
+        userName: u._id.userName,
+        count: u.count
+    }));
 
     return {
-        total: all.length,
-        active: all.filter(s => s.status === 'active').length,
-        archived: all.filter(s => s.status === 'archived').length,
-        invalidated: all.filter(s => s.status === 'invalidated').length,
+        total,
+        active,
+        archived,
+        invalidated,
         byType,
-        byUser: Array.from(userCounts.entries())
-            .map(([userId, data]) => ({ userId, ...data }))
-            .sort((a, b) => b.count - a.count),
+        byUser
     };
 }
 
 /**
  * Export snapshot for sharing
  */
-export function exportSnapshot(id: string): string | null {
-    const snapshot = snapshots.get(id);
+export async function exportSnapshot(id: string): Promise<string | null> {
+    const snapshot = await AnalysisSnapshot.findById(id);
     if (!snapshot) return null;
     return JSON.stringify(snapshot, null, 2);
 }

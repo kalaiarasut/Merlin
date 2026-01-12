@@ -34,6 +34,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -67,7 +78,11 @@ function App() {
             <Route path="validation" element={<PageErrorBoundary><ValidationDashboard /></PageErrorBoundary>} />
             <Route path="ai-assistant" element={<PageErrorBoundary><AIAssistant /></PageErrorBoundary>} />
             <Route path="research-assistant" element={<PageErrorBoundary><AIResearchAssistant /></PageErrorBoundary>} />
-            <Route path="admin" element={<PageErrorBoundary><AdminConsole /></PageErrorBoundary>} />
+            <Route path="admin" element={
+              <AdminRoute>
+                <PageErrorBoundary><AdminConsole /></PageErrorBoundary>
+              </AdminRoute>
+            } />
             <Route path="api-docs" element={<PageErrorBoundary><ApiDocs /></PageErrorBoundary>} />
           </Route>
         </Routes>

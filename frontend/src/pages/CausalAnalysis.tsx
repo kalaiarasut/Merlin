@@ -23,6 +23,14 @@ const causalService = {
         const res = await fetch(`${API_BASE}/api/causal/info`);
         return res.json();
     },
+    getAvailableSeries: async () => {
+        const res = await fetch(`${API_BASE}/api/causal/available-series`);
+        return res.json();
+    },
+    getTimeSeries: async (seriesId: string, aggregation: string = 'monthly') => {
+        const res = await fetch(`${API_BASE}/api/causal/time-series/${seriesId}?aggregation=${aggregation}`);
+        return res.json();
+    },
     correlate: async (data: any) => {
         const res = await fetch(`${API_BASE}/api/causal/correlate`, {
             method: 'POST',
@@ -97,12 +105,37 @@ export default function CausalAnalysis() {
     const isDark = resolvedTheme === 'dark';
     const [activeTab, setActiveTab] = useState<'overview' | 'correlation' | 'lag' | 'granger'>('overview');
 
+    // Dataset selection state
+    const [driverSeriesId, setDriverSeriesId] = useState<string>('sst');
+    const [responseSeriesId, setResponseSeriesId] = useState<string>('');
+    const [aggregation, setAggregation] = useState<'monthly' | 'weekly'>('monthly');
+
     const chartColors = {
         grid: isDark ? '#374151' : '#e5e7eb',
         text: isDark ? '#9ca3af' : '#64748b',
         tooltipBg: isDark ? 'rgba(30, 41, 59, 0.95)' : 'rgba(255, 255, 255, 0.95)',
         tooltipText: isDark ? '#f3f4f6' : '#1e293b',
     };
+
+    // Fetch available time series
+    const { data: availableSeries } = useQuery({
+        queryKey: ['causal-available-series'],
+        queryFn: causalService.getAvailableSeries,
+    });
+
+    // Fetch driver time series
+    const { data: driverData, isLoading: driverLoading } = useQuery({
+        queryKey: ['causal-driver-series', driverSeriesId, aggregation],
+        queryFn: () => causalService.getTimeSeries(driverSeriesId, aggregation),
+        enabled: !!driverSeriesId && driverSeriesId.startsWith('cpue_'),
+    });
+
+    // Fetch response time series
+    const { data: responseData, isLoading: responseLoading } = useQuery({
+        queryKey: ['causal-response-series', responseSeriesId, aggregation],
+        queryFn: () => causalService.getTimeSeries(responseSeriesId, aggregation),
+        enabled: !!responseSeriesId && responseSeriesId.startsWith('cpue_'),
+    });
 
     // Fetch module info
     const { data: moduleInfo } = useQuery({
@@ -155,17 +188,49 @@ export default function CausalAnalysis() {
         onError: () => toast.error('Failed to connect to API'),
     });
 
-    // Run analyses
+    // Run analyses - use fetched data or fall back to samples
+    const getDriverSeries = () => {
+        if (driverData?.timeSeries?.length > 0) {
+            return {
+                id: driverSeriesId,
+                name: driverData.metadata?.name || driverSeriesId,
+                dataPoints: driverData.timeSeries.map((d: any) => ({ date: d.date, value: d.value })),
+            };
+        }
+        // Fall back to sample for oceanographic series (not yet integrated with ERDDAP)
+        if (driverSeriesId === 'sst') return SAMPLE_SST;
+        if (driverSeriesId === 'chlorophyll') return SAMPLE_CHLOROPHYLL;
+        return SAMPLE_SST;
+    };
+
+    const getResponseSeries = () => {
+        if (responseData?.timeSeries?.length > 0) {
+            return {
+                id: responseSeriesId,
+                name: responseData.metadata?.name || responseSeriesId,
+                dataPoints: responseData.timeSeries.map((d: any) => ({ date: d.date, value: d.value })),
+            };
+        }
+        // Fall back to sample if no response selected
+        return SAMPLE_CPUE;
+    };
+
     const runCorrelation = () => {
-        correlationMutation.mutate({ series1: SAMPLE_SST, series2: SAMPLE_CPUE });
+        const series1 = getDriverSeries();
+        const series2 = getResponseSeries();
+        correlationMutation.mutate({ series1, series2 });
     };
 
     const runLagAnalysis = () => {
-        lagMutation.mutate({ driver: SAMPLE_SST, response: SAMPLE_CPUE, maxLag: 6 });
+        const driver = getDriverSeries();
+        const response = getResponseSeries();
+        lagMutation.mutate({ driver, response, maxLag: aggregation === 'weekly' ? 12 : 6 });
     };
 
     const runGrangerTest = () => {
-        grangerMutation.mutate({ cause: SAMPLE_SST, effect: SAMPLE_CPUE, maxLag: 4 });
+        const cause = getDriverSeries();
+        const effect = getResponseSeries();
+        grangerMutation.mutate({ cause, effect, maxLag: aggregation === 'weekly' ? 8 : 4 });
     };
 
     const correlation = correlationMutation.data?.correlation;
@@ -199,6 +264,109 @@ export default function CausalAnalysis() {
                     </Button>
                 </div>
             </div>
+
+            {/* Dataset Selection Panel */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Data Selection</CardTitle>
+                    <CardDescription>Select oceanographic driver and fisheries response for causal analysis</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* Driver Series (Oceanographic) */}
+                        <div>
+                            <label className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2 block">
+                                Driver Variable (X)
+                            </label>
+                            <select
+                                value={driverSeriesId}
+                                onChange={(e) => setDriverSeriesId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-deep-800 text-deep-900 dark:text-gray-100"
+                            >
+                                <optgroup label="Oceanographic (ERDDAP)">
+                                    {availableSeries?.oceanographic?.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="Fisheries CPUE (Uploaded)">
+                                    {availableSeries?.fisheries?.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        {/* Response Series (CPUE) */}
+                        <div>
+                            <label className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2 block">
+                                Response Variable (Y)
+                            </label>
+                            <select
+                                value={responseSeriesId}
+                                onChange={(e) => setResponseSeriesId(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-deep-800 text-deep-900 dark:text-gray-100"
+                            >
+                                <option value="">-- Select Response --</option>
+                                <optgroup label="Fisheries CPUE (Uploaded)">
+                                    {availableSeries?.fisheries?.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="Oceanographic (ERDDAP)">
+                                    {availableSeries?.oceanographic?.map((s: any) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                        </div>
+
+                        {/* Aggregation */}
+                        <div>
+                            <label className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2 block">
+                                Time Aggregation
+                            </label>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant={aggregation === 'monthly' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setAggregation('monthly')}
+                                    className="flex-1"
+                                >
+                                    Monthly
+                                </Button>
+                                <Button
+                                    variant={aggregation === 'weekly' ? 'default' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setAggregation('weekly')}
+                                    className="flex-1"
+                                >
+                                    Weekly
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Data Status */}
+                        <div>
+                            <label className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2 block">
+                                Data Status
+                            </label>
+                            <div className="p-2 bg-gray-50 dark:bg-deep-800 rounded-lg text-sm">
+                                {availableSeries?.dataStatus?.hasUploadedData ? (
+                                    <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <CheckCircle className="w-4 h-4" />
+                                        {availableSeries.dataStatus.speciesCount} species • {availableSeries.dataStatus.totalCatchRecords} records
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                                        <AlertTriangle className="w-4 h-4" />
+                                        Upload data first
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Tabs */}
             <div className="flex gap-2 flex-wrap">

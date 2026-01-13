@@ -214,5 +214,7 @@ const SpeciesSchema = new Schema<ISpecies>(
 );
 
 SpeciesSchema.index({ scientificName: 'text', commonName: 'text' });
+SpeciesSchema.index({ 'validationStatus.status': 1 });
+SpeciesSchema.index({ 'validationStatus.status': 1, 'aiMetadata.confidence': 1 });
 
 export const Species = mongoose.model<ISpecies>('Species', SpeciesSchema);

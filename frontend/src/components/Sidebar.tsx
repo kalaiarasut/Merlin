@@ -37,15 +37,18 @@ export default function Sidebar() {
   const { user } = useAuthStore();
   const location = useLocation();
 
+  const isAdmin = user?.role === 'admin' || user?.role === 'institute-admin';
+  const isStaff = isAdmin || user?.role === 'expert';
+
   const filteredBottomNavigation = bottomNavigation.filter(item => {
-    if (item.name === 'Admin Console' && user?.role !== 'admin') {
+    if (item.name === 'Admin Console' && !isAdmin) {
       return false;
     }
     return true;
   });
 
   const filteredNavigation = navigation.filter(item => {
-    if (item.href === '/curation' && user?.role !== 'admin' && user?.role !== 'expert') {
+    if (item.href === '/curation' && !isStaff) {
       return false;
     }
     return true;

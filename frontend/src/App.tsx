@@ -39,7 +39,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
 
   if (!isAuthenticated) return <Navigate to="/login" />;
-  if (user?.role !== 'admin') {
+  // Support new role types
+  const isAdmin = user?.role === 'admin' || user?.role === 'institute-admin';
+  if (!isAdmin) {
     return <Navigate to="/" replace />;
   }
 
@@ -50,7 +52,9 @@ function StaffRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuthStore();
 
   if (!isAuthenticated) return <Navigate to="/login" />;
-  if (user?.role !== 'admin' && user?.role !== 'expert') {
+  // Support new role types
+  const hasAccess = user?.role === 'admin' || user?.role === 'institute-admin' || user?.role === 'expert';
+  if (!hasAccess) {
     return <Navigate to="/" replace />;
   }
 

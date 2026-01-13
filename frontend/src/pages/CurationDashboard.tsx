@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { curationService } from '@/services/api';
 import { ReviewCard } from '@/components/curation/ReviewCard';
 import { ValidationActions } from '@/components/curation/ValidationActions';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Search, History, ChevronRight, Inbox, CheckCircle, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { StatCard } from '@/components/ui/stat-card';
+import {
+    Search, History, ChevronRight, Inbox, CheckCircle, AlertCircle,
+    Shield, RefreshCw, Clock, XCircle, FileCheck, Eye
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const CurationDashboard: React.FC = () => {
     const [queue, setQueue] = useState<any[]>([]);
@@ -60,7 +62,7 @@ export const CurationDashboard: React.FC = () => {
             loadQueue();
         } catch (error: any) {
             if (error.response?.status === 409) {
-                toast.warning('This record was already validated by someone else.');
+                toast('This record was already validated by someone else.', { icon: '⚠️' });
             } else {
                 toast.error('Failed to submit validation action');
             }
@@ -74,169 +76,229 @@ export const CurationDashboard: React.FC = () => {
         item.subtitle.toLowerCase().includes(filterQuery.toLowerCase())
     );
 
-    return (
-        <div className="flex h-[calc(100vh-64px)] bg-slate-50 overflow-hidden">
-            {/* Sidebar Queue */}
-            <div className="w-80 border-r bg-white flex flex-col shadow-sm">
-                <div className="p-4 border-b space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="font-bold flex items-center gap-2">
-                            <Inbox className="h-4 w-4 text-primary" />
-                            Review Queue
-                        </h2>
-                        <Badge variant="secondary" className="px-1.5 h-5">{queue.length}</Badge>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <input
-                            placeholder="Filter records..."
-                            className="w-full pl-9 pr-4 py-2 border rounded-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50"
-                            value={filterQuery}
-                            onChange={(e) => setFilterQuery(e.target.value)}
-                        />
-                    </div>
-                </div>
+    // Calculate stats
+    const pendingCount = queue.filter(q => q.status === 'pending').length;
+    const underReviewCount = queue.filter(q => q.status === 'under-review').length;
+    const lowConfidenceCount = queue.filter(q => q.confidence && q.confidence < 0.7).length;
 
-                <ScrollArea className="flex-1">
-                    {isLoadingQueue ? (
-                        <div className="p-4 space-y-4">
-                            {[1, 2, 3, 4, 5].map(i => <Skeleton key={i} className="h-24 w-full" />)}
-                        </div>
-                    ) : filteredQueue.length === 0 ? (
-                        <div className="p-12 text-center space-y-3">
-                            <CheckCircle className="h-12 w-12 text-green-500 mx-auto opacity-20" />
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-muted-foreground">All caught up!</p>
-                                <p className="text-[10px] text-muted-foreground italic">No pending scientific reviews.</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-slate-100">
-                            {filteredQueue.map(item => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => loadDetail(item)}
-                                    className={`w-full p-4 text-left hover:bg-slate-50 transition-all flex items-center justify-between group ${selectedItem?.id === item.id ? 'bg-primary/5 border-l-4 border-primary' : 'border-l-4 border-transparent'
-                                        }`}
-                                >
-                                    <div className="space-y-1.5 overflow-hidden">
-                                        <p className="font-bold text-sm truncate group-hover:text-primary transition-colors">{item.title}</p>
-                                        <p className="text-[11px] text-muted-foreground truncate leading-tight">{item.subtitle}</p>
-                                        <div className="flex items-center gap-2 pt-1">
-                                            <Badge
-                                                variant={item.status === 'under-review' ? 'destructive' : 'outline'}
-                                                className={`text-[9px] px-1.5 h-4 capitalize ${item.status === 'pending' ? 'bg-blue-50 text-blue-600 border-blue-200' : ''
-                                                    }`}
-                                            >
-                                                {item.status.replace('-', ' ')}
-                                            </Badge>
-                                            {item.confidence !== undefined && (
-                                                <span className={`text-[9px] font-bold ${item.confidence > 0.9 ? 'text-green-600' :
-                                                        item.confidence > 0.7 ? 'text-amber-500' : 'text-red-500'
-                                                    }`}>
-                                                    {Math.round(item.confidence * 100)}% Match
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <ChevronRight className={`h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform ${selectedItem?.id === item.id ? 'translate-x-1 text-primary' : ''
-                                        }`} />
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </ScrollArea>
+    return (
+        <div className="space-y-6">
+            {/* Page Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <Shield className="w-5 h-5 text-ocean-500" />
+                        <span className="text-sm font-medium text-ocean-600 dark:text-ocean-400">Expert Review</span>
+                    </div>
+                    <h1 className="text-3xl lg:text-4xl font-bold text-deep-900 dark:text-gray-100">Scientific Curation</h1>
+                    <p className="text-deep-500 dark:text-gray-400 mt-1">
+                        Review and validate AI-processed marine biodiversity records
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={loadQueue}>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Refresh Queue
+                    </Button>
+                </div>
             </div>
 
-            {/* Main Content Detail */}
-            <div className="flex-1 overflow-y-auto bg-slate-50/50">
-                {selectedItem ? (
-                    <div className="max-w-5xl mx-auto p-8 space-y-6 animate-in fade-in duration-300">
-                        <div className="flex items-center justify-between bg-white p-6 rounded-lg border shadow-sm">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-3">
-                                    <h1 className="text-2xl font-black tracking-tight">{selectedItem.title}</h1>
-                                    <Badge variant="outline" className="bg-slate-50">{selectedItem.entityType.replace('-', ' ')}</Badge>
-                                </div>
-                                <p className="text-muted-foreground flex items-center gap-2 text-sm italic">
-                                    {selectedItem.subtitle}
-                                </p>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard
+                    title="Total Pending"
+                    value={queue.length}
+                    icon={<Inbox className="w-5 h-5" />}
+                    iconColor="text-ocean-600"
+                    iconBg="bg-ocean-50"
+                    subtitle="Records awaiting review"
+                />
+                <StatCard
+                    title="Pending Review"
+                    value={pendingCount}
+                    icon={<Clock className="w-5 h-5" />}
+                    iconColor="text-amber-600"
+                    iconBg="bg-amber-50"
+                    subtitle="Not yet started"
+                />
+                <StatCard
+                    title="Under Review"
+                    value={underReviewCount}
+                    icon={<Eye className="w-5 h-5" />}
+                    iconColor="text-purple-600"
+                    iconBg="bg-purple-50"
+                    subtitle="Being reviewed"
+                />
+                <StatCard
+                    title="Low Confidence"
+                    value={lowConfidenceCount}
+                    icon={<AlertCircle className="w-5 h-5" />}
+                    iconColor="text-coral-600"
+                    iconBg="bg-coral-50"
+                    subtitle="AI confidence < 70%"
+                />
+            </div>
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Queue List */}
+                <Card className="lg:col-span-1">
+                    <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <FileCheck className="w-4 h-4 text-ocean-500" />
+                                    Review Queue
+                                </CardTitle>
+                                <CardDescription>{filteredQueue.length} items awaiting review</CardDescription>
                             </div>
-                            <Button variant="outline" size="sm" className="flex gap-2 text-xs font-semibold">
-                                <History className="h-3.5 w-3.5" />
-                                Review History
-                            </Button>
+                            <Badge variant="secondary">{queue.length}</Badge>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {/* Search */}
+                        <div className="relative mb-4">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <input
+                                placeholder="Filter records..."
+                                className="w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-ocean-500/20 focus:border-ocean-500 transition-all bg-gray-50/50 dark:bg-deep-800/50"
+                                value={filterQuery}
+                                onChange={(e) => setFilterQuery(e.target.value)}
+                            />
                         </div>
 
-                        {isLoadingDetail ? (
-                            <div className="space-y-6 pt-4">
-                                <div className="grid grid-cols-3 gap-4">
-                                    <Skeleton className="h-24 w-full" />
-                                    <Skeleton className="h-24 w-full" />
-                                    <Skeleton className="h-24 w-full" />
+                        {/* Queue Items */}
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                            {isLoadingQueue ? (
+                                <div className="space-y-3">
+                                    {[1, 2, 3, 4].map(i => (
+                                        <div key={i} className="h-20 bg-gray-100 dark:bg-deep-800 rounded-xl animate-pulse" />
+                                    ))}
                                 </div>
-                                <Skeleton className="h-[400px] w-full" />
-                            </div>
-                        ) : detailData ? (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                                <div className="lg:col-span-8">
-                                    <ReviewCard data={detailData} entityType={selectedItem.entityType} />
+                            ) : filteredQueue.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <CheckCircle className="h-12 w-12 text-green-500 mx-auto opacity-30" />
+                                    <p className="mt-3 text-sm font-medium text-deep-500 dark:text-gray-400">All caught up!</p>
+                                    <p className="text-xs text-deep-400 dark:text-gray-500">No pending scientific reviews.</p>
                                 </div>
-                                <div className="lg:col-span-4 space-y-6 sticky top-8">
-                                    <ValidationActions
-                                        onAction={handleAction}
-                                        isLoading={isSubmitting}
-                                        entityType={selectedItem.entityType}
-                                    />
-
-                                    <Card className="bg-primary/5 border-primary/20 overflow-hidden">
-                                        <CardHeader className="pb-2 bg-primary/10">
-                                            <CardTitle className="text-xs font-bold uppercase tracking-widest flex items-center gap-2 text-primary">
-                                                <AlertCircle className="h-4 w-4" />
-                                                Expert Guidelines
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="text-[11px] text-slate-600 space-y-3 pt-4 font-medium leading-relaxed">
-                                            <div className="flex gap-2">
-                                                <span className="text-primary font-bold">1.</span>
-                                                <p>Verify taxonomic ID against **WoRMS** or **FishBase** official databases.</p>
+                            ) : (
+                                filteredQueue.map(item => (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => loadDetail(item)}
+                                        className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedItem?.id === item.id
+                                            ? 'border-ocean-500 bg-ocean-50/50 dark:bg-ocean-900/20'
+                                            : 'border-gray-200 dark:border-gray-700 hover:border-ocean-300 dark:hover:border-ocean-700 hover:bg-gray-50 dark:hover:bg-deep-800/50'
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="font-semibold text-deep-900 dark:text-gray-100 truncate">{item.title}</p>
+                                                <p className="text-xs text-deep-500 dark:text-gray-400 mt-0.5 truncate">{item.subtitle}</p>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <Badge
+                                                        variant={item.status === 'under-review' ? 'destructive' : 'outline'}
+                                                        size="sm"
+                                                        className="capitalize"
+                                                    >
+                                                        {item.status.replace('-', ' ')}
+                                                    </Badge>
+                                                    {item.confidence !== undefined && (
+                                                        <span className={`text-xs font-bold ${item.confidence > 0.9 ? 'text-green-600' :
+                                                            item.confidence > 0.7 ? 'text-amber-500' : 'text-red-500'
+                                                            }`}>
+                                                            {Math.round(item.confidence * 100)}%
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <span className="text-primary font-bold">2.</span>
-                                                <p>Analyze geographic context; flag records isolated from known native ranges.</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <span className="text-primary font-bold">3.</span>
-                                                <p>Validate temporal data consistency (spawning seasons, migration peaks).</p>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-                ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-8">
-                        <div className="max-w-sm flex flex-col items-center gap-6">
-                            <div className="h-24 w-24 bg-white rounded-full flex items-center justify-center shadow-inner border border-slate-100">
-                                <Inbox className="h-10 w-10 text-slate-300" />
-                            </div>
-                            <div className="space-y-2">
-                                <h2 className="text-2xl font-black tracking-tight text-slate-800">Scientific Curation</h2>
-                                <p className="text-sm text-slate-500 font-medium">
-                                    The integrity of our data backbone depends on expert human-in-the-loop validation. Select a record to begin.
-                                </p>
-                            </div>
-                            <Button
-                                variant="outline"
-                                className="mt-4 border-primary/20 text-primary hover:bg-primary/5"
-                                onClick={loadQueue}
-                            >
-                                Refresh Queue
-                            </Button>
+                                            <ChevronRight className={`h-4 w-4 text-deep-400 flex-shrink-0 transition-transform ${selectedItem?.id === item.id ? 'translate-x-1 text-ocean-500' : ''
+                                                }`} />
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
-                    </div>
-                )}
+                    </CardContent>
+                </Card>
+
+                {/* Detail Panel */}
+                <div className="lg:col-span-2 space-y-6">
+                    {selectedItem ? (
+                        <>
+                            {/* Selected Item Header */}
+                            <Card>
+                                <CardContent className="py-4">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h2 className="text-xl font-bold text-deep-900 dark:text-gray-100">{selectedItem.title}</h2>
+                                                <Badge variant="outline" className="capitalize">{selectedItem.entityType.replace('-', ' ')}</Badge>
+                                            </div>
+                                            <p className="text-sm text-deep-500 dark:text-gray-400 mt-1">{selectedItem.subtitle}</p>
+                                        </div>
+                                        <Button variant="outline" size="sm">
+                                            <History className="h-4 w-4 mr-2" />
+                                            View History
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Detail Content */}
+                            {isLoadingDetail ? (
+                                <div className="space-y-4">
+                                    <div className="h-64 bg-gray-100 dark:bg-deep-800 rounded-2xl animate-pulse" />
+                                    <div className="h-48 bg-gray-100 dark:bg-deep-800 rounded-2xl animate-pulse" />
+                                </div>
+                            ) : detailData ? (
+                                <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                                    <div className="xl:col-span-3">
+                                        <ReviewCard data={detailData} entityType={selectedItem.entityType} />
+                                    </div>
+                                    <div className="xl:col-span-2 space-y-6">
+                                        <ValidationActions
+                                            onAction={handleAction}
+                                            isLoading={isSubmitting}
+                                            entityType={selectedItem.entityType}
+                                        />
+
+                                        {/* Expert Guidelines */}
+                                        <Card variant="premium">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="text-sm flex items-center gap-2">
+                                                    <AlertCircle className="h-4 w-4 text-ocean-500" />
+                                                    Expert Guidelines
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="text-xs text-deep-600 dark:text-gray-300 space-y-2">
+                                                <p><strong>1.</strong> Verify taxonomic ID against <strong>WoRMS</strong> or <strong>FishBase</strong>.</p>
+                                                <p><strong>2.</strong> Check geographic context against known native ranges.</p>
+                                                <p><strong>3.</strong> Validate temporal data consistency (spawning seasons, migration).</p>
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+                                </div>
+                            ) : null}
+                        </>
+                    ) : (
+                        <Card className="h-full min-h-[400px] flex items-center justify-center">
+                            <div className="text-center p-8">
+                                <div className="h-20 w-20 bg-gray-100 dark:bg-deep-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Shield className="h-10 w-10 text-deep-300 dark:text-gray-600" />
+                                </div>
+                                <h3 className="text-xl font-bold text-deep-900 dark:text-gray-100 mb-2">Scientific Curation</h3>
+                                <p className="text-sm text-deep-500 dark:text-gray-400 max-w-sm mx-auto">
+                                    Select a record from the queue to begin the expert validation process.
+                                </p>
+                                <Button variant="outline" className="mt-4" onClick={loadQueue}>
+                                    <RefreshCw className="w-4 h-4 mr-2" />
+                                    Refresh Queue
+                                </Button>
+                            </div>
+                        </Card>
+                    )}
+                </div>
             </div>
         </div>
     );

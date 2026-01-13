@@ -38,6 +38,8 @@ import validationRoutes from './routes/validation';
 import governanceRoutes from './routes/governance';
 import performanceRoutes from './routes/performance';
 import curationRoutes from './routes/curation';
+import institutesRoutes from './routes/institutes';
+import projectsRoutes from './routes/projects';
 
 // Load env from multiple candidates to ensure root-level .env is picked up
 const candidateEnvPaths = [
@@ -117,6 +119,8 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/validation', validationRoutes);
 app.use('/api/governance', governanceRoutes);
 app.use('/api/performance', performanceRoutes);
+app.use('/api/institutes', institutesRoutes);
+app.use('/api/projects', projectsRoutes);
 app.use('/api/curation', curationRoutes);
 
 // 404 handler

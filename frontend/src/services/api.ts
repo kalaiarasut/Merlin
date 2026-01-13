@@ -606,4 +606,55 @@ export const notificationService = {
     apiClient.post<any>('/notifications', data),
 };
 
+// Institute service (Multi-Institute Governance)
+export const instituteService = {
+  getAll: () =>
+    apiClient.get<{ institutes: any[] }>('/institutes'),
+
+  getById: (id: string) =>
+    apiClient.get<any>(`/institutes/${id}`),
+
+  create: (data: { code: string; name: string; type: string; parentMinistry?: string; location: any; settings?: any }) =>
+    apiClient.post<any>('/institutes', data),
+
+  update: (id: string, data: any) =>
+    apiClient.put<any>(`/institutes/${id}`, data),
+
+  updateStatus: (id: string, status: 'active' | 'suspended', reason: string) =>
+    apiClient.put<any>(`/institutes/${id}/status`, { status, reason }),
+
+  getMembers: (id: string) =>
+    apiClient.get<{ members: any[]; total: number }>(`/institutes/${id}/members`),
+
+  addMember: (id: string, userId: string) =>
+    apiClient.post<any>(`/institutes/${id}/members`, { userId }),
+};
+
+// Project service (Multi-Institute Governance)
+export const projectService = {
+  getAll: (params?: { status?: string; instituteId?: string }) =>
+    apiClient.get<{ projects: any[] }>('/projects', params),
+
+  getById: (id: string) =>
+    apiClient.get<any>(`/projects/${id}`),
+
+  create: (data: { code: string; name: string; description?: string; startDate: string; dataPolicy?: any; instituteId?: string }) =>
+    apiClient.post<any>('/projects', data),
+
+  update: (id: string, data: any) =>
+    apiClient.put<any>(`/projects/${id}`, data),
+
+  updateVisibility: (id: string, visibility: 'private' | 'institute' | 'public', reason: string) =>
+    apiClient.put<any>(`/projects/${id}/visibility`, { visibility, reason }),
+
+  updateEmbargo: (id: string, embargoEndDate: string | null, reason: string) =>
+    apiClient.put<any>(`/projects/${id}/embargo`, { embargoEndDate, reason }),
+
+  addMember: (id: string, userId: string, role: 'lead' | 'contributor' | 'viewer') =>
+    apiClient.post<any>(`/projects/${id}/members`, { userId, role }),
+
+  removeMember: (projectId: string, userId: string) =>
+    apiClient.delete<any>(`/projects/${projectId}/members/${userId}`),
+};
+
 export default apiClient;

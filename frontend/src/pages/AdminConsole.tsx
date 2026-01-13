@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AuditLogViewer, ReproducibilityDashboard } from '@/components/audit';
+import { InstituteManagement } from '@/components/admin/InstituteManagement';
+import { ProjectManagement } from '@/components/admin/ProjectManagement';
+import { Building2, FolderKanban } from 'lucide-react';
 
 // Types
 interface User {
@@ -315,6 +318,8 @@ export default function AdminConsole() {
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'users', label: 'Users', icon: Users },
+    { id: 'institutes', label: 'Institutes', icon: Building2 },
+    { id: 'projects', label: 'Projects', icon: FolderKanban },
     { id: 'system', label: 'System', icon: Server },
     { id: 'audit', label: 'Audit Logs', icon: FileText },
     { id: 'reproducibility', label: 'Reproducibility', icon: GitCommit },
@@ -784,6 +789,20 @@ export default function AdminConsole() {
       {activeTab === 'reproducibility' && (
         <div className="space-y-6">
           <ReproducibilityDashboard />
+        </div>
+      )}
+
+      {/* Institutes Tab */}
+      {activeTab === 'institutes' && (
+        <div className="space-y-6">
+          <InstituteManagement />
+        </div>
+      )}
+
+      {/* Projects Tab */}
+      {activeTab === 'projects' && (
+        <div className="space-y-6">
+          <ProjectManagement />
         </div>
       )}
 

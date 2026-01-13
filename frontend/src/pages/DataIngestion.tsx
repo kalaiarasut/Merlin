@@ -478,6 +478,38 @@ export default function DataIngestion() {
                 </div>
               </div>
 
+              {/* Data Governance (Multi-Institute) */}
+              <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-ocean-50 dark:from-purple-900/20 dark:to-ocean-900/20 border border-purple-100 dark:border-purple-800 space-y-3">
+                <p className="text-sm font-medium text-deep-700 dark:text-gray-200 flex items-center gap-2">
+                  <span>📊</span> Data Governance
+                </p>
+
+                {/* Visibility */}
+                <div>
+                  <label className="block text-xs text-deep-500 dark:text-gray-400 mb-1">Visibility</label>
+                  <select className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-deep-800 border-gray-200 dark:border-gray-700">
+                    <option value="private">🔒 Private (Team Only)</option>
+                    <option value="institute">🏛️ Institute (All Members)</option>
+                    <option value="public">🌍 Public (After Embargo)</option>
+                  </select>
+                </div>
+
+                {/* License */}
+                <div>
+                  <label className="block text-xs text-deep-500 dark:text-gray-400 mb-1">License</label>
+                  <select className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-deep-800 border-gray-200 dark:border-gray-700">
+                    <option value="Government-Open">Government Open Data</option>
+                    <option value="CC-BY">CC-BY (Attribution)</option>
+                    <option value="CC-BY-NC">CC-BY-NC (Non-Commercial)</option>
+                    <option value="Restricted">Restricted</option>
+                  </select>
+                </div>
+
+                <p className="text-xs text-deep-400 dark:text-gray-500">
+                  Data will be tagged with your institute. Manage projects in Admin Console.
+                </p>
+              </div>
+
               {/* Upload Button */}
               <Button
                 onClick={handleUpload}

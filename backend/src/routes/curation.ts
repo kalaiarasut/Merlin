@@ -16,14 +16,33 @@ const router = express.Router();
  */
 router.get('/queue', authenticate, async (req: AuthRequest, res: Response, next) => {
     try {
-        // Fetch pending from multiple sources
-        const speciesPending = await Species.find({
-            'validationStatus.status': { $in: ['pending', 'under-review'] }
-        }).limit(50);
+        // Run queries in parallel with projection for only needed fields
+        const [speciesPending, catchesPending] = await Promise.all([
+            Species.find(
+                { 'validationStatus.status': { $in: ['pending', 'under-review'] } },
+                {
+                    scientificName: 1,
+                    commonName: 1,
+                    taxonomicRank: 1,
+                    'aiMetadata.confidence': 1,
+                    'validationStatus.status': 1,
+                    jobId: 1,
+                    createdAt: 1
+                }
+            ).lean().limit(50),
 
-        const catchesPending = await CatchRecord.find({
-            'validationStatus.status': { $in: ['pending', 'under-review'] }
-        }).limit(50);
+            CatchRecord.find(
+                { 'validationStatus.status': { $in: ['pending', 'under-review'] } },
+                {
+                    species: 1,
+                    catch: 1,
+                    date: 1,
+                    'validationStatus.status': 1,
+                    datasetId: 1,
+                    createdAt: 1
+                }
+            ).lean().limit(50)
+        ]);
 
         // Combine queues
         const queue: any[] = [

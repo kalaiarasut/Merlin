@@ -61,6 +61,7 @@ const CatchRecordSchema = new Schema<ICatchRecord>({
 
 CatchRecordSchema.index({ species: 1, date: 1 });
 CatchRecordSchema.index({ datasetId: 1, species: 1 });
+CatchRecordSchema.index({ 'validationStatus.status': 1 });
 
 export const CatchRecord = mongoose.model<ICatchRecord>('CatchRecord', CatchRecordSchema);
 

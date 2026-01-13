@@ -1,9 +1,15 @@
+export type UserRole = 'admin' | 'institute-admin' | 'expert' | 'researcher' | 'viewer';
+
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'expert' | 'researcher' | 'viewer';
-  organization: string;
+  role: UserRole;
+  instituteId?: string;
+  sharedInstituteIds?: string[];
+  projectIds?: string[];
+  permissions?: string[];
+  organization?: string;   // Deprecated, use instituteId
   avatar?: string;
   createdAt: string;
 }

@@ -123,18 +123,18 @@ export default function CausalAnalysis() {
         queryFn: causalService.getAvailableSeries,
     });
 
-    // Fetch driver time series
+    // Fetch driver time series (CPUE or oceanographic)
     const { data: driverData, isLoading: driverLoading } = useQuery({
         queryKey: ['causal-driver-series', driverSeriesId, aggregation],
         queryFn: () => causalService.getTimeSeries(driverSeriesId, aggregation),
-        enabled: !!driverSeriesId && driverSeriesId.startsWith('cpue_'),
+        enabled: !!driverSeriesId,
     });
 
-    // Fetch response time series
+    // Fetch response time series (CPUE or oceanographic)
     const { data: responseData, isLoading: responseLoading } = useQuery({
         queryKey: ['causal-response-series', responseSeriesId, aggregation],
         queryFn: () => causalService.getTimeSeries(responseSeriesId, aggregation),
-        enabled: !!responseSeriesId && responseSeriesId.startsWith('cpue_'),
+        enabled: !!responseSeriesId,
     });
 
     // Fetch module info
@@ -367,6 +367,95 @@ export default function CausalAnalysis() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Data Overlap Inspector - Shows data quality before analysis */}
+            {(driverData || responseData) && (
+                <Card className="border-2 border-dashed border-ocean-200 dark:border-ocean-800">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <Info className="w-4 h-4 text-ocean-500" />
+                            Data Overlap Inspector
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                            {/* Driver Series Info */}
+                            <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg">
+                                <div className="text-deep-500 dark:text-gray-400 mb-1">Driver (X)</div>
+                                <div className="font-medium text-deep-900 dark:text-gray-100">
+                                    {driverData?.metadata?.name || driverSeriesId}
+                                </div>
+                                <div className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                    {driverData?.timeSeries?.length || 0} data points
+                                </div>
+                            </div>
+
+                            {/* Response Series Info */}
+                            <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg">
+                                <div className="text-deep-500 dark:text-gray-400 mb-1">Response (Y)</div>
+                                <div className="font-medium text-deep-900 dark:text-gray-100">
+                                    {responseData?.metadata?.name || responseSeriesId || '—'}
+                                </div>
+                                <div className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                    {responseData?.timeSeries?.length || 0} data points
+                                </div>
+                            </div>
+
+                            {/* Overlapping Points */}
+                            <div className={`p-3 rounded-lg ${(() => {
+                                    const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
+                                    return overlap >= 12 ? 'bg-green-50 dark:bg-green-900/20' : overlap >= 6 ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-red-50 dark:bg-red-900/20';
+                                })()
+                                }`}>
+                                <div className="text-deep-500 dark:text-gray-400 mb-1">Overlapping Points</div>
+                                <div className={`text-2xl font-bold ${(() => {
+                                        const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                        const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                        const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
+                                        return overlap >= 12 ? 'text-green-600 dark:text-green-400' : overlap >= 6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
+                                    })()
+                                    }`}>
+                                    {(() => {
+                                        const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                        const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                        return [...driverDates].filter(d => responseDates.has(d)).length;
+                                    })()}
+                                </div>
+                                <div className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                    Minimum: 12 ({aggregation})
+                                </div>
+                            </div>
+
+                            {/* Analysis Readiness */}
+                            <div className="p-3 bg-gray-50 dark:bg-deep-800 rounded-lg">
+                                <div className="text-deep-500 dark:text-gray-400 mb-1">Status</div>
+                                {(() => {
+                                    const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
+                                    const ready = overlap >= 6 && driverData?.timeSeries?.length > 0 && responseData?.timeSeries?.length > 0;
+                                    return ready ? (
+                                        <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-medium">
+                                            <CheckCircle className="w-4 h-4" />
+                                            Ready for Analysis
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 font-medium">
+                                            <AlertTriangle className="w-4 h-4" />
+                                            {overlap < 6 ? 'More data needed' : 'Select both series'}
+                                        </div>
+                                    );
+                                })()}
+                                <div className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                    Aggregation: {aggregation}
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Tabs */}
             <div className="flex gap-2 flex-wrap">

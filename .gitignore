@@ -64,7 +64,7 @@ storage/sequences/*
 *.db
 *.sqlite
 *.sqlite3
-
+data_samples
 # Docker
 docker-compose.override.yml
 

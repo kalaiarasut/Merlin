@@ -9,7 +9,8 @@ import {
   Upload, FileIcon, Loader, CheckCircle2, XCircle, Clock,
   Database, FileText, Image, FileCode, Archive, Trash2,
   RefreshCw, ChevronRight, AlertCircle, Sparkles, Zap,
-  AlertTriangle, Info, Eye, History
+  AlertTriangle, Info, Eye, History, ClipboardList, BookMarked, ShieldCheck, Users, Scale,
+  Square, CheckSquare, X
 } from 'lucide-react';
 import { ingestionService } from '@/services/api';
 import toast from 'react-hot-toast';
@@ -23,8 +24,8 @@ const DATA_TYPES = [
   { value: 'fisheries', label: 'Fisheries Catch Data', icon: '⚓', description: 'Catch, effort, length records' },
   { value: 'otolith', label: 'Otolith Images', icon: '🔬', description: 'Fish ear bone images' },
   { value: 'edna', label: 'eDNA Sequences', icon: '🧬', description: 'FASTA/FASTQ files' },
-  { value: 'survey', label: 'Survey Data', icon: '📊', description: 'Field survey records' },
-  { value: 'taxonomy', label: 'Taxonomic Data', icon: '📚', description: 'Classification data' },
+  { value: 'survey', label: 'Survey Data', icon: 'survey', description: 'Field survey records' },
+  { value: 'taxonomy', label: 'Taxonomic Data', icon: 'taxonomy', description: 'Classification data' },
 ];
 
 const FILE_ICONS: Record<string, typeof FileIcon> = {
@@ -50,6 +51,8 @@ export default function DataIngestion() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<any>(null);
   const [historyJob, setHistoryJob] = useState<any>(null);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: jobs, refetch: refetchJobs } = useQuery({
@@ -70,6 +73,45 @@ export default function DataIngestion() {
       toast.error(error.message || 'Failed to delete job');
     },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (jobIds: string[]) => ingestionService.bulkDeleteJobs(jobIds),
+    onSuccess: (result) => {
+      if (result.succeeded > 0) {
+        toast.success(`Successfully deleted ${result.succeeded} job(s)`);
+      }
+      if (result.failed > 0) {
+        toast.error(`Failed to delete ${result.failed} job(s)`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['ingestion-jobs'] });
+      setShowBulkDeleteModal(false);
+      setSelectedJobs(new Set());
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to delete jobs');
+    },
+  });
+
+  const toggleJobSelection = (jobId: string) => {
+    setSelectedJobs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(jobId)) {
+        newSet.delete(jobId);
+      } else {
+        newSet.add(jobId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!jobs) return;
+    if (selectedJobs.size === jobs.length) {
+      setSelectedJobs(new Set());
+    } else {
+      setSelectedJobs(new Set(jobs.map((j: any) => j._id)));
+    }
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles(prev => [...prev, ...acceptedFiles]);
@@ -324,9 +366,26 @@ export default function DataIngestion() {
           <Card variant="default">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Processing Jobs</CardTitle>
-                  <CardDescription>Recent data ingestion tasks</CardDescription>
+                <div className="flex items-center gap-3">
+                  {jobs && jobs.length > 0 && (
+                    <button
+                      onClick={toggleSelectAll}
+                      className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      title={selectedJobs.size === jobs.length ? "Deselect all" : "Select all"}
+                    >
+                      {selectedJobs.size === jobs.length ? (
+                        <CheckSquare className="w-5 h-5 text-ocean-600 dark:text-ocean-400" />
+                      ) : selectedJobs.size > 0 ? (
+                        <CheckSquare className="w-5 h-5 text-ocean-400 dark:text-ocean-500" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                      )}
+                    </button>
+                  )}
+                  <div>
+                    <CardTitle>Processing Jobs</CardTitle>
+                    <CardDescription>Recent data ingestion tasks</CardDescription>
+                  </div>
                 </div>
                 <Badge variant="secondary">{jobs?.length || 0} jobs</Badge>
               </div>
@@ -345,8 +404,24 @@ export default function DataIngestion() {
                   {jobs.slice(0, 10).map((job: any) => (
                     <div
                       key={job._id}
-                      className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-deep-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-gray-100/50 dark:hover:bg-deep-700/50 transition-colors group"
+                      className={cn(
+                        "flex items-center gap-4 p-4 rounded-xl border transition-colors group",
+                        selectedJobs.has(job._id)
+                          ? "bg-ocean-50 dark:bg-ocean-900/20 border-ocean-200 dark:border-ocean-700"
+                          : "bg-gray-50 dark:bg-deep-800/50 border-gray-100 dark:border-gray-700 hover:bg-gray-100/50 dark:hover:bg-deep-700/50"
+                      )}
                     >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => toggleJobSelection(job._id)}
+                        className="p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex-shrink-0"
+                      >
+                        {selectedJobs.has(job._id) ? (
+                          <CheckSquare className="w-5 h-5 text-ocean-600 dark:text-ocean-400" />
+                        ) : (
+                          <Square className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                        )}
+                      </button>
                       <div className={cn(
                         "p-2 rounded-lg",
                         job.status === 'completed' ? "bg-marine-100 dark:bg-marine-900/30" :
@@ -412,14 +487,6 @@ export default function DataIngestion() {
                         >
                           <History className="w-4 h-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => confirmDeleteJob(job)}
-                          className="opacity-0 group-hover:opacity-100 text-deep-400 hover:text-abyss-600 dark:text-gray-500 dark:hover:text-abyss-400 transition-opacity"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
                         <Button variant="ghost" size="icon-sm" className="text-deep-400 dark:text-gray-500">
                           <ChevronRight className="w-4 h-4" />
                         </Button>
@@ -460,7 +527,17 @@ export default function DataIngestion() {
                           : "border-gray-200 hover:border-gray-300 bg-white"
                       )}
                     >
-                      <span className="text-2xl">{type.icon}</span>
+                      {type.icon === 'survey' ? (
+                        <div className="p-2 rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30">
+                          <ClipboardList className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                        </div>
+                      ) : type.icon === 'taxonomy' ? (
+                        <div className="p-2 rounded-xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30">
+                          <BookMarked className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                        </div>
+                      ) : (
+                        <span className="text-2xl">{type.icon}</span>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className={cn(
                           "text-sm font-medium",
@@ -479,35 +556,58 @@ export default function DataIngestion() {
               </div>
 
               {/* Data Governance (Multi-Institute) */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-ocean-50 dark:from-purple-900/20 dark:to-ocean-900/20 border border-purple-100 dark:border-purple-800 space-y-3">
-                <p className="text-sm font-medium text-deep-700 dark:text-gray-200 flex items-center gap-2">
-                  <span>📊</span> Data Governance
-                </p>
+              <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 dark:border-emerald-700/40 bg-gradient-to-br from-emerald-50/80 via-teal-50/50 to-cyan-50/80 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-cyan-950/40 shadow-sm">
+                {/* Decorative background elements */}
+                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-200/30 to-transparent rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
+                <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-teal-200/30 to-transparent rounded-full blur-xl translate-y-1/2 -translate-x-1/2" />
 
-                {/* Visibility */}
-                <div>
-                  <label className="block text-xs text-deep-500 dark:text-gray-400 mb-1">Visibility</label>
-                  <select className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-deep-800 border-gray-200 dark:border-gray-700">
-                    <option value="private">🔒 Private (Team Only)</option>
-                    <option value="institute">🏛️ Institute (All Members)</option>
-                    <option value="public">🌍 Public (After Embargo)</option>
-                  </select>
+                <div className="relative p-5 space-y-4">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25 dark:shadow-emerald-500/10">
+                        <ShieldCheck className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-deep-800 dark:text-gray-100">Data Governance</p>
+                        <p className="text-xs text-deep-500 dark:text-gray-400">Access & licensing controls</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visibility */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-deep-600 dark:text-gray-300">
+                      <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Visibility
+                    </label>
+                    <select className="w-full px-4 py-2.5 text-sm font-medium rounded-xl bg-white/80 dark:bg-deep-800/80 backdrop-blur-sm border-2 border-emerald-200/60 dark:border-emerald-700/40 text-deep-700 dark:text-gray-200 focus:border-emerald-400 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-200 cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-600">
+                      <option value="private">🔒 Private (Team Only)</option>
+                      <option value="institute">🏛️ Institute (All Members)</option>
+                      <option value="public">🌍 Public (After Embargo)</option>
+                    </select>
+                  </div>
+
+                  {/* License */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-deep-600 dark:text-gray-300">
+                      <Scale className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> License
+                    </label>
+                    <select className="w-full px-4 py-2.5 text-sm font-medium rounded-xl bg-white/80 dark:bg-deep-800/80 backdrop-blur-sm border-2 border-emerald-200/60 dark:border-emerald-700/40 text-deep-700 dark:text-gray-200 focus:border-emerald-400 dark:focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-200 cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-600">
+                      <option value="Government-Open">🏛️ Government Open Data</option>
+                      <option value="CC-BY">✅ CC-BY (Attribution)</option>
+                      <option value="CC-BY-NC">🚫 CC-BY-NC (Non-Commercial)</option>
+                      <option value="Restricted">🔐 Restricted</option>
+                    </select>
+                  </div>
+
+                  {/* Footer info */}
+                  <div className="flex items-start gap-2 pt-2 border-t border-emerald-200/50 dark:border-emerald-700/30">
+                    <Info className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-deep-500 dark:text-gray-400 leading-relaxed">
+                      Data will be tagged with your institute. Manage projects in <span className="font-medium text-emerald-600 dark:text-emerald-400">Admin Console</span>.
+                    </p>
+                  </div>
                 </div>
-
-                {/* License */}
-                <div>
-                  <label className="block text-xs text-deep-500 dark:text-gray-400 mb-1">License</label>
-                  <select className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-deep-800 border-gray-200 dark:border-gray-700">
-                    <option value="Government-Open">Government Open Data</option>
-                    <option value="CC-BY">CC-BY (Attribution)</option>
-                    <option value="CC-BY-NC">CC-BY-NC (Non-Commercial)</option>
-                    <option value="Restricted">Restricted</option>
-                  </select>
-                </div>
-
-                <p className="text-xs text-deep-400 dark:text-gray-500">
-                  Data will be tagged with your institute. Manage projects in Admin Console.
-                </p>
               </div>
 
               {/* Upload Button */}
@@ -804,6 +904,158 @@ export default function DataIngestion() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Floating Selection Action Bar */}
+      {selectedJobs.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+          <div className="flex items-center gap-4 px-6 py-3 bg-deep-900 dark:bg-gray-800 text-white rounded-2xl shadow-2xl border border-gray-700">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-ocean-400" />
+              <span className="font-medium">{selectedJobs.size} selected</span>
+            </div>
+            <div className="w-px h-6 bg-gray-600" />
+            <button
+              onClick={() => setSelectedJobs(new Set())}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <X className="w-4 h-4" />
+              Clear
+            </button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowBulkDeleteModal(true)}
+              className="flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowBulkDeleteModal(false)} />
+          <div className="relative bg-white dark:bg-deep-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-abyss-100 dark:bg-abyss-900/30">
+                  <Trash2 className="w-6 h-6 text-abyss-600 dark:text-abyss-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-deep-900 dark:text-gray-100">
+                    Delete {selectedJobs.size} Job{selectedJobs.size > 1 ? 's' : ''}
+                  </h3>
+                  <p className="text-sm text-deep-500 dark:text-gray-400">
+                    This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 max-h-[50vh] overflow-y-auto">
+              {/* Selected Jobs List */}
+              <div className="space-y-2 mb-4">
+                <p className="text-xs font-medium text-deep-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  Jobs to be deleted ({selectedJobs.size})
+                </p>
+                {jobs?.filter((job: any) => selectedJobs.has(job._id)).map((job: any) => (
+                  <div key={job._id} className="p-3 bg-gray-50 dark:bg-deep-900/50 rounded-xl border border-gray-100 dark:border-gray-700">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-deep-900 dark:text-gray-100 truncate">
+                          {job.filename}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-xs text-deep-500 dark:text-gray-400">
+                            <span className="font-medium">Type:</span>
+                            <span className="capitalize">{job.dataType}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="font-medium text-deep-500 dark:text-gray-400">Status:</span>
+                            <span className={cn(
+                              "capitalize",
+                              job.status === 'completed' ? "text-marine-600 dark:text-marine-400" :
+                                job.status === 'failed' ? "text-abyss-600 dark:text-abyss-400" :
+                                  "text-deep-500 dark:text-gray-400"
+                            )}>
+                              {job.status}
+                            </span>
+                          </span>
+                          {job.recordsProcessed > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs text-deep-500 dark:text-gray-400">
+                              <span className="font-medium">Records:</span>
+                              <span className="text-coral-600 dark:text-coral-400 font-medium">
+                                {job.recordsProcessed.toLocaleString()}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Summary */}
+              <div className="p-3 bg-coral-50 dark:bg-coral-900/20 rounded-xl border border-coral-100 dark:border-coral-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-coral-700 dark:text-coral-300">Total records to be deleted:</span>
+                  <span className="text-sm font-bold text-coral-700 dark:text-coral-300">
+                    {jobs?.filter((job: any) => selectedJobs.has(job._id))
+                      .reduce((sum: number, job: any) => sum + (job.recordsProcessed || 0), 0)
+                      .toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-abyss-50 dark:bg-abyss-900/20 rounded-xl">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-4 h-4 text-abyss-600 dark:text-abyss-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-abyss-700 dark:text-abyss-300">
+                    This will permanently remove the job records AND all associated data (Species, Oceanography, Fisheries, eDNA) imported with these jobs.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-deep-900/50">
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowBulkDeleteModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => bulkDeleteMutation.mutate(Array.from(selectedJobs))}
+                  disabled={bulkDeleteMutation.isPending}
+                >
+                  {bulkDeleteMutation.isPending ? (
+                    <>
+                      <Loader className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete {selectedJobs.size} Job{selectedJobs.size > 1 ? 's' : ''}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

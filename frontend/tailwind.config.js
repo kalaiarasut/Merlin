@@ -203,6 +203,10 @@ export default {
           "0%, 100%": { boxShadow: "0 0 12px rgba(14, 165, 233, 0.1)" },
           "50%": { boxShadow: "0 0 20px rgba(14, 165, 233, 0.2)" },
         },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateX(-50%) translateY(20px)" },
+          to: { opacity: "1", transform: "translateX(-50%) translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -217,6 +221,7 @@ export default {
         "shimmer": "shimmer 8s ease-in-out infinite",
         "float": "float 3s ease-in-out infinite",
         "glow-pulse": "glow-pulse 2s ease-in-out infinite",
+        "slide-up": "slide-up 0.3s ease-out forwards",
       },
       transitionTimingFunction: {
         'premium': 'cubic-bezier(0.16, 1, 0.3, 1)',

@@ -61,7 +61,11 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-ocean-500 to-ocean-700 flex items-center justify-center shadow-lg shadow-ocean-500/30">
-              <img src="/favicon.png" alt="Marlin Logo" className="w-8 h-8 object-contain" />
+              <img
+                src="/favicon.png"
+                alt="Marlin Logo"
+                className="w-8 h-8 object-contain brightness-0 invert dark:filter-none"
+              />
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-marine-500 rounded-full border-2 border-white dark:border-deep-900 flex items-center justify-center">
               <Sparkles className="w-2 h-2 text-white" />

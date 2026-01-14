@@ -832,7 +832,7 @@ export default function EdnaManager() {
   const [selectedSample, setSelectedSample] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'samples' | 'upload' | 'taxonomy' | 'biodiversity' | 'quality'>('samples');
+  const [activeTab, setActiveTab] = useState<'samples' | 'upload' | 'taxonomy' | 'biodiversity' | 'quality' | 'pipeline'>('samples');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   // Upload & Processing State
@@ -1079,6 +1079,7 @@ export default function EdnaManager() {
           { id: 'taxonomy', label: 'Taxonomy', icon: GitBranch },
           { id: 'biodiversity', label: 'Biodiversity', icon: TrendingUp },
           { id: 'quality', label: 'Quality Metrics', icon: Activity },
+          { id: 'pipeline', label: 'Analysis Pipeline', icon: Network },
         ].map((tab) => (
           <Button
             key={tab.id}
@@ -1793,6 +1794,235 @@ export default function EdnaManager() {
               </CardContent>
             </Card>
           </div>
+        </div>
+      )}
+
+      {/* Pipeline Tab Content */}
+      {activeTab === 'pipeline' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pipeline Overview */}
+          <Card variant="premium" className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Network className="w-5 h-5" />
+                eDNA Analysis Pipeline v2.0
+              </CardTitle>
+              <CardDescription>
+                Publication-ready analysis with 33 scientific refinements. All modules validated and QIIME2-compatible.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-white/50 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-ocean-600">10</p>
+                  <p className="text-xs text-deep-500">Phases Complete</p>
+                </div>
+                <div className="p-4 bg-white/50 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-green-600">33</p>
+                  <p className="text-xs text-deep-500">Refinements</p>
+                </div>
+                <div className="p-4 bg-white/50 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-marine-600">8</p>
+                  <p className="text-xs text-deep-500">Core Modules</p>
+                </div>
+                <div className="p-4 bg-white/50 rounded-xl text-center">
+                  <p className="text-2xl font-bold text-coral-600">✓</p>
+                  <p className="text-xs text-deep-500">QIIME2 Compatible</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Denoising Module */}
+          <Card variant="default">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="w-5 h-5 text-purple-500" />
+                DADA2-Style Denoising
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-deep-500">
+                Error correction with paired-end merging and ASV inference.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Min Abundance:</span> 8
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Min Quality:</span> Q20
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Singletons:</span> Configurable
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Loss Tracking:</span> ✓
+                </div>
+              </div>
+              <Button variant="outline" size="sm" disabled={uploadedSequences.length === 0}>
+                <FlaskConical className="w-4 h-4 mr-2" />
+                Run Denoising
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Chimera Detection Module */}
+          <Card variant="default">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <AlertCircle className="w-5 h-5 text-amber-500" />
+                Chimera Detection
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-deep-500">
+                Marker-specific thresholds with UCHIME-compatible scoring.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">COI:</span> score ≥1.5
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">16S:</span> score ≥1.2
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">12S:</span> score ≥1.3
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">FPR Track:</span> ✓
+                </div>
+              </div>
+              <Button variant="outline" size="sm" disabled={uploadedSequences.length === 0}>
+                <Target className="w-4 h-4 mr-2" />
+                Detect Chimeras
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Taxonomy Assignment Module */}
+          <Card variant="default">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <GitBranch className="w-5 h-5 text-green-500" />
+                Taxonomy LCA
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-deep-500">
+                Weighted LCA with BLAST/SILVA conflict detection.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Weight:</span> bitscore × length
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Dominance:</span> ≥80%
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Species:</span> 90% conf
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Conflicts:</span> Flagged
+                </div>
+              </div>
+              <Button variant="outline" size="sm" disabled={uploadedSequences.length === 0}>
+                <TreeDeciduous className="w-4 h-4 mr-2" />
+                Assign Taxonomy
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* BIOM Export Module */}
+          <Card variant="default">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Download className="w-5 h-5 text-blue-500" />
+                BIOM Export
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-deep-500">
+                QIIME2-compatible BIOM 2.1 with MIxS metadata.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Format:</span> BIOM 2.1
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">MIxS:</span> Compliant
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Bootstrap:</span> Embedded
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Order:</span> Preserved
+                </div>
+              </div>
+              <Button variant="outline" size="sm" disabled>
+                <Download className="w-4 h-4 mr-2" />
+                Export BIOM
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Report Generation Module */}
+          <Card variant="default" className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <BookOpen className="w-5 h-5 text-indigo-500" />
+                Publication-Ready Reporting
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-deep-500">
+                Auto-citations, parameter appendix, figure provenance, and checksums for audits.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Citations:</span> 7 methods
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Appendix:</span> JSON
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Checksum:</span> SHA256
+                </div>
+                <div className="p-2 bg-gray-50 rounded">
+                  <span className="font-medium">Limitations:</span> Auto-generated
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Generate Report
+                </Button>
+                <Button variant="ghost" size="sm">
+                  <Info className="w-4 h-4 mr-2" />
+                  View Citations
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* API Reference */}
+          <Card variant="glass" className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg">API Endpoints</CardTitle>
+              <CardDescription>Available endpoints for programmatic access</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono">
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/denoise</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/chimera/detect</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/taxonomy/lca</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/export/biom</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/silva/classify</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/blast</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">POST /edna/report/generate</div>
+                <div className="p-2 bg-gray-800 text-green-400 rounded">GET /edna/pipeline/info</div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

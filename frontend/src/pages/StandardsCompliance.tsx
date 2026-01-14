@@ -8,18 +8,18 @@ import { Progress } from '@/components/ui/progress';
 import {
     Shield, FileCheck, Upload, Loader, CheckCircle2, XCircle,
     AlertTriangle, Download, FileText, ChevronRight, Info,
-    BarChart3, Award, RefreshCw, FileCode, BookOpen, Sparkles
+    BarChart3, Award, RefreshCw, FileCode, BookOpen, Sparkles, Globe2, Cloud, Fish, Dna, Map
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
 // Standards information
 const STANDARDS = [
-    { id: 'dwc', name: 'Darwin Core', icon: '🐟', color: 'ocean', description: 'Biodiversity occurrence standard' },
-    { id: 'obis', name: 'OBIS Schema', icon: '🌊', color: 'marine', description: 'Ocean biodiversity data' },
-    { id: 'mixs', name: 'MIxS 6.0', icon: '🧬', color: 'coral', description: 'eDNA/metabarcoding data' },
-    { id: 'iso19115', name: 'ISO 19115', icon: '🗺️', color: 'deep', description: 'Geographic metadata' },
-    { id: 'cf', name: 'CF Conventions', icon: '📊', color: 'abyss', description: 'NetCDF climate data' },
+    { id: 'dwc', name: 'Darwin Core', icon: 'dwc', color: 'ocean', description: 'Biodiversity occurrence standard' },
+    { id: 'obis', name: 'OBIS Schema', icon: 'obis', color: 'marine', description: 'Ocean biodiversity data' },
+    { id: 'mixs', name: 'MIxS 6.0', icon: 'mixs', color: 'coral', description: 'eDNA/metabarcoding data' },
+    { id: 'iso19115', name: 'ISO 19115', icon: 'iso', color: 'deep', description: 'Geographic metadata' },
+    { id: 'cf', name: 'CF Conventions', icon: 'cf', color: 'abyss', description: 'NetCDF climate data' },
 ];
 
 const EXPORT_FORMATS = [
@@ -312,7 +312,7 @@ export default function StandardsCompliance() {
                                                         value={result.score}
                                                         size="sm"
                                                         className="flex-1 max-w-32"
-                                                        variant={result.score >= 80 ? 'success' : result.score >= 50 ? 'default' : 'destructive'}
+                                                        variant={result.score >= 80 ? 'success' : result.score >= 50 ? 'default' : 'warning'}
                                                     />
                                                     <span className={cn("text-sm font-bold", getScoreColor(result.score))}>
                                                         {result.score}%
@@ -503,7 +503,29 @@ export default function StandardsCompliance() {
                             <div className="space-y-3">
                                 {STANDARDS.map((std) => (
                                     <div key={std.id} className="flex items-center gap-3">
-                                        <span className="text-xl">{std.icon}</span>
+                                        {std.icon === 'dwc' ? (
+                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-ocean-100 to-blue-100 dark:from-ocean-900/30 dark:to-blue-900/30">
+                                                <Fish className="w-5 h-5 text-ocean-600 dark:text-ocean-400" />
+                                            </div>
+                                        ) : std.icon === 'obis' ? (
+                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30">
+                                                <Globe2 className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+                                            </div>
+                                        ) : std.icon === 'mixs' ? (
+                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30">
+                                                <Dna className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                                            </div>
+                                        ) : std.icon === 'iso' ? (
+                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 dark:from-indigo-900/30 dark:to-violet-900/30">
+                                                <Map className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                                            </div>
+                                        ) : std.icon === 'cf' ? (
+                                            <div className="p-1.5 rounded-lg bg-gradient-to-br from-slate-100 to-gray-100 dark:from-slate-900/30 dark:to-gray-900/30">
+                                                <Cloud className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                                            </div>
+                                        ) : (
+                                            <span className="text-xl">{std.icon}</span>
+                                        )}
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium text-deep-900 dark:text-gray-100">{std.name}</p>
                                             <p className="text-xs text-deep-500 dark:text-gray-400">{std.description}</p>

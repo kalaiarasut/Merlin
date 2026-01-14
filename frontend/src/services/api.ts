@@ -217,6 +217,106 @@ export const ednaService = {
 
   bulkImport: (samples: any[]) =>
     apiClient.post('/edna/bulk', { samples }),
+
+  // ======================================
+  // NEW: eDNA Pipeline API Functions
+  // ======================================
+
+  // Pipeline Info
+  getPipelineInfo: () =>
+    apiClient.get<any>('/ai/edna/pipeline/info'),
+
+  // DADA2-Style Denoising
+  denoise: (params: {
+    samples: Record<string, Array<{ sequence: string; quality?: string }>>;
+    min_abundance?: number;
+    min_quality?: number;
+    min_length?: number;
+    max_length?: number;
+    singleton_removal?: boolean;
+  }) =>
+    apiClient.post<any>('/ai/edna/denoise', params),
+
+  getDenoiseInfo: () =>
+    apiClient.get<any>('/ai/edna/denoise/info'),
+
+  // Chimera Detection
+  detectChimeras: (params: {
+    sequences: Array<{ id: string; sequence: string; abundance: number }>;
+    marker_type?: string;
+    use_reference?: boolean;
+    reference_sequences?: Array<{ id: string; sequence: string }>;
+  }) =>
+    apiClient.post<any>('/ai/edna/chimera/detect', params),
+
+  getChimeraThresholds: () =>
+    apiClient.get<any>('/ai/edna/chimera/thresholds'),
+
+  // Taxonomy LCA
+  assignTaxonomyLCA: (params: {
+    asv_hits: Record<string, Array<{
+      accession: string;
+      taxid: number;
+      species: string;
+      pident: number;
+      length: number;
+      bitscore: number;
+      qcovs: number;
+      taxonomy: Record<string, string>;
+    }>>;
+    silva_taxonomies?: Record<string, Record<string, string>>;
+  }) =>
+    apiClient.post<any>('/ai/edna/taxonomy/lca', params),
+
+  // BIOM Export
+  exportBiom: (params: {
+    observations: Array<{ id: string; sample_abundances: Record<string, number> }>;
+    samples: Array<{ sample_id: string;[key: string]: any }>;
+    taxonomy?: Record<string, Record<string, string>>;
+    bootstrap_scores?: Record<string, number[]>;
+    analysis_mode?: 'ASV' | 'OTU';
+    otu_identity_threshold?: number;
+  }) =>
+    apiClient.post<any>('/ai/edna/export/biom', params),
+
+  // Report Generation
+  generateReport: (params: {
+    analysis_results: Record<string, any>;
+    sample_metadata: Array<Record<string, any>>;
+    parameters: Record<string, any>;
+    figures?: Array<Record<string, any>>;
+    negative_controls?: Record<string, any>;
+  }) =>
+    apiClient.post<any>('/ai/edna/report/generate', params),
+
+  getAvailableCitations: () =>
+    apiClient.get<any>('/ai/edna/report/citations'),
+
+  // SILVA Classification
+  classifySilva: (params: {
+    sequences: Array<{ id: string; sequence: string }>;
+    marker_type?: string;
+    bootstrap?: boolean;
+  }) =>
+    apiClient.post<any>('/ai/edna/silva/classify', params),
+
+  getSilvaInfo: () =>
+    apiClient.get<any>('/ai/edna/silva/info'),
+
+  // BLAST
+  runBlast: (params: {
+    sequences: Array<{ id: string; sequence: string }>;
+    database?: string;
+    use_cache?: boolean;
+  }) =>
+    apiClient.post<any>('/ai/edna/blast', params),
+
+  // Job Queue
+  getJobStatus: (jobId: string) =>
+    apiClient.get<any>(`/ai/edna/jobs/${jobId}`),
+
+  getJobQueueInfo: () =>
+    apiClient.get<any>('/ai/edna/jobs/queue/info'),
 };
 
 // Ingestion service
@@ -251,6 +351,15 @@ export const ingestionService = {
 
   deleteJob: (jobId: string) =>
     apiClient.delete<{ message: string; jobId: string; dataType: string; recordsDeleted: number }>(`/ingest/jobs/${jobId}`),
+
+  bulkDeleteJobs: async (jobIds: string[]) => {
+    const results = await Promise.allSettled(
+      jobIds.map(jobId => apiClient.delete<{ message: string; jobId: string; dataType: string; recordsDeleted: number }>(`/ingest/jobs/${jobId}`))
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+    return { succeeded, failed, total: jobIds.length };
+  },
 
   // Metadata extraction
   extractMetadata: (file: File) => {

@@ -11,7 +11,7 @@ import {
   ArrowUpRight, Clock, Zap, Globe2, Layers, BarChart3,
   ChevronRight, Sparkles, FileUp, AlertCircle
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart, Cell } from 'recharts';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -235,8 +235,8 @@ export default function Dashboard() {
                 <YAxis dataKey="phylum" type="category" stroke="currentColor" className="text-gray-500 dark:text-gray-400" fontSize={12} tickLine={false} axisLine={false} width={100} />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="count" name="Species Count" radius={[0, 6, 6, 0]}>
-                  {displayPhylumData.map((entry, index) => (
-                    <rect key={`bar-${index}`} fill={entry.color} />
+                  {displayPhylumData.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.color || '#0ea5e9'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -268,9 +268,9 @@ export default function Dashboard() {
                   className="flex items-start gap-4 p-4 rounded-xl bg-gray-50/50 dark:bg-deep-800/50 hover:bg-gray-100/50 dark:hover:bg-deep-700/50 transition-colors border border-gray-100 dark:border-gray-700/50"
                 >
                   <div className={`p-2 rounded-lg ${activity.type === 'success' ? 'bg-marine-100 dark:bg-marine-900/30 text-marine-600 dark:text-marine-400' :
-                      activity.type === 'warning' ? 'bg-coral-100 dark:bg-coral-900/30 text-coral-600 dark:text-coral-400' :
-                        activity.type === 'processing' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' :
-                          'bg-ocean-100 dark:bg-ocean-900/30 text-ocean-600 dark:text-ocean-400'
+                    activity.type === 'warning' ? 'bg-coral-100 dark:bg-coral-900/30 text-coral-600 dark:text-coral-400' :
+                      activity.type === 'processing' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' :
+                        'bg-ocean-100 dark:bg-ocean-900/30 text-ocean-600 dark:text-ocean-400'
                     }`}>
                     {activity.type === 'success' ? <Activity className="w-4 h-4" /> :
                       activity.type === 'warning' ? <AlertCircle className="w-4 h-4" /> :

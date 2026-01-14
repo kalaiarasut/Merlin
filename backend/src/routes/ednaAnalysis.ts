@@ -2,6 +2,7 @@
  * eDNA Analysis API Routes
  * 
  * REST API endpoints for eDNA analysis pipeline.
+ * Includes publication-ready BLAST integration with scientific safeguards.
  */
 
 import { Router, Request, Response } from 'express';
@@ -13,8 +14,115 @@ import {
     contaminationDetector
 } from '../services/edna';
 import logger from '../utils/logger';
+import axios from 'axios';
 
 const router = Router();
+
+// AI Service URL for BLAST processing
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
+
+// BLAST filter thresholds (match Python client)
+const BLAST_THRESHOLDS = {
+    MIN_PIDENT: 85,
+    MIN_QUERY_COVERAGE: 70,
+    MIN_ALIGNMENT_LENGTH: 100,
+};
+
+/**
+ * POST /api/edna/blast
+ * Run BLAST species identification with scientific safeguards
+ * 
+ * Features:
+ * - Post-hoc filtering (pident, qcovs, alignment length)
+ * - Strand consistency checking
+ * - Database versioning
+ * - Full hit metadata for provenance
+ */
+router.post('/blast', async (req: Request, res: Response) => {
+    try {
+        const {
+            sequences,
+            database = 'nt',
+            use_cache = true,
+            options = {}
+        } = req.body;
+
+        if (!sequences || !Array.isArray(sequences)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Array of sequences required. Format: [{id: string, sequence: string}]',
+            });
+        }
+
+        // Validate sequences
+        for (const seq of sequences) {
+            if (!seq.sequence || typeof seq.sequence !== 'string') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Each sequence must have a sequence string',
+                });
+            }
+            if (seq.sequence.length < 50) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Sequences must be at least 50bp for reliable BLAST',
+                });
+            }
+        }
+
+        // Call AI service for BLAST
+        const response = await axios.post(`${AI_SERVICE_URL}/edna/blast`, {
+            sequences,
+            database,
+            use_cache,
+            options: {
+                min_pident: options.min_pident || BLAST_THRESHOLDS.MIN_PIDENT,
+                min_qcovs: options.min_qcovs || BLAST_THRESHOLDS.MIN_QUERY_COVERAGE,
+                min_length: options.min_length || BLAST_THRESHOLDS.MIN_ALIGNMENT_LENGTH,
+            }
+        }, {
+            timeout: 300000, // 5 minute timeout for BLAST
+        });
+
+        res.json({
+            success: true,
+            ...response.data,
+            thresholds: BLAST_THRESHOLDS,
+        });
+
+    } catch (error: any) {
+        logger.error('BLAST error:', error);
+
+        if (error.code === 'ECONNREFUSED') {
+            return res.status(503).json({
+                success: false,
+                error: 'BLAST service unavailable. Please try again later.',
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: error.response?.data?.error || error.message || 'BLAST search failed',
+        });
+    }
+});
+
+/**
+ * GET /api/edna/blast/thresholds
+ * Get current BLAST filter thresholds
+ */
+router.get('/blast/thresholds', (req: Request, res: Response) => {
+    res.json({
+        success: true,
+        thresholds: BLAST_THRESHOLDS,
+        description: {
+            MIN_PIDENT: 'Minimum percent identity (applied post-BLAST)',
+            MIN_QUERY_COVERAGE: 'Minimum query coverage percentage',
+            MIN_ALIGNMENT_LENGTH: 'Minimum alignment length in bp',
+        },
+        scientific_note: 'perc_identity is NOT a BLAST search parameter; it is applied post-hoc for scientific reproducibility.',
+    });
+});
 
 /**
  * POST /api/edna/quality-check

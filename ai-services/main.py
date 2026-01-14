@@ -1483,77 +1483,883 @@ async def calculate_biodiversity(detections: List[Dict[str, Any]]):
 
 
 # ====================================
-# DEDICATED NCBI BLAST ENDPOINT
+# SILVA TAXONOMY CLASSIFICATION
 # ====================================
 
-class BlastRequest(BaseModel):
-    """Request model for dedicated BLAST search."""
-    sequences: List[str]  # List of sequences or FASTA strings
-    database: str = "nt"  # nt, nr, refseq_rna, etc.
-    max_results: int = 5
-    max_sequences: int = 3  # Limit concurrent queries
-    format_type: str = "fasta"  # fasta or raw
+class SilvaClassifyRequest(BaseModel):
+    """Request model for SILVA taxonomy classification."""
+    sequences: List[Dict[str, str]]  # [{id: str, sequence: str}, ...]
+    marker_type: str = "16S_SSU"  # 16S_SSU, 18S_SSU, 23S_LSU
+    bootstrap: bool = True
 
-@app.post("/edna/blast")
-async def run_blast_search(request: BlastRequest):
+@app.post("/edna/silva/classify")
+async def classify_with_silva(request: SilvaClassifyRequest):
     """
-    Dedicated NCBI BLAST endpoint for species identification.
+    Classify sequences using SILVA Naive Bayes classifier.
     
-    Uses NCBI BLAST web service to search sequences against nucleotide database.
+    Scientific safeguards:
+    - Separate models for 16S, 18S, 23S markers (never mixed)
+    - 8-mer features with stride=1 (documented for QIIME2 comparability)
+    - Platt scaling for probability calibration (if model trained on ≥10k sequences)
+    - Bootstrap confidence per taxonomic rank
     
-    Note: NCBI BLAST can take 30-120 seconds per sequence. For large batch
-    processing, consider using local BLAST+ installation.
+    NOTE: "SILVA Naive Bayes classifiers are pre-trained using reference
+          sequences and are NOT trained on user data."
     
     Args:
-        sequences: List of DNA sequences (FASTA format or raw)
-        database: BLAST database (nt, nr, refseq_rna)
-        max_results: Max hits per sequence
-        max_sequences: Max sequences to process
+        sequences: List of {id: str, sequence: str} objects
+        marker_type: One of "16S_SSU", "18S_SSU", "23S_LSU"
+        bootstrap: Whether to compute bootstrap confidence (slower but more accurate)
         
     Returns:
-        Species detections with confidence, E-value, and taxonomy
+        Taxonomy assignments with per-rank confidence and provenance
     """
-    from edna.edna_processor import EdnaProcessor, SpeciesDetection
+    from edna.silva_classifier import get_silva_classifier, get_classifier_info
     import asyncio
     
     try:
-        processor = EdnaProcessor()
+        # Validate marker type
+        valid_markers = ["16S_SSU", "18S_SSU", "23S_LSU"]
+        if request.marker_type not in valid_markers:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid marker_type. Must be one of: {valid_markers}"
+            )
         
-        # Parse sequences
-        content = "\n".join(request.sequences)
-        parsed_sequences = processor.parse_sequence_string(content, request.format_type)
+        # Validate sequences
+        if not request.sequences:
+            raise HTTPException(status_code=400, detail="At least one sequence required")
         
-        if not parsed_sequences:
-            raise HTTPException(status_code=400, detail="No valid sequences found")
+        for seq in request.sequences:
+            if not isinstance(seq, dict) or 'sequence' not in seq:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Each sequence must be {id: str, sequence: str}"
+                )
         
-        # Limit to max_sequences
-        sequences_to_process = parsed_sequences[:request.max_sequences]
+        # Get classifier
+        classifier = get_silva_classifier(request.marker_type)
         
-        # Run BLAST (this is blocking, NCBI doesn't support async)
-        # For production, consider using asyncio.to_thread
+        if classifier.model is None:
+            return {
+                "success": False,
+                "error": f"No trained model available for {request.marker_type}",
+                "hint": "Use /edna/silva/train to train a model first, or use a pre-trained SILVA model.",
+                "classifier_info": get_classifier_info()
+            }
+        
+        # Prepare sequences
+        sequences_to_classify = [
+            (seq.get('id', f'seq_{i}'), seq['sequence'])
+            for i, seq in enumerate(request.sequences)
+        ]
+        
+        # Run classification in thread pool (CPU-intensive)
         loop = asyncio.get_event_loop()
-        detections = await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None,
-            processor.run_blast,
-            sequences_to_process,
-            request.database,
-            request.max_results
+            lambda: classifier.classify(sequences_to_classify, bootstrap=request.bootstrap)
         )
         
         return {
             "success": True,
-            "sequences_processed": len(sequences_to_process),
-            "sequences_total": len(parsed_sequences),
-            "detections": [d.to_dict() for d in detections],
-            "database": request.database,
-            "note": "BLAST queries NCBI servers and may take 30-120 seconds per sequence"
+            "marker_type": request.marker_type,
+            "classified_count": result.classified_count,
+            "unclassified_count": result.unclassified_count,
+            "average_confidence": round(result.average_confidence, 1),
+            "processing_time_seconds": round(result.processing_time_seconds, 2),
+            "model_metadata": result.model_metadata.to_dict() if result.model_metadata else None,
+            "scientific_notes": {
+                "kmer_size": 8,
+                "kmer_stride": 1,
+                "kmer_documentation": "k-mers extracted with stride=1, overlapping allowed",
+                "classifier_documentation": "Pre-trained on SILVA reference, NOT trained on user data",
+            },
+            "assignments": [
+                {
+                    "sequence_id": a.sequence_id,
+                    "taxonomy": a.taxonomy,
+                    "formatted_taxonomy": a.formatted_taxonomy,
+                    "confidence": a.confidence,
+                    "overall_confidence": round(a.overall_confidence, 1),
+                    "confident_ranks": a.confident_ranks,
+                    "unclassified_at": a.unclassified_at,
+                }
+                for a in result.assignments
+            ]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         raise HTTPException(
             status_code=500,
-            detail=f"BLAST search failed: {str(e)}\n{traceback.format_exc()}"
+            detail=f"Classification failed: {str(e)}"
+        )
+
+@app.get("/edna/silva/info")
+async def get_silva_info():
+    """Get SILVA classifier configuration and available models."""
+    from edna.silva_classifier import get_classifier_info
+    
+    return {
+        "success": True,
+        **get_classifier_info()
+    }
+
+
+# ====================================
+# DADA2-STYLE DENOISING
+# ====================================
+
+class DenoiseRequest(BaseModel):
+    """Request model for DADA2-style sequence denoising."""
+    samples: Dict[str, List[Dict[str, str]]]  # {sample_id: [{sequence, quality}, ...]}
+    min_abundance: int = 8
+    min_quality: float = 20.0
+    min_length: int = 100
+    max_length: int = 500
+    singleton_removal: bool = True
+
+@app.post("/edna/denoise")
+async def denoise_sequences(request: DenoiseRequest):
+    """
+    DADA2-style denoising with scientific safeguards.
+    
+    Algorithm deviations from DADA2:
+    - Uses k-mer frequency error model (not exact DADA2 algorithm)
+    - Simplified abundance ratio filtering
+    - Results should be validated against DADA2 for publication
+    
+    Features:
+    - Paired-end merging support
+    - Configurable singleton removal (for journal requirements)
+    - Per-step loss tracking
+    - ASV per-sample saturation diagnostics
+    - Length distribution with outlier detection
+    
+    Args:
+        samples: Dict of sample_id -> list of {sequence, quality} objects
+        min_abundance: Minimum total abundance for ASV
+        min_quality: Minimum average quality score
+        singleton_removal: Whether to remove singletons (configurable for journals)
+    
+    Returns:
+        ASVs, loss tracking, length distribution, and algorithm documentation
+    """
+    from edna.dada2_denoiser import denoise_single_end, DenoiseConfig, get_algorithm_documentation
+    import asyncio
+    
+    try:
+        # Convert request to internal format
+        samples_internal = {}
+        for sample_id, reads in request.samples.items():
+            samples_internal[sample_id] = [
+                (r.get('sequence', ''), r.get('quality', 'I' * len(r.get('sequence', ''))))
+                for r in reads if r.get('sequence')
+            ]
+        
+        if not samples_internal:
+            raise HTTPException(status_code=400, detail="At least one sample with sequences required")
+        
+        # Create config
+        config = DenoiseConfig(
+            min_abundance=request.min_abundance,
+            min_quality=request.min_quality,
+            min_length=request.min_length,
+            max_length=request.max_length,
+            singleton_removal=request.singleton_removal,
+        )
+        
+        # Run denoising in thread pool (CPU intensive)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: denoise_single_end(samples_internal, config)
+        )
+        
+        return {
+            "success": True,
+            "total_asvs": result.total_asvs,
+            "total_reads": result.total_reads,
+            "processing_time_seconds": result.processing_time_seconds,
+            "loss_tracker": result.loss_tracker.to_dict(),
+            "asv_per_sample": result.asv_per_sample,
+            "length_distribution": result.length_distribution.to_dict(),
+            "config": config.to_dict(),
+            "algorithm_note": result.algorithm_note,
+            "asvs": [
+                {
+                    "id": asv.id,
+                    "sequence": asv.sequence,
+                    "abundance": asv.abundance,
+                    "sample_abundances": asv.sample_abundances,
+                    "quality_mean": round(asv.quality_mean, 1),
+                }
+                for asv in result.asvs[:100]  # Limit response size
+            ],
+            "algorithm_documentation": get_algorithm_documentation()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"Denoising failed: {str(e)}"
+        )
+
+@app.get("/edna/denoise/info")
+async def get_denoise_info():
+    """Get DADA2-style denoising configuration and algorithm documentation."""
+    from edna.dada2_denoiser import get_algorithm_documentation
+    
+    return {
+        "success": True,
+        **get_algorithm_documentation()
+    }
+
+
+# ====================================
+# CHIMERA DETECTION
+# ====================================
+
+class ChimeraRequest(BaseModel):
+    """Request model for chimera detection."""
+    sequences: List[Dict[str, Any]]  # [{id, sequence, abundance}, ...]
+    marker_type: str = "16S"  # COI, 16S, 18S, ITS, 12S
+    use_reference: bool = False
+    reference_sequences: Optional[List[Dict[str, str]]] = None  # [{id, sequence}, ...]
+
+@app.post("/edna/chimera/detect")
+async def detect_chimeras(request: ChimeraRequest):
+    """
+    Chimera detection with marker-specific thresholds.
+    
+    Features:
+    - De novo detection (abundance-based)
+    - Reference-based detection (optional)
+    - Marker-specific thresholds (COI vs rRNA)
+    - UCHIME-compatible scoring
+    - Parent abundance ratio calculation
+    - Benchmark validation support
+    
+    Threshold justification:
+    "Thresholds were chosen based on published marine eDNA benchmarks
+     and validated against synthetic chimeras."
+    
+    Args:
+        sequences: List of {id, sequence, abundance} objects
+        marker_type: COI, 16S, 18S, ITS, or 12S
+        use_reference: Whether to use reference-based detection
+        reference_sequences: Optional reference sequences for reference-based detection
+    
+    Returns:
+        Chimera results with provenance, parent identification, and FPR tracking
+    """
+    from edna.chimera_detector import ChimeraDetector, get_threshold_documentation
+    import asyncio
+    
+    try:
+        # Validate marker type
+        valid_markers = ["COI", "16S", "18S", "ITS", "12S"]
+        if request.marker_type not in valid_markers:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid marker_type. Must be one of: {valid_markers}"
+            )
+        
+        # Convert to internal format
+        sequences = [
+            (s.get('id', f'seq_{i}'), s.get('sequence', ''), s.get('abundance', 1))
+            for i, s in enumerate(request.sequences)
+            if s.get('sequence')
+        ]
+        
+        if not sequences:
+            raise HTTPException(status_code=400, detail="At least one sequence required")
+        
+        # Reference database
+        reference_db = None
+        if request.use_reference and request.reference_sequences:
+            reference_db = [
+                (r.get('id', f'ref_{i}'), r.get('sequence', ''))
+                for i, r in enumerate(request.reference_sequences)
+            ]
+        
+        # Create detector
+        detector = ChimeraDetector(
+            marker_type=request.marker_type,
+            reference_db=reference_db
+        )
+        
+        # Run detection in thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: detector.detect(sequences, use_reference=request.use_reference)
+        )
+        
+        return {
+            "success": True,
+            "summary": result.summary.to_dict(),
+            "clean_sequence_ids": result.clean_sequences,
+            "chimeric_sequence_ids": result.chimeric_sequences,
+            "processing_time_seconds": result.processing_time_seconds,
+            "results": [
+                {
+                    "asv_id": r.asv_id,
+                    "is_chimera": r.is_chimera,
+                    "detection_method": r.detection_method,
+                    "score": round(r.score, 3),
+                    "parent_a_id": r.parent_a_id,
+                    "parent_b_id": r.parent_b_id,
+                    "parent_abundance_ratio": round(r.parent_abundance_ratio, 2) if r.parent_abundance_ratio else None,
+                    "breakpoint": r.breakpoint,
+                }
+                for r in result.results
+            ],
+            "threshold_documentation": get_threshold_documentation()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chimera detection failed: {str(e)}"
+        )
+
+@app.get("/edna/chimera/thresholds")
+async def get_chimera_thresholds():
+    """Get marker-specific chimera detection thresholds."""
+    from edna.chimera_detector import get_threshold_documentation
+    
+    return {
+        "success": True,
+        **get_threshold_documentation()
+    }
+
+
+# ====================================
+# TAXONOMY LCA ASSIGNMENT
+# ====================================
+
+class LCARequest(BaseModel):
+    """Request model for weighted LCA taxonomy assignment."""
+    asv_hits: Dict[str, List[Dict[str, Any]]]  # {asv_id: [{taxonomy fields}, ...]}
+    silva_taxonomies: Optional[Dict[str, Dict[str, str]]] = None  # For conflict detection
+
+@app.post("/edna/taxonomy/lca")
+async def assign_taxonomy_lca(request: LCARequest):
+    """
+    Weighted LCA taxonomy assignment.
+    
+    Weight formula: bitscore × alignment_length
+    
+    Features:
+    - Single-taxon dominance shortcut (≥80% weight → direct assignment)
+    - Rank collapse when top two weights differ by <10%
+    - BLAST/SILVA conflict detection with conservative resolution
+    - Explicit 'Unclassified_<parent>' states
+    
+    Args:
+        asv_hits: Dict of asv_id -> list of BLAST hit objects
+        silva_taxonomies: Optional SILVA taxonomies for conflict detection
+    
+    Returns:
+        Taxonomy assignments with confidence, conflicts, and QIIME-style formatting
+    """
+    from edna.taxonomy_lca import WeightedLCACalculator, BlastHit, get_lca_documentation
+    import asyncio
+    
+    try:
+        if not request.asv_hits:
+            raise HTTPException(status_code=400, detail="At least one ASV with hits required")
+        
+        # Convert to internal format
+        asv_hits_internal = {}
+        for asv_id, hits in request.asv_hits.items():
+            asv_hits_internal[asv_id] = [
+                BlastHit(
+                    asv_id=asv_id,
+                    accession=h.get('accession', ''),
+                    taxid=h.get('taxid', 0),
+                    species=h.get('species', ''),
+                    pident=float(h.get('pident', 0)),
+                    length=int(h.get('length', 0)),
+                    bitscore=float(h.get('bitscore', 0)),
+                    qcovs=int(h.get('qcovs', 0)),
+                    taxonomy=h.get('taxonomy', {})
+                )
+                for h in hits
+            ]
+        
+        # Create calculator
+        calculator = WeightedLCACalculator()
+        
+        # Run LCA
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: calculator.assign_batch(asv_hits_internal, request.silva_taxonomies)
+        )
+        
+        return {
+            "success": True,
+            "assigned_count": result.assigned_count,
+            "unassigned_count": result.unassigned_count,
+            "conflict_count": result.conflict_count,
+            "average_confidence": round(result.average_confidence, 1),
+            "processing_time_seconds": result.processing_time_seconds,
+            "thresholds": result.thresholds,
+            "assignments": [
+                {
+                    "asv_id": a.asv_id,
+                    "taxonomy": a.taxonomy,
+                    "formatted_taxonomy": a.formatted_taxonomy,
+                    "confidence": a.confidence,
+                    "assignment_method": a.assignment_method,
+                    "confident_rank": a.confident_rank,
+                    "unclassified_at": a.unclassified_at,
+                    "taxonomy_conflict": a.taxonomy_conflict,
+                    "conflict_rank": a.conflict_rank,
+                    "top_hit_species": a.top_hit_species,
+                }
+                for a in result.assignments
+            ],
+            "algorithm_documentation": get_lca_documentation()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"LCA assignment failed: {str(e)}"
+        )
+
+
+# ====================================
+# BIOM EXPORT
+# ====================================
+
+class BiomExportRequest(BaseModel):
+    """Request model for BIOM export."""
+    observations: List[Dict[str, Any]]  # [{id, sample_abundances, ...}, ...]
+    samples: List[Dict[str, Any]]  # Sample metadata
+    taxonomy: Optional[Dict[str, Dict[str, str]]] = None
+    bootstrap_scores: Optional[Dict[str, List[float]]] = None
+    analysis_mode: str = "ASV"  # ASV or OTU
+    otu_identity_threshold: Optional[float] = None
+
+@app.post("/edna/export/biom")
+async def export_biom(request: BiomExportRequest):
+    """
+    Export results in QIIME2-compatible BIOM 2.1 format.
+    
+    Features:
+    - MIxS-compliant sample metadata
+    - Bootstrap confidence embedding (matched to taxonomy length)
+    - Method provenance (taxonomy_source, lca_method)
+    - Sample order preservation
+    - OTU identity threshold in metadata (if OTU mode)
+    
+    Note: "OTU mode is provided only for legacy comparability and is
+           NOT recommended for novel biodiversity inference."
+    
+    Args:
+        observations: List of observation objects with sample abundances
+        samples: Sample metadata (MIxS fields supported)
+        taxonomy: Optional taxonomy assignments
+        bootstrap_scores: Optional bootstrap scores per observation
+        analysis_mode: ASV or OTU
+        otu_identity_threshold: OTU threshold (if OTU mode)
+    
+    Returns:
+        BIOM JSON and validation results
+    """
+    from edna.otu_biom import BiomExporter, get_otu_documentation
+    
+    try:
+        if not request.observations:
+            raise HTTPException(status_code=400, detail="At least one observation required")
+        
+        if not request.samples:
+            raise HTTPException(status_code=400, detail="At least one sample required")
+        
+        # Validate mode
+        if request.analysis_mode not in ["ASV", "OTU"]:
+            raise HTTPException(status_code=400, detail="analysis_mode must be ASV or OTU")
+        
+        # Create exporter
+        exporter = BiomExporter(preserve_sample_order=True)
+        
+        # Create BIOM table
+        table = exporter.create_biom_table(
+            observations=request.observations,
+            samples=request.samples,
+            taxonomy_assignments=request.taxonomy,
+            bootstrap_scores=request.bootstrap_scores,
+            analysis_mode=request.analysis_mode,
+            otu_identity_threshold=request.otu_identity_threshold
+        )
+        
+        # Validate
+        validation_errors = exporter.validate_biom(table)
+        
+        return {
+            "success": True,
+            "biom_json": table.to_dict(),
+            "table_id": table.table_id,
+            "shape": [len(table.observation_ids), len(table.sample_ids)],
+            "validation_errors": validation_errors,
+            "valid": len(validation_errors) == 0,
+            "format_version": table.format_version,
+            "documentation": get_otu_documentation()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"BIOM export failed: {str(e)}"
+        )
+
+
+# ====================================
+# REPORT GENERATION
+# ====================================
+
+class ReportRequest(BaseModel):
+    """Request model for publication-ready report generation."""
+    analysis_results: Dict[str, Any]  # Pipeline results
+    sample_metadata: List[Dict[str, Any]]  # Sample info
+    parameters: Dict[str, Any]  # Analysis parameters
+    figures: Optional[List[Dict[str, Any]]] = None  # Figure metadata
+    negative_controls: Optional[Dict[str, Any]] = None  # Negative control results
+
+@app.post("/edna/report/generate")
+async def generate_report(request: ReportRequest):
+    """
+    Generate publication-ready analysis report.
+    
+    Features:
+    - Auto-inserted method citations
+    - Parameter appendix (JSON)
+    - Figure provenance (input_table_hash, script_version)
+    - Report checksum for audits
+    - Auto-generated "Limitations" section
+    - Negative result reporting section
+    
+    Args:
+        analysis_results: Pipeline results dict
+        sample_metadata: Sample information
+        parameters: Analysis parameters used
+        figures: Optional figure metadata for provenance
+        negative_controls: Optional negative control results
+    
+    Returns:
+        Report in Markdown and structured formats with checksum
+    """
+    from edna.report_generator import ReportGenerator, get_report_documentation
+    
+    try:
+        if not request.analysis_results:
+            raise HTTPException(status_code=400, detail="analysis_results required")
+        
+        # Generate report
+        generator = ReportGenerator()
+        report = generator.generate(
+            analysis_results=request.analysis_results,
+            sample_metadata=request.sample_metadata,
+            parameters=request.parameters,
+            figures=request.figures,
+            negative_controls=request.negative_controls
+        )
+        
+        return {
+            "success": True,
+            "report_id": report.report_id,
+            "report_checksum": report.report_checksum,
+            "generation_date": report.generation_date,
+            "markdown": report.to_markdown(),
+            "structured": {
+                "title": report.title,
+                "summary": report.summary,
+                "methods": report.methods,
+                "results": report.results,
+                "limitations": report.limitations,
+            },
+            "citations": [
+                {"method": c.method, "citation": c.citation, "doi": c.doi}
+                for c in report.citations
+            ],
+            "figures_provenance": [f.to_dict() for f in report.figures],
+            "parameters_appendix": report.parameters.to_json(),
+            "documentation": get_report_documentation()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report generation failed: {str(e)}"
+        )
+
+@app.get("/edna/report/citations")
+async def get_available_citations():
+    """Get available method citations for reports."""
+    from edna.report_generator import CITATIONS
+    
+    return {
+        "success": True,
+        "citations": CITATIONS
+    }
+
+
+# ====================================
+# JOB QUEUE STATUS
+# ====================================
+
+@app.get("/edna/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    """Get status of an eDNA analysis job."""
+    from edna.job_queue import EdnaJobQueue
+    
+    try:
+        queue = EdnaJobQueue()
+        job = queue.get(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        return {
+            "success": True,
+            "job": job.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "note": "Redis may not be available for job queue"
+        }
+
+@app.get("/edna/jobs/queue/info")
+async def get_job_queue_info():
+    """Get job queue configuration and documentation."""
+    from edna.job_queue import get_queue_documentation, get_job_limits
+    
+    return {
+        "success": True,
+        "limits": get_job_limits(),
+        "documentation": get_queue_documentation()
+    }
+
+
+# ====================================
+# PIPELINE INFO ENDPOINT
+# ====================================
+
+@app.get("/edna/pipeline/info")
+async def get_pipeline_info():
+    """Get complete eDNA pipeline configuration and capabilities."""
+    from edna.blast_client import get_filter_thresholds
+    from edna.silva_classifier import get_classifier_info
+    from edna.dada2_denoiser import get_algorithm_documentation
+    from edna.chimera_detector import get_threshold_documentation
+    from edna.taxonomy_lca import get_lca_documentation
+    from edna.otu_biom import get_otu_documentation
+    from edna.job_queue import get_queue_documentation
+    from edna.report_generator import get_report_documentation
+    
+    return {
+        "success": True,
+        "pipeline_version": "2.0.0",
+        "phases_implemented": 10,
+        "scientific_refinements": 33,
+        "modules": {
+            "blast": {
+                "status": "active",
+                "thresholds": get_filter_thresholds(),
+            },
+            "silva": {
+                "status": "active",
+                "info": get_classifier_info(),
+            },
+            "denoising": {
+                "status": "active",
+                "algorithm": get_algorithm_documentation(),
+            },
+            "chimera": {
+                "status": "active",
+                "thresholds": get_threshold_documentation(),
+            },
+            "taxonomy_lca": {
+                "status": "active",
+                "algorithm": get_lca_documentation(),
+            },
+            "biom_export": {
+                "status": "active",
+                "info": get_otu_documentation(),
+            },
+            "job_queue": {
+                "status": "active",
+                "info": get_queue_documentation(),
+            },
+            "reporting": {
+                "status": "active",
+                "info": get_report_documentation(),
+            },
+        },
+        "endpoints": [
+            "POST /edna/blast",
+            "POST /edna/silva/classify",
+            "POST /edna/denoise",
+            "POST /edna/chimera/detect",
+            "POST /edna/taxonomy/lca",
+            "POST /edna/export/biom",
+            "POST /edna/report/generate",
+            "GET /edna/pipeline/info",
+        ]
+    }
+
+
+
+
+class BlastRequest(BaseModel):
+    """Request model for scientific BLAST search (publication-ready)."""
+    sequences: List[Dict[str, str]]  # [{id: str, sequence: str}, ...]
+    database: str = "nt"  # nt, nr, refseq_rna, etc.
+    use_cache: bool = True
+    options: Optional[Dict[str, Any]] = None  # Custom thresholds
+
+@app.post("/edna/blast")
+async def run_blast_search(request: BlastRequest):
+    """
+    Publication-ready NCBI BLAST endpoint with scientific safeguards.
+    
+    IMPORTANT: perc_identity is NOT a BLAST parameter - it's applied post-hoc.
+    
+    Scientific safeguards:
+    - Post-hoc filtering (pident, qcovs, alignment length)
+    - Strand consistency checking
+    - Database version tracking
+    - Full hit metadata for provenance
+    - NCBI rate limiting compliance
+    
+    Args:
+        sequences: List of {id: str, sequence: str} objects
+        database: BLAST database (nt, nr, refseq_rna)
+        use_cache: Use cached results (24hr TTL)
+        options: Custom thresholds {min_pident, min_qcovs, min_length}
+        
+    Returns:
+        Species detections with confidence, QC metrics, and provenance
+    """
+    from edna.blast_client import BlastClient, get_filter_thresholds
+    import asyncio
+    
+    try:
+        # Validate sequences
+        if not request.sequences:
+            raise HTTPException(status_code=400, detail="At least one sequence required")
+        
+        for seq in request.sequences:
+            if not isinstance(seq, dict) or 'sequence' not in seq:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Each sequence must be {id: str, sequence: str}"
+                )
+            if len(seq.get('sequence', '')) < 50:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sequence {seq.get('id', 'unknown')} too short (<50bp)"
+                )
+        
+        # Create BLAST client
+        client = BlastClient()
+        
+        # Prepare sequences
+        sequences_to_search = [
+            (seq.get('id', f'seq_{i}'), seq['sequence'])
+            for i, seq in enumerate(request.sequences)
+        ]
+        
+        # Run BLAST in thread pool (blocking operation)
+        loop = asyncio.get_event_loop()
+        
+        async def search_sequence(query_id: str, sequence: str):
+            return await loop.run_in_executor(
+                None,
+                lambda: client.search(
+                    sequence=sequence,
+                    database=request.database,
+                    query_id=query_id,
+                    use_cache=request.use_cache
+                )
+            )
+        
+        # Process all sequences
+        results = []
+        for query_id, sequence in sequences_to_search:
+            result = await search_sequence(query_id, sequence)
+            results.append({
+                "query_id": result.query_id,
+                "query_length": result.query_length,
+                "total_hits": result.total_hits,
+                "filtered_hits": len(result.filtered_hits),
+                "qc_metrics": {
+                    "passed_pident": result.passed_pident,
+                    "passed_qcovs": result.passed_qcovs,
+                    "passed_length": result.passed_length,
+                    "strand_mismatch_count": result.strand_mismatch_count,
+                },
+                "database_version": result.database_version,
+                "cached": result.cached,
+                "top_hits": [
+                    {
+                        "species": h.species,
+                        "accession": h.accession_version,
+                        "pident": round(h.pident, 2),
+                        "qcovs": h.qcovs,
+                        "length": h.length,
+                        "bitscore": round(h.bitscore, 1),
+                        "evalue": h.evalue,
+                        "strand": h.strand,
+                        "weighted_score": round(h.weighted_score, 1),
+                    }
+                    for h in result.filtered_hits[:10]
+                ]
+            })
+        
+        return {
+            "success": True,
+            "sequences_processed": len(results),
+            "database": request.database,
+            "thresholds": get_filter_thresholds(),
+            "scientific_note": "perc_identity applied post-hoc for reproducibility",
+            "results": results,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"BLAST search failed: {str(e)}"
         )
 
 

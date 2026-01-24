@@ -1,7 +1,7 @@
 /**
- * NOAA Data Transformer for Marlin
+ * NOAA Data Transformer for Merlin
  * 
- * Transforms NOAA fisheries survey data into Marlin's expected schema.
+ * Transforms NOAA fisheries survey data into Merlin's expected schema.
  * 
  * Usage: npx ts-node scripts/transform-noaa-data.ts
  */
@@ -23,7 +23,7 @@ const SELECTED_SPECIES = [
     'Homarus americanus',     // American lobster
 ];
 
-// NOAA maturity code mapping to Marlin format
+// NOAA maturity code mapping to Merlin format
 const MATURITY_MAP: Record<string, string> = {
     'I': 'immature',
     'T': 'maturing',      // Transitional → maturing
@@ -141,7 +141,7 @@ function convertLongitude(noaaLon: number): number {
 // INTERFACES
 // ============================================================
 
-interface MarlinCatchRecord {
+interface MerlinCatchRecord {
     date: string;
     species: string;
     catch: number;      // kg
@@ -155,7 +155,7 @@ interface MarlinCatchRecord {
     };
 }
 
-interface MarlinLengthRecord {
+interface MerlinLengthRecord {
     date: string;
     species: string;
     length: number;     // cm
@@ -243,10 +243,10 @@ function loadStationData(): Map<string, StationData> {
 // ============================================================
 
 /**
- * Transform SVCAT (catch data) into Marlin CPUE format
+ * Transform SVCAT (catch data) into Merlin CPUE format
  * Joins with SVSTA station data to get lat/lon/depth
  */
-function transformCatchData(): MarlinCatchRecord[] {
+function transformCatchData(): MerlinCatchRecord[] {
     console.log('\n📊 Transforming SVCAT (Catch Data)...');
 
     if (!fs.existsSync(SVCAT_FILE)) {
@@ -273,7 +273,7 @@ function transformCatchData(): MarlinCatchRecord[] {
 
     console.log(`  📋 Columns: CRUISE6=${colIndex.CRUISE6}, TOW=${colIndex.TOW}, STATION=${colIndex.STATION}, EXPCATCHWT=${colIndex.EXPCATCHWT}`);
 
-    const records: MarlinCatchRecord[] = [];
+    const records: MerlinCatchRecord[] = [];
     const speciesCounts: Record<string, number> = {};
     let totalRows = 0;
     let filteredRows = 0;
@@ -338,9 +338,9 @@ function transformCatchData(): MarlinCatchRecord[] {
 }
 
 /**
- * Transform SVLEN (length frequency data) into Marlin format
+ * Transform SVLEN (length frequency data) into Merlin format
  */
-function transformLengthData(): MarlinLengthRecord[] {
+function transformLengthData(): MerlinLengthRecord[] {
     console.log('\n📏 Transforming SVLEN (Length Frequency Data)...');
 
     if (!fs.existsSync(SVLEN_FILE)) {
@@ -362,7 +362,7 @@ function transformLengthData(): MarlinLengthRecord[] {
 
     console.log(`  📋 Columns found: CRUISE6=${colIndex.CRUISE6}, LENGTH=${colIndex.LENGTH}, EXPNUMLEN=${colIndex.EXPNUMLEN}, SCIENTIFIC_NAME=${colIndex.SCIENTIFIC_NAME}`);
 
-    const records: MarlinLengthRecord[] = [];
+    const records: MerlinLengthRecord[] = [];
     const speciesCounts: Record<string, number> = {};
     let totalRows = 0;
     let filteredRows = 0;
@@ -404,9 +404,9 @@ function transformLengthData(): MarlinLengthRecord[] {
 }
 
 /**
- * Transform SVBIO (biological data) into Marlin format
+ * Transform SVBIO (biological data) into Merlin format
  */
-function transformBioData(): MarlinLengthRecord[] {
+function transformBioData(): MerlinLengthRecord[] {
     console.log('\n🧬 Transforming SVBIO (Biological Data)...');
 
     if (!fs.existsSync(SVBIO_FILE)) {
@@ -435,7 +435,7 @@ function transformBioData(): MarlinLengthRecord[] {
     // For simplicity, we'll include all records and filter by species code later
     // Or we can load the species lookup from the sample data
 
-    const records: MarlinLengthRecord[] = [];
+    const records: MerlinLengthRecord[] = [];
     let totalRows = 0;
 
     // Known NOAA species codes for our selected species
@@ -535,7 +535,7 @@ function writeCSV(filename: string, data: any[], headers: string[]) {
 // ============================================================
 
 async function main() {
-    console.log('🚀 NOAA Data Transformer for Marlin');
+    console.log('🚀 NOAA Data Transformer for Merlin');
     console.log('====================================');
     console.log(`📍 Input directory: ${INPUT_DIR}`);
     console.log(`📍 Output directory: ${OUTPUT_DIR}`);

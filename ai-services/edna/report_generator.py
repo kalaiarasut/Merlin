@@ -14,7 +14,7 @@ Features:
 - Version tracking
 - Reproducibility documentation
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

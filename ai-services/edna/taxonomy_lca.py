@@ -14,7 +14,7 @@ Scientific Features:
 - Conservative rank assignment
 - Full provenance tracking
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

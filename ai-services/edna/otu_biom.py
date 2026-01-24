@@ -13,7 +13,7 @@ OTU Mode Note:
 "OTU mode is provided only for legacy comparability and is
  NOT recommended for novel biodiversity inference."
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os
@@ -94,7 +94,7 @@ class BiomTable:
     table_id: str
     table_type: str = "OTU table"
     format_version: str = "2.1"
-    generated_by: str = "CMLRE-Marlin-eDNA"
+    generated_by: str = "CMLRE-Merlin-eDNA"
     creation_date: str = ""
     
     def to_dict(self) -> Dict:

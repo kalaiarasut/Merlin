@@ -105,7 +105,7 @@ A comprehensive AI-enabled digital platform that:
 ## Project Structure
 
 ```
-Marlin/
+Merlin/
 ├── frontend/                 # React + Vite + TypeScript application
 │   ├── src/
 │   │   ├── components/       # UI components (Header, Sidebar, FloatingAIChat, etc.)
@@ -307,7 +307,7 @@ Marlin/
 
 ```powershell
 # Clone and navigate to project
-cd Marlin
+cd Merlin
 
 # Install frontend dependencies
 cd frontend

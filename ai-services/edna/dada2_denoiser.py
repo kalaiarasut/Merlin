@@ -15,7 +15,7 @@ Algorithm Deviations from DADA2:
 - Implements similar quality-aware denoising principles
 - Results should be validated against DADA2 reference
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

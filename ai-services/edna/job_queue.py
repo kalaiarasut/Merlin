@@ -14,7 +14,7 @@ Features:
 - Progress tracking
 - Automatic retry with backoff
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

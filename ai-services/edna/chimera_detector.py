@@ -13,7 +13,7 @@ Threshold Justification:
 "Thresholds were chosen based on published marine eDNA benchmarks
  and validated against synthetic chimeras."
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

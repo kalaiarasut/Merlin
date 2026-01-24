@@ -100,7 +100,7 @@ const wormsClient: AxiosInstance = axios.create({
     timeout: 15000,
     headers: {
         'Accept': 'application/json',
-        'User-Agent': 'CMLRE-Marlin/1.0 (Marine Data Platform; contact@cmlre.gov.in)',
+        'User-Agent': 'CMLRE-Merlin/1.0 (Marine Data Platform; contact@cmlre.gov.in)',
     },
 });
 

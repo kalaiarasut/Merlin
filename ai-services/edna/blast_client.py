@@ -15,7 +15,7 @@ Scientific Compliance:
 - Results cached to avoid NCBI policy violations
 - Full hit metadata preserved for provenance
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os
@@ -57,7 +57,7 @@ MIN_ALIGNMENT_LENGTH = 100     # bp - prevents short spurious hits
 REQUIRE_CONSISTENT_STRAND = True
 
 # NCBI compliance
-NCBI_TOOL_NAME = "CMLRE-Marlin-eDNA"
+NCBI_TOOL_NAME = "CMLRE-Merlin-eDNA"
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL", "")
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
 

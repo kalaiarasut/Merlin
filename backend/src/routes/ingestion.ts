@@ -355,7 +355,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
               history: [{
                 action: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validate' : 'approve',
                 userId: 'system',
-                userName: 'Marlin AI System',
+                userName: 'Merlin AI System',
                 timestamp: new Date(),
                 comment: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD
                   ? `Auto-validated by AI (Confidence ${Math.round(metadataResult.confidence * 100)}% >= ${Math.round(AUTO_VALIDATION_THRESHOLD * 100)}%)`
@@ -637,7 +637,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
             history: [{
               action: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD ? 'auto-validate' : 'approve',
               userId: 'system',
-              userName: 'Marlin AI System',
+              userName: 'Merlin AI System',
               timestamp: new Date(),
               comment: metadataResult.confidence >= AUTO_VALIDATION_THRESHOLD
                 ? `Auto-validated by AI (Confidence ${Math.round(metadataResult.confidence * 100)}% >= ${Math.round(AUTO_VALIDATION_THRESHOLD * 100)}%)`

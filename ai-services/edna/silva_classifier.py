@@ -14,7 +14,7 @@ Scientific Compliance:
    sequences and are NOT trained on user data."
 - k-mers extracted with stride=1, overlapping allowed
 
-Author: CMLRE Marlin Platform
+Author: CMLRE Merlin Platform
 """
 
 import os

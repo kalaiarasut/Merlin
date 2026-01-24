@@ -1,7 +1,7 @@
 /**
  * Institute Model - Multi-Institute Governance
  * 
- * Represents research institutions that use the Marlin platform.
+ * Represents research institutions that use the Merlin platform.
  * Each institute has isolated data access and can collaborate via MOUs.
  */
 

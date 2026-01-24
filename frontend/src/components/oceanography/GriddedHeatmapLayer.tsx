@@ -23,7 +23,18 @@ interface GriddedHeatmapLayerProps {
     visible?: boolean;
     minValue?: number;
     maxValue?: number;
+    zoomLevel?: number;  // Current map zoom level for resolution control
 }
+
+// Soft/Hard parameter ranges for stable color scaling
+// - softMin/softMax: Used for color scale normalization
+// - hardMin/hardMax: Values outside are clamped
+const PARAMETER_RANGES: Record<string, { softMin: number; softMax: number; hardMin: number; hardMax: number; useLogScale?: boolean }> = {
+    temperature: { softMin: 20, softMax: 32, hardMin: -2, hardMax: 40 },
+    salinity: { softMin: 32, softMax: 38, hardMin: 0, hardMax: 42 },
+    // Chlorophyll uses log10 scale: log10(0.01) = -2, log10(10) = 1
+    chlorophyll: { softMin: -2, softMax: 1, hardMin: -3, hardMax: 2, useLogScale: true },
+};
 
 // Color scales for different parameters
 const colorScales: Record<string, { stops: [number, string][] }> = {
@@ -62,9 +73,21 @@ const colorScales: Record<string, { stops: [number, string][] }> = {
 
 /**
  * Interpolate color from a color scale
+ * Supports log transform for chlorophyll
  */
-function getColorForValue(value: number, min: number, max: number, parameter: string): string {
-    const normalized = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+function getColorForValue(
+    value: number,
+    min: number,
+    max: number,
+    parameter: string,
+    useLogScale: boolean = false
+): string {
+    // Apply log transform if needed (for chlorophyll)
+    const transformedValue = useLogScale ? Math.log10(Math.max(value, 0.001)) : value;
+    const transformedMin = useLogScale ? Math.log10(Math.max(min, 0.001)) : min;
+    const transformedMax = useLogScale ? Math.log10(Math.max(max, 0.001)) : max;
+
+    const normalized = Math.max(0, Math.min(1, (transformedValue - transformedMin) / (transformedMax - transformedMin || 1)));
     const scale = colorScales[parameter] || colorScales.temperature;
     const stops = scale.stops;
 
@@ -145,20 +168,29 @@ export function GriddedHeatmapLayer({
     visible = true,
     minValue,
     maxValue,
+    zoomLevel = 5,
 }: GriddedHeatmapLayerProps) {
     const map = useMap();
     const overlayRef = useRef<L.ImageOverlay | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [, setUpdateTrigger] = useState(0);
 
+    // Check if zoom level allows gridded heatmap
+    const isZoomSufficient = zoomLevel >= 4;
+
     useEffect(() => {
-        if (!visible || data.length === 0) {
+        // Disable at low zoom levels
+        if (!visible || data.length === 0 || !isZoomSufficient) {
             if (overlayRef.current) {
                 map.removeLayer(overlayRef.current);
                 overlayRef.current = null;
             }
             return;
         }
+
+        // Get parameter range settings
+        const paramRange = PARAMETER_RANGES[parameter] || PARAMETER_RANGES.temperature;
+        const useLogScale = paramRange.useLogScale || false;
 
         // Calculate bounds from data
         const lats = data.map(p => p.latitude);
@@ -168,10 +200,11 @@ export function GriddedHeatmapLayer({
         const minLon = Math.min(...lons);
         const maxLon = Math.max(...lons);
 
-        // Calculate value range
+        // Use FIXED soft ranges for stable color scaling (no zoom flicker)
+        // Values outside soft range are clamped to hard range
         const values = data.map(p => p.value).filter(v => v !== null && !isNaN(v));
-        const min = minValue ?? Math.min(...values);
-        const max = maxValue ?? Math.max(...values);
+        const min = minValue ?? paramRange.softMin;
+        const max = maxValue ?? paramRange.softMax;
 
         // Estimate grid cell size
         const { latStep, lonStep } = estimateGridCellSize(data);
@@ -198,37 +231,50 @@ export function GriddedHeatmapLayer({
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Create a lookup map for quick data access
-        const dataMap = new Map<string, number>();
+        // ============================================================
+        // GRID-INDEX BASED ASSIGNMENT (scientifically correct approach)
+        // Each data point belongs to exactly one grid cell.
+        // No distance-based spreading or interpolation.
+        // ============================================================
+
+        // Step 1: Create sparse grid - snap each data point to its grid cell
+        // Key: "i,j" (grid indices), Value: observation value
+        const gridData = new Map<string, number>();
+
         data.forEach(point => {
-            const key = `${point.latitude.toFixed(4)},${point.longitude.toFixed(4)}`;
-            dataMap.set(key, point.value);
+            // Snap to grid indices (which cell does this observation belong to?)
+            const i = Math.round((point.longitude - minLon) / lonStep);
+            const j = Math.round((maxLat - point.latitude) / latStep); // Flip Y axis
+
+            // Validate indices are within bounds
+            if (i >= 0 && i < gridWidth && j >= 0 && j < gridHeight) {
+                const key = `${i},${j}`;
+                // If multiple points map to same cell, keep the first (or could average)
+                if (!gridData.has(key)) {
+                    gridData.set(key, point.value);
+                }
+            }
         });
 
         // Cell size in pixels
         const cellWidth = canvas.width / gridWidth;
         const cellHeight = canvas.height / gridHeight;
 
-        // Render grid cells
+        // Step 2: Render ALL grid cells, but color only those with values
         for (let i = 0; i < gridWidth; i++) {
             for (let j = 0; j < gridHeight; j++) {
-                const lon = minLon + i * lonStep;
-                const lat = maxLat - j * latStep; // Flip Y axis
+                const key = `${i},${j}`;
+                const cellValue = gridData.get(key);
 
-                // Find nearest data point
-                let nearestValue: number | null = null;
-                let nearestDist = Infinity;
-
-                for (const point of data) {
-                    const dist = Math.abs(point.latitude - lat) + Math.abs(point.longitude - lon);
-                    if (dist < nearestDist && dist < (latStep + lonStep)) {
-                        nearestDist = dist;
-                        nearestValue = point.value;
-                    }
-                }
-
-                if (nearestValue !== null && !isNaN(nearestValue)) {
-                    const color = getColorForValue(nearestValue, min, max, parameter);
+                // Only render cells with actual observations
+                // Empty cells remain transparent (no interpolation)
+                if (cellValue !== undefined && cellValue !== null && !isNaN(cellValue)) {
+                    // Clamp to hard range to prevent outlier distortion
+                    const clampedValue = Math.max(
+                        paramRange.hardMin,
+                        Math.min(paramRange.hardMax, cellValue)
+                    );
+                    const color = getColorForValue(clampedValue, min, max, parameter, useLogScale);
                     ctx.fillStyle = color;
                     ctx.fillRect(
                         Math.floor(i * cellWidth),
@@ -237,6 +283,7 @@ export function GriddedHeatmapLayer({
                         Math.ceil(cellHeight) + 1
                     );
                 }
+                // Cells without observations remain transparent
             }
         }
 
@@ -269,7 +316,7 @@ export function GriddedHeatmapLayer({
                 overlayRef.current = null;
             }
         };
-    }, [map, data, parameter, opacity, visible, minValue, maxValue]);
+    }, [map, data, parameter, opacity, visible, minValue, maxValue, isZoomSufficient]);
 
     // Update on map move/zoom
     useEffect(() => {

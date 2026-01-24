@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { oceanographyService } from '@/services/api';
 import { erddapService, ERDDAPDataPoint } from '@/services/erddapService';
+import { copernicusService } from '@/services/copernicusService';
 
 import {
   DataSourceBadge,
@@ -17,6 +18,7 @@ import {
   GriddedHeatmapLayer,
   LayerControl,
   NASAOceanColorLayer,
+  ArgoFloatLayer,
   DataSourceMode,
   VisibleLayer,
   TemporalAnimationControl,
@@ -65,10 +67,38 @@ const getParameterColor = (param: string, value: number) => {
     if (num < 35) return '#3b82f6';
     return '#1d4ed8';
   }
-  if (param === 'pH') {
-    if (num < 7.8) return '#fbbf24';
-    if (num < 8.1) return '#22c55e';
-    return '#16a34a';
+  // Chlorophyll log-scale color (0.01-50 mg/m³ range, log-distributed)
+  // Standard ocean color palette: Blue → Green → Yellow → Orange → Red
+  if (param === 'chlorophyll') {
+    // Apply log10 scaling for better visualization of orders of magnitude
+    const logVal = num > 0.01 ? Math.log10(num) : -2; // log10(0.01) = -2
+    // Map log range [-2, 1.7] (0.01 to 50) to color scale
+    // -2 = oligotrophic (blue), -0.5 = ~0.3 mg/m³ (green), 0.5 = ~3 mg/m³ (yellow), 1.5 = ~30 mg/m³ (red)
+    if (logVal < -1) return '#3b82f6';    // Blue - very low (oligotrophic)
+    if (logVal < -0.3) return '#06b6d4';  // Cyan - low
+    if (logVal < 0) return '#22c55e';     // Green - moderate (~0.5-1 mg/m³)
+    if (logVal < 0.5) return '#84cc16';   // Lime - mesotrophic
+    if (logVal < 1) return '#eab308';     // Yellow - productive
+    if (logVal < 1.3) return '#f97316';   // Orange - high bloom
+    return '#ef4444';                      // Red - extreme bloom (>20 mg/m³)
+  }
+  // pH color scale - perceptually uniform palette (orange → teal → blue)
+  // Tight range for surface ocean: 7.95-8.15
+  if (param === 'pH' || param === 'ph') {
+    if (num < 7.9) return '#ef4444';      // Red - acidifying (warning)
+    if (num < 7.98) return '#fb923c';     // Light orange - low end
+    if (num < 8.03) return '#fbbf24';     // Amber - below normal
+    if (num < 8.08) return '#14b8a6';     // Teal - normal (~8.05)
+    if (num < 8.12) return '#06b6d4';     // Cyan - slightly alkaline
+    return '#3b82f6';                      // Blue - alkaline
+  }
+  // Dissolved Oxygen color scale (4-8 mg/L typical range)
+  if (param === 'dissolved_oxygen') {
+    if (num < 4) return '#ef4444';       // Red - hypoxic (warning)
+    if (num < 5) return '#f97316';       // Orange - low
+    if (num < 6) return '#fbbf24';       // Amber - marginal
+    if (num < 7) return '#22c55e';       // Green - good
+    return '#3b82f6';                     // Blue - excellent
   }
   return '#0ea5e9';
 };
@@ -255,6 +285,31 @@ export default function OceanographyViewer() {
     },
     enabled: selectedParameter === 'fisheries_cpue',
     staleTime: 1000 * 60 * 10, // 10 min cache for faster re-navigation
+    refetchOnWindowFocus: false,
+  });
+
+  // NEW: Fetch Copernicus data for DO and pH (modeled biogeochemical data)
+  const { data: copernicusData, isLoading: copernicusLoading, refetch: refetchCopernicus } = useQuery({
+    queryKey: ['copernicus-data', selectedParameter, zoomLevel],
+    queryFn: async () => {
+      const stride = getStrideForZoom(zoomLevel);
+      const result = await copernicusService.fetchByParameter(selectedParameter, {
+        stride,
+        depth: 0, // Surface only (0-5m) per implementation plan
+      });
+      // Limit data points for performance
+      const maxPoints = zoomLevel >= 7 ? 1000 : 500;
+      const totalFetched = result.data?.length || 0;
+      if (result.data && result.data.length > maxPoints) {
+        result.data = result.data.slice(0, maxPoints);
+      }
+      // Add metadata
+      (result as any).totalFetched = totalFetched;
+      (result as any).stride = stride;
+      return result;
+    },
+    enabled: dataSourceMode === 'erddap' && (selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH'),
+    staleTime: 1000 * 60 * 60, // 1 hour cache (monthly data)
     refetchOnWindowFocus: false,
   });
 
@@ -605,8 +660,24 @@ export default function OceanographyViewer() {
                     parameter={selectedParameter as 'temperature' | 'salinity' | 'chlorophyll'}
                     opacity={0.75}
                     visible={true}
+                    zoomLevel={zoomLevel}
                   />
                 )}
+
+                {/* Argo BGC Float Layer - In-situ observations */}
+                <ArgoFloatLayer
+                  visible={visibleLayers.includes('argo_bgc')}
+                  bounds={{
+                    latMin: -15,
+                    latMax: 25,
+                    lonMin: 50,
+                    lonMax: 100,
+                  }}
+                  onFloatClick={(floatId) => {
+                    console.log('Clicked float:', floatId);
+                    // Could open a detailed profile modal here
+                  }}
+                />
 
                 {/* ERDDAP Real Data Markers */}
                 {dataSourceMode === 'erddap' && visibleLayers.includes('markers') && erddapData?.data?.map((point, idx) => (
@@ -640,6 +711,42 @@ export default function OceanographyViewer() {
                     </Tooltip>
                   </CircleMarker>
                 ))}
+
+                {/* Copernicus Data Markers for DO/pH (Modeled Data) */}
+                {dataSourceMode === 'erddap' && visibleLayers.includes('markers') &&
+                  (selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') &&
+                  copernicusData?.data?.map((point: any, idx: number) => (
+                    <CircleMarker
+                      key={`copernicus-${idx}`}
+                      center={[point.latitude, point.longitude]}
+                      radius={5}
+                      pathOptions={{
+                        fillColor: getParameterColor(selectedParameter, point.value),
+                        fillOpacity: 0.8,
+                        color: '#fff',
+                        weight: 1
+                      }}
+                      eventHandlers={{
+                        click: () => setSelectedPoint({
+                          ...point,
+                          source: 'COPERNICUS',
+                          dataType: 'modeled',
+                        })
+                      }}
+                    >
+                      <Tooltip direction="top" offset={[0, -5]} opacity={0.95}>
+                        <div className="text-xs">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Waves className="w-3 h-3 text-purple-500" />
+                            <span className="font-semibold text-purple-600">Copernicus</span>
+                            <span className="text-[10px] text-gray-400">(Monthly mean)</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatNumber(point.value, 2)} {point.unit}</p>
+                          <p className="text-gray-500 text-[10px]">Surface (0-5m) • Modeled</p>
+                        </div>
+                      </Tooltip>
+                    </CircleMarker>
+                  ))}
 
                 {/* Database/Local Data Markers */}
                 {dataSourceMode === 'database' && visibleLayers.includes('markers') && dataPoints.map((point: any, idx: number) => (
@@ -723,8 +830,25 @@ export default function OceanographyViewer() {
               <div className="absolute top-2 left-16 z-[500]">
                 <EnhancedLegend
                   parameter={selectedParameter}
-                  unit={selectedParameter === 'temperature' ? '°C' : selectedParameter === 'salinity' ? 'PSU' : 'mg/m³'}
+                  unit={(() => {
+                    switch (selectedParameter) {
+                      case 'temperature': return '°C';
+                      case 'salinity': return 'PSU';
+                      case 'chlorophyll': return 'mg/m³';
+                      case 'dissolved_oxygen': return 'mg/L';
+                      case 'pH': return 'pH units';
+                      default: return 'mg/m³';
+                    }
+                  })()}
                   min={(() => {
+                    // Use Copernicus data for DO/pH, ERDDAP data for others
+                    if (selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') {
+                      const copernicusPoints = copernicusData?.data?.filter((p: any) => p.value != null && !isNaN(p.value)) || [];
+                      if (copernicusPoints.length > 0) {
+                        return copernicusPoints.reduce((min: number, p: any) => p.value < min ? p.value : min, copernicusPoints[0].value);
+                      }
+                      return selectedParameter === 'dissolved_oxygen' ? 4 : 7.8; // Scientific defaults
+                    }
                     const validData = erddapData?.data?.filter(p => p.value != null && !isNaN(p.value)) || [];
                     if (validData.length > 0) {
                       return validData.reduce((min, p) => p.value < min ? p.value : min, validData[0].value);
@@ -732,30 +856,60 @@ export default function OceanographyViewer() {
                     return currentStats.min_value || 0;
                   })()}
                   max={(() => {
+                    // Use Copernicus data for DO/pH, ERDDAP data for others
+                    if (selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') {
+                      const copernicusPoints = copernicusData?.data?.filter((p: any) => p.value != null && !isNaN(p.value)) || [];
+                      if (copernicusPoints.length > 0) {
+                        return copernicusPoints.reduce((max: number, p: any) => p.value > max ? p.value : max, copernicusPoints[0].value);
+                      }
+                      return selectedParameter === 'dissolved_oxygen' ? 8 : 8.3; // Scientific defaults
+                    }
                     const validData = erddapData?.data?.filter(p => p.value != null && !isNaN(p.value)) || [];
                     if (validData.length > 0) {
                       return validData.reduce((max, p) => p.value > max ? p.value : max, validData[0].value);
                     }
                     return currentStats.max_value || 100;
                   })()}
-                  colorScale={selectedParameter as 'temperature' | 'salinity' | 'chlorophyll'}
-                  source={dataSourceMode === 'erddap' ? 'NOAA_ERDDAP' : 'DATABASE'}
-                  dataType="observed"
-                  dataPoints={dataSourceMode === 'erddap' ? erddapData?.data?.length : dataPoints.length}
+                  colorScale={(() => {
+                    switch (selectedParameter) {
+                      case 'dissolved_oxygen': return 'dissolved_oxygen';
+                      case 'pH': return 'pH';
+                      default: return selectedParameter as 'temperature' | 'salinity' | 'chlorophyll';
+                    }
+                  })()}
+                  source={(selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') ? 'COPERNICUS' : dataSourceMode === 'erddap' ? 'NOAA_ERDDAP' : 'DATABASE'}
+                  dataType={(selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') ? 'modeled' : 'observed'}
+                  dataPoints={(selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') ? copernicusData?.data?.length : dataSourceMode === 'erddap' ? erddapData?.data?.length : dataPoints.length}
+                  totalGridCells={(selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH') ? 12000 : 1250000}
+                  stride={zoomLevel <= 3 ? 25 : zoomLevel <= 5 ? 10 : 5}
+                  zoomLevel={zoomLevel}
                 />
               </div>
 
-              {/* Data Source Badge */}
-              <div className="absolute top-4 right-4 z-[500]">
-                <DataSourceBadge
-                  source={dataSourceMode === 'erddap' ? 'NOAA_ERDDAP' : 'DATABASE'}
-                  dataType="observed"
-                  parameter={selectedParameter}
-                  lastUpdated={erddapData?.metadata?.lastUpdated}
-                  resolution={erddapData?.metadata?.resolution}
-                  showDetails={true}
-                />
-              </div>
+              {/* Data Source Badge - Show Copernicus for DO/pH, ERDDAP for others */}
+              {selectedParameter === 'dissolved_oxygen' || selectedParameter === 'pH' ? (
+                <div className="absolute top-4 right-4 z-[500]">
+                  <DataSourceBadge
+                    source="COPERNICUS"
+                    dataType="modeled"
+                    parameter={selectedParameter}
+                    lastUpdated={copernicusData?.metadata?.lastUpdated}
+                    resolution="0.25°"
+                    showDetails={true}
+                  />
+                </div>
+              ) : (
+                <div className="absolute top-4 right-4 z-[500]">
+                  <DataSourceBadge
+                    source={dataSourceMode === 'erddap' ? 'NOAA_ERDDAP' : 'DATABASE'}
+                    dataType="observed"
+                    parameter={selectedParameter}
+                    lastUpdated={erddapData?.metadata?.lastUpdated}
+                    resolution={erddapData?.metadata?.resolution}
+                    showDetails={true}
+                  />
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -899,6 +1053,12 @@ export default function OceanographyViewer() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Global Data Source Disclaimer */}
+          <div className="text-[10px] text-gray-400 text-center px-2 py-2 border-t border-gray-100">
+            <p>Not all parameters are satellite-derived. Some variables are provided as modeled or in-situ validated products.</p>
+            <p className="mt-1 text-gray-300">Data: E.U. Copernicus Marine Service • NOAA CoastWatch</p>
+          </div>
         </div>
       </div >
     </div >

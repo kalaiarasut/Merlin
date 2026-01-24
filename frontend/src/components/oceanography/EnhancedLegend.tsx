@@ -14,10 +14,13 @@ interface LegendProps {
     unit: string;
     min: number;
     max: number;
-    colorScale?: 'temperature' | 'salinity' | 'chlorophyll' | 'default';
+    colorScale?: 'temperature' | 'salinity' | 'chlorophyll' | 'dissolved_oxygen' | 'pH' | 'default';
     source?: DataSourceType;
     dataType?: DataType;
     dataPoints?: number;
+    totalGridCells?: number;  // Total grid cells before sampling
+    stride?: number;           // Sampling stride used
+    zoomLevel?: number;        // Current map zoom level
     className?: string;
 }
 
@@ -35,11 +38,31 @@ const colorScales = {
         { stop: 100, color: '#1e3a8a' },  // Dark blue (high)
     ],
     chlorophyll: [
-        { stop: 0, color: '#fef3c7' },    // Light yellow (low)
-        { stop: 25, color: '#84cc16' },   // Lime (low-med)
-        { stop: 50, color: '#22c55e' },   // Green (medium)
-        { stop: 75, color: '#059669' },   // Emerald (med-high)
-        { stop: 100, color: '#064e3b' },  // Dark green (high)
+        // Ocean color palette for log-distributed chlorophyll
+        { stop: 0, color: '#3b82f6' },    // Blue - oligotrophic (<0.1)
+        { stop: 15, color: '#06b6d4' },   // Cyan - low
+        { stop: 30, color: '#22c55e' },   // Green - moderate
+        { stop: 45, color: '#84cc16' },   // Lime - mesotrophic
+        { stop: 60, color: '#eab308' },   // Yellow - productive
+        { stop: 80, color: '#f97316' },   // Orange - high bloom
+        { stop: 100, color: '#ef4444' },  // Red - extreme bloom
+    ],
+    dissolved_oxygen: [
+        { stop: 0, color: '#ef4444' },    // Red (hypoxic - danger)
+        { stop: 20, color: '#f97316' },   // Orange (low)
+        { stop: 40, color: '#fbbf24' },   // Amber (marginal)
+        { stop: 60, color: '#22c55e' },   // Green (good)
+        { stop: 80, color: '#06b6d4' },   // Cyan (very good)
+        { stop: 100, color: '#3b82f6' },  // Blue (excellent)
+    ],
+    pH: [
+        // Perceptually uniform palette for tight pH range (7.95-8.15)
+        { stop: 0, color: '#ef4444' },    // Red (acidifying - warning)
+        { stop: 20, color: '#fb923c' },   // Light orange (low end)
+        { stop: 40, color: '#fbbf24' },   // Amber (below normal)
+        { stop: 60, color: '#14b8a6' },   // Teal (normal ~8.05)
+        { stop: 80, color: '#06b6d4' },   // Cyan (slightly alkaline)
+        { stop: 100, color: '#3b82f6' },  // Blue (alkaline)
     ],
     default: [
         { stop: 0, color: '#dbeafe' },
@@ -57,6 +80,9 @@ export function EnhancedLegend({
     source,
     dataType = 'observed',
     dataPoints,
+    totalGridCells,
+    stride,
+    zoomLevel,
     className,
 }: LegendProps) {
     // Generate gradient CSS
@@ -97,7 +123,7 @@ export function EnhancedLegend({
         )}>
             {/* Header */}
             <div className="flex items-center justify-between gap-2 mb-2">
-                <h4 className="text-sm font-semibold text-gray-700 capitalize">
+                <h4 className="text-sm font-semibold text-gray-700">
                     {getParameterLabel(parameter)}
                 </h4>
                 {source && (
@@ -123,10 +149,29 @@ export function EnhancedLegend({
                 <span>{formatValue(max)} {unit}</span>
             </div>
 
-            {/* Data Points Count */}
+            {/* Data Points Count with Sampling Info */}
             {dataPoints !== undefined && (
-                <div className="text-xs text-gray-400 border-t pt-1.5 mt-1.5">
-                    {dataPoints.toLocaleString()} data points
+                <div className="text-xs text-gray-600 border-t pt-1.5 mt-1.5">
+                    {totalGridCells ? (
+                        <>
+                            <span>Showing {dataPoints.toLocaleString()} of ~{totalGridCells.toLocaleString()} grid cells</span>
+                            {(zoomLevel !== undefined || stride) && (
+                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                    {zoomLevel !== undefined && `Zoom: ${zoomLevel}`}
+                                    {zoomLevel !== undefined && stride && stride > 1 && ' • '}
+                                    {stride && stride > 1 && `Stride: ${stride}x (sampled)`}
+                                </span>
+                            )}
+                            {/* Data availability warning when coverage < 5% */}
+                            {dataPoints < totalGridCells * 0.05 && (
+                                <span className="block text-[10px] text-amber-500 mt-1">
+                                    ⚠ Limited valid observations for this region
+                                </span>
+                            )}
+                        </>
+                    ) : (
+                        <span>{dataPoints.toLocaleString()} data points</span>
+                    )}
                 </div>
             )}
         </div>

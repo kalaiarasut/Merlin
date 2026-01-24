@@ -3017,6 +3017,8 @@ class NicheModelRequest(BaseModel):
     environmental_variables: Optional[List[str]] = None
     model_type: str = "maxent"  # maxent, bioclim, gower
     prediction_resolution: float = 0.5  # Grid resolution in degrees
+    n_background: int = 10000  # Number of background points (scientifically valid: 5000-10000)
+    study_area: str = "arabian_sea"  # Study area key: arabian_sea, bay_of_bengal, indian_ocean
 
 
 @app.post("/model-niche")
@@ -3064,16 +3066,18 @@ async def model_niche(request: NicheModelRequest):
                 detail="At least 5 occurrence records with valid coordinates required"
             )
         
-        # Fit model
+        # Fit model with true background sampling
         model_result = modeler.fit(
             coordinates=coordinates,
             species_name=species_name,
             env_variables=request.environmental_variables,
-            method=request.model_type
+            method=request.model_type,
+            n_background=request.n_background,
+            study_area=request.study_area
         )
         
         # Generate predictions for study area
-        predictions = modeler.predict_suitability(
+        predictions = modeler.predict_suitability_grid(
             model_result,
             resolution=request.prediction_resolution
         )
@@ -3096,7 +3100,12 @@ async def model_niche(request: NicheModelRequest):
             "suitable_area": predictions.get('suitable_area_km2', 0),
             "hotspots": predictions.get('hotspots', []),
             "niche_breadth": model_result.get('niche_breadth', {}),
-            "visualization": model_result.get('visualization')
+            "response_curves": model_result.get('response_curves', {}),
+            "visualization": model_result.get('visualization'),
+            # Scientific metadata for peer review compliance
+            "scientific_metadata": model_result.get('scientific_metadata', {}),
+            "data_sources": model_result.get('data_sources', {}),
+            "warnings": model_result.get('warnings', [])
         }
         
     except HTTPException:
@@ -4376,6 +4385,102 @@ async def find_similar_otoliths(request: SimilaritySearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Similarity search failed: {str(e)}")
 
+
+# ====================================
+# Copernicus Marine Service - REAL DATA
+# ====================================
+
+@app.get("/copernicus/status")
+async def copernicus_status():
+    """
+    Check Copernicus Marine Service connection status.
+    """
+    try:
+        from copernicus_service import check_copernicus_status
+        return check_copernicus_status()
+    except ImportError:
+        return {
+            "package_installed": False,
+            "error": "copernicusmarine package not installed. Run: pip install copernicusmarine"
+        }
+
+
+@app.get("/copernicus/do")
+async def get_dissolved_oxygen(
+    lat_min: float = -15,
+    lat_max: float = 25,
+    lon_min: float = 50,
+    lon_max: float = 100,
+    depth: int = 0,
+    stride: int = 5
+):
+    """
+    Fetch REAL Dissolved Oxygen data from Copernicus Marine Service.
+    
+    Product: GLOBAL_ANALYSISFORECAST_BGC_001_028
+    Unit: mg/L (converted from mmol/m³)
+    Default: Surface (0-5m)
+    """
+    try:
+        from copernicus_service import fetch_dissolved_oxygen
+        
+        bounds = {
+            "lat_min": lat_min,
+            "lat_max": lat_max,
+            "lon_min": lon_min,
+            "lon_max": lon_max
+        }
+        
+        result = await fetch_dissolved_oxygen(bounds=bounds, depth=depth, stride=stride)
+        return result
+        
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500, 
+            detail="copernicusmarine package not installed. Run: pip install copernicusmarine"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Copernicus DO fetch failed: {str(e)}")
+
+
+@app.get("/copernicus/ph")
+async def get_ph(
+    lat_min: float = -15,
+    lat_max: float = 25,
+    lon_min: float = 50,
+    lon_max: float = 100,
+    depth: int = 0,
+    stride: int = 5
+):
+    """
+    Fetch REAL pH data from Copernicus Marine Service.
+    
+    Product: GLOBAL_ANALYSISFORECAST_BGC_001_028
+    Unit: pH units
+    Default: Surface (0-5m)
+    """
+    try:
+        from copernicus_service import fetch_ph
+        
+        bounds = {
+            "lat_min": lat_min,
+            "lat_max": lat_max,
+            "lon_min": lon_min,
+            "lon_max": lon_max
+        }
+        
+        result = await fetch_ph(bounds=bounds, depth=depth, stride=stride)
+        return result
+        
+    except ImportError as e:
+        raise HTTPException(
+            status_code=500, 
+            detail="copernicusmarine package not installed. Run: pip install copernicusmarine"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Copernicus pH fetch failed: {str(e)}")
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
@@ -4383,3 +4488,4 @@ if __name__ == "__main__":
         port=int(os.getenv("AI_SERVICES_PORT", 8000)),
         reload=True
     )
+

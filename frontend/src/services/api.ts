@@ -414,6 +414,8 @@ export const analyticsService = {
     environmental_variables?: string[];
     model_type?: string;
     prediction_resolution?: number;
+    study_area?: string;  // 'arabian_sea' | 'bay_of_bengal' | 'indian_ocean'
+    n_background?: number;  // Default: 10000
   }) => apiClient.post<any>('/analytics/niche-model', params),
 
   predictSuitability: (params: {

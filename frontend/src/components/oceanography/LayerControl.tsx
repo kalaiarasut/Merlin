@@ -23,12 +23,14 @@ import {
     ChevronDown,
     ChevronUp,
     Database,
-    Grid
+    Grid,
+    Anchor,
+    AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type DataSourceMode = 'erddap' | 'database';
-export type VisibleLayer = 'markers' | 'heatmap' | 'gridded_heatmap' | 'nasa_wms';
+export type VisibleLayer = 'markers' | 'heatmap' | 'gridded_heatmap' | 'nasa_wms' | 'argo_bgc';
 
 interface LayerControlProps {
     // Layers
@@ -141,31 +143,34 @@ export function LayerControl({
                                     onCheckedChange={() => onLayerToggle('nasa_wms')}
                                 />
                             </div>
+
+                            {/* Argo BGC Float Toggle */}
+                            <div className="pt-2 border-t border-dashed">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Anchor className="w-3.5 h-3.5 text-cyan-600" />
+                                        <span className="text-sm">Argo BGC Floats</span>
+                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                            In-situ
+                                        </Badge>
+                                    </div>
+                                    <Switch
+                                        checked={isLayerVisible('argo_bgc')}
+                                        onCheckedChange={() => onLayerToggle('argo_bgc')}
+                                    />
+                                </div>
+                                {/* Sparse coverage warning */}
+                                {isLayerVisible('argo_bgc') && (
+                                    <div className="mt-2 flex items-start gap-1.5 px-2 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                                        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                        <span>In-situ observations are sparse and may not cover all areas</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Grid Cell Info - Professional platform style */}
-                    {dataPointCount !== undefined && (
-                        <div className="px-2 py-1.5 bg-gray-50 rounded-md border">
-                            <div className="flex items-center justify-between">
-                                <div className="text-xs">
-                                    <span className="font-medium text-gray-700">
-                                        Showing {dataPointCount.toLocaleString()}
-                                    </span>
-                                    {totalGridCells && (
-                                        <span className="text-gray-500">
-                                            {' '}of {totalGridCells.toLocaleString()} grid cells
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            {zoomLevel !== undefined && stride !== undefined && (
-                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                    Zoom: {zoomLevel} • Stride: {stride}x (sampled)
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    {/* Sampling info moved to EnhancedLegend */}
 
                     {/* Stats & Refresh */}
                     <div className="flex items-center justify-between pt-2 border-t">

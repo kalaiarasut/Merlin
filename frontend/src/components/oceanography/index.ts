@@ -22,3 +22,6 @@ export type { DataSourceMode, VisibleLayer } from './LayerControl';
 
 export { TemporalAnimationControl } from './TemporalAnimationControl';
 export type { TimeFrame } from './TemporalAnimationControl';
+
+export { ArgoFloatLayer } from './ArgoFloatLayer';
+

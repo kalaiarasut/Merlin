@@ -3,6 +3,8 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { getSequelize } from '../config/database';
 import { QueryTypes } from 'sequelize';
 import logger from '../utils/logger';
+import { copernicusService } from '../utils/copernicusService';
+import { argoService } from '../utils/argoService';
 
 const router = Router();
 
@@ -443,6 +445,152 @@ router.get('/live/status', authenticate, async (req: AuthRequest, res: Response)
   } catch (error) {
     logger.error('Error getting stream status:', error);
     res.status(500).json({ error: 'Failed to get stream status' });
+  }
+});
+
+// ============================================
+// BIOGEOCHEM ROUTES (Copernicus Marine Service)
+// ============================================
+
+/**
+ * Get Dissolved Oxygen data from Copernicus Marine Service
+ * 
+ * Default depth: surface (0-5m)
+ * Unit: mg/L (converted from mmol/m³)
+ * Temporal resolution: Monthly
+ */
+router.get('/biogeochem/do', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      depth = 0,
+      stride = 5
+    } = req.query;
+
+    const result = await copernicusService.fetchDissolvedOxygen({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      depth: parseFloat(depth as string),
+      stride: parseInt(stride as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching Copernicus DO:', error);
+    res.status(500).json({ error: 'Failed to fetch Dissolved Oxygen data from Copernicus' });
+  }
+});
+
+/**
+ * Get pH data from Copernicus Marine Service
+ * 
+ * Default depth: surface (0-5m)
+ * Unit: pH units
+ * Temporal resolution: Monthly
+ */
+router.get('/biogeochem/ph', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      depth = 0,
+      stride = 5
+    } = req.query;
+
+    const result = await copernicusService.fetchPH({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      depth: parseFloat(depth as string),
+      stride: parseInt(stride as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching Copernicus pH:', error);
+    res.status(500).json({ error: 'Failed to fetch pH data from Copernicus' });
+  }
+});
+
+// ============================================
+// ARGO BGC ROUTES (In-situ float profiles)
+// ============================================
+
+/**
+ * Get Argo BGC float profiles in a region
+ * 
+ * NOTE: Argo data is near real-time / delayed-mode QC, NOT truly real-time.
+ * Coverage is sparse - only where floats happen to be.
+ * maxFloats limit prevents UI overload (default 200).
+ */
+router.get('/argo/profiles', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      latMin = -15,
+      latMax = 25,
+      lonMin = 50,
+      lonMax = 100,
+      startDate,
+      endDate,
+      maxFloats = 200
+    } = req.query;
+
+    const result = await argoService.fetchBGCProfiles({
+      bounds: {
+        latMin: parseFloat(latMin as string),
+        latMax: parseFloat(latMax as string),
+        lonMin: parseFloat(lonMin as string),
+        lonMax: parseFloat(lonMax as string),
+      },
+      startDate: startDate as string,
+      endDate: endDate as string,
+      maxFloats: parseInt(maxFloats as string),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching Argo profiles:', error);
+    res.status(500).json({ error: 'Failed to fetch Argo BGC profiles' });
+  }
+});
+
+/**
+ * Get a single Argo float's complete profile
+ * 
+ * Returns full depth profile with DO, pH, temperature, salinity.
+ */
+router.get('/argo/profile/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const result = await argoService.fetchFloatProfile(id);
+
+    if (!result) {
+      return res.status(404).json({ error: `Float ${id} not found` });
+    }
+
+    res.json({
+      success: true,
+      source: 'Argo BGC',
+      dataType: 'in-situ',
+      qcNote: 'Data undergoes delayed-mode QC. Not truly real-time.',
+      profile: result,
+    });
+  } catch (error) {
+    logger.error('Error fetching Argo float profile:', error);
+    res.status(500).json({ error: 'Failed to fetch Argo float profile' });
   }
 });
 

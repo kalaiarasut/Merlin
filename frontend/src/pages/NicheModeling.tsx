@@ -9,7 +9,7 @@ import {
   Globe, Layers, Upload, Play,
   Loader2, CheckCircle, AlertCircle, Info,
   MapPin, Thermometer, Droplets, Wind,
-  AlertTriangle, ChevronDown, ChevronUp, Clock
+  AlertTriangle, ChevronDown, ChevronUp, Clock, Copy
 } from 'lucide-react';
 import { analyticsService, speciesService } from '@/services/api';
 import {
@@ -45,6 +45,22 @@ interface NicheResult {
   suitable_area: number;
   hotspots: Array<{ lat: number; lon: number; suitability: number }>;
   niche_breadth: Record<string, number>;
+  // Scientific-grade data sources
+  data_sources?: Record<string, string>;
+  variables_used?: string[];
+  real_data?: boolean;
+  warnings?: string[];
+  // Reproducibility & transparency
+  model_id?: string;
+  config_hash?: string;
+  collinearity_warnings?: string[];
+  scientific_metadata?: {
+    study_area: string;
+    n_presence: number;
+    n_background: number;
+    background_method: string;
+    land_mask: string;
+  };
 }
 
 const MODEL_TYPES = [
@@ -53,13 +69,14 @@ const MODEL_TYPES = [
   { value: 'gower', label: 'Gower Distance', description: 'Similarity-based prediction' },
 ];
 
+// Environmental variables with authoritative data sources
 const ENV_VARIABLES = [
-  { value: 'temperature', label: 'Sea Surface Temperature', icon: Thermometer },
-  { value: 'depth', label: 'Depth', icon: Layers },
-  { value: 'salinity', label: 'Salinity', icon: Droplets },
-  { value: 'chlorophyll', label: 'Chlorophyll-a', icon: Layers },
-  { value: 'current_speed', label: 'Current Speed', icon: Wind },
-  { value: 'dissolved_oxygen', label: 'Dissolved Oxygen', icon: Droplets },
+  { value: 'temperature', label: 'Sea Surface Temperature', icon: Thermometer, source: 'Copernicus CMEMS', description: 'Highest-quality merged SST, bias-corrected' },
+  { value: 'depth', label: 'Depth (Bathymetry)', icon: Layers, source: 'GEBCO/ETOPO', description: 'Global standard, universally accepted' },
+  { value: 'salinity', label: 'Salinity', icon: Droplets, source: 'Copernicus CMEMS', description: 'Data-assimilated (Argo + satellites)' },
+  { value: 'chlorophyll', label: 'Chlorophyll-a', icon: Layers, source: 'VIIRS (NOAA ERDDAP)', description: 'Gold-standard ocean color sensor' },
+  { value: 'current_speed', label: 'Current Speed', icon: Wind, source: 'Copernicus CMEMS', description: 'Global ocean physics model' },
+  { value: 'dissolved_oxygen', label: 'Dissolved Oxygen', icon: Droplets, source: 'Copernicus Argo BGC', description: 'Real in-situ measurements' },
 ];
 
 const CHART_COLORS = ['#0891b2', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -114,10 +131,18 @@ export default function NicheModeling() {
   const [manualCoords, setManualCoords] = useState('');
   const [selectedSpecies, setSelectedSpecies] = useState('');
   const [resolution, setResolution] = useState(0.5);
+  const [studyArea, setStudyArea] = useState('arabian_sea');
   const [result, setResult] = useState<NicheResult | null>(null);
   const [showAssumptions, setShowAssumptions] = useState(false);
   const [modelRunTimestamp, setModelRunTimestamp] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // Study area options for scientific SDM
+  const STUDY_AREAS = [
+    { value: 'arabian_sea', label: 'Arabian Sea / Indian EEZ', bounds: '60-80°E, 0-25°N' },
+    { value: 'bay_of_bengal', label: 'Bay of Bengal', bounds: '80-100°E, 0-25°N' },
+    { value: 'indian_ocean', label: 'North Indian Ocean', bounds: '40-120°E, 10°S-30°N' },
+  ];
 
   // Fetch species list for selection
   const { data: speciesData } = useQuery({
@@ -195,6 +220,8 @@ export default function NicheModeling() {
         environmental_variables: selectedVars,
         model_type: modelType,
         prediction_resolution: resolution,
+        study_area: studyArea,
+        n_background: 10000,
       });
       return response;
     },
@@ -448,6 +475,26 @@ export default function NicheModeling() {
 
               <div>
                 <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
+                  Study Area
+                </label>
+                <Select
+                  value={studyArea}
+                  onChange={(e) => setStudyArea(e.target.value)}
+                  className="mt-1"
+                >
+                  {STUDY_AREAS.map((area) => (
+                    <option key={area.value} value={area.value}>
+                      {area.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-[10px] text-deep-500 dark:text-gray-400 mt-1">
+                  {STUDY_AREAS.find(a => a.value === studyArea)?.bounds}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-deep-700 dark:text-gray-300">
                   Grid Resolution (degrees)
                 </label>
                 <Input
@@ -460,6 +507,115 @@ export default function NicheModeling() {
                   className="mt-1"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Data Sources Information */}
+          <Card className="border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                Environmental Data Sources
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Scientific-grade data from authoritative institutions
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {/* Static Data Sources Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b border-green-200 dark:border-green-800">
+                      <th className="text-left py-1.5 font-semibold text-deep-700 dark:text-gray-200">Variable</th>
+                      <th className="text-left py-1.5 font-semibold text-green-700 dark:text-green-300">Primary Source</th>
+                      <th className="text-left py-1.5 font-semibold text-deep-500 dark:text-gray-400">Fallback</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-deep-600 dark:text-gray-300">
+                    <tr className="border-b border-green-100 dark:border-green-900/50">
+                      <td className="py-1.5">SST</td>
+                      <td className="py-1.5 text-green-700 dark:text-green-400">Copernicus CMEMS</td>
+                      <td className="py-1.5 text-deep-400">NOAA MODIS ERDDAP</td>
+                    </tr>
+                    <tr className="border-b border-green-100 dark:border-green-900/50">
+                      <td className="py-1.5">Salinity</td>
+                      <td className="py-1.5 text-green-700 dark:text-green-400">Copernicus CMEMS</td>
+                      <td className="py-1.5 text-deep-400">WOA18 Climatology</td>
+                    </tr>
+                    <tr className="border-b border-green-100 dark:border-green-900/50">
+                      <td className="py-1.5">Depth</td>
+                      <td className="py-1.5 text-green-700 dark:text-green-400">GEBCO/ETOPO via NOAA ERDDAP</td>
+                      <td className="py-1.5 text-deep-400">—</td>
+                    </tr>
+                    <tr className="border-b border-green-100 dark:border-green-900/50">
+                      <td className="py-1.5">Chlorophyll</td>
+                      <td className="py-1.5 text-green-700 dark:text-green-400">VIIRS via NOAA CoastWatch</td>
+                      <td className="py-1.5 text-deep-400">MODIS ERDDAP</td>
+                    </tr>
+                    <tr>
+                      <td className="py-1.5">Dissolved Oxygen</td>
+                      <td className="py-1.5 text-green-700 dark:text-green-400">WOA18 Climatology (NOAA)</td>
+                      <td className="py-1.5 text-deep-400">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Actual Sources Used After Model Run */}
+              {result?.data_sources && Object.keys(result.data_sources).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
+                  <p className="text-[10px] font-semibold text-green-700 dark:text-green-300 mb-2">
+                    Sources Used in Last Model Run:
+                  </p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {Object.entries(result.data_sources).map(([varName, source]) => (
+                      <div key={varName} className="flex items-center gap-1.5 text-[10px]">
+                        <span className="text-deep-600 dark:text-gray-300 capitalize font-medium">{varName}:</span>
+                        <Badge variant="success" className="text-[9px] px-1.5 py-0">
+                          {String(source).replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* CRITICAL: Scientific Assumptions Card (Always Visible) */}
+          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Scientific Assumptions
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Important limitations of species distribution models
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ul className="text-[10px] text-deep-600 dark:text-gray-300 space-y-1.5">
+                <li className="flex items-start gap-1.5">
+                  <span className="text-amber-500 mt-0.5">•</span>
+                  <span><strong>Correlation ≠ Causation:</strong> Environmental associations do not imply causal relationships</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-amber-500 mt-0.5">•</span>
+                  <span><strong>Presence-only bias:</strong> Models infer from where species was observed, not where it is absent</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-amber-500 mt-0.5">•</span>
+                  <span><strong>Sampling bias:</strong> Occurrence data may reflect survey effort, not true distribution</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-amber-500 mt-0.5">•</span>
+                  <span><strong>Environmental equilibrium:</strong> Assumes species occupy all suitable habitat</span>
+                </li>
+              </ul>
+              <p className="text-[9px] text-amber-700 dark:text-amber-400 mt-2 font-medium">
+                Results show <em>relative habitat suitability</em>, not species prediction.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -567,9 +723,26 @@ export default function NicheModeling() {
                         {result.model_type.toUpperCase()} model for {result.species}
                       </CardDescription>
                     </div>
-                    <Badge variant="success">
-                      {result.occurrence_count} occurrences
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant="success">
+                        {result.occurrence_count} occurrences
+                      </Badge>
+                      {result.model_id && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-deep-400 dark:text-gray-500">ID:</span>
+                          <code className="text-[9px] text-deep-500 dark:text-gray-400 bg-gray-100 dark:bg-deep-800 px-1.5 py-0.5 rounded">
+                            {result.model_id}
+                          </code>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(result.model_id || '')}
+                            className="text-deep-400 hover:text-deep-600 dark:text-gray-500 dark:hover:text-gray-300"
+                            title="Copy model ID"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -618,6 +791,28 @@ export default function NicheModeling() {
                       <p className="text-xs text-deep-500">Hotspots</p>
                     </div>
                   </div>
+
+                  {/* Collinearity Warnings (if any) */}
+                  {result.collinearity_warnings && result.collinearity_warnings.length > 0 && (
+                    <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                            Collinearity Warning
+                          </p>
+                          <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-1">
+                            Selected variables show high correlation (|r| &gt; 0.7). This may inflate model performance and reduce interpretability.
+                          </p>
+                          <ul className="text-[10px] text-amber-600 dark:text-amber-500 mt-1 space-y-0.5">
+                            {result.collinearity_warnings.map((warn, i) => (
+                              <li key={i}>• {warn}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Variable Importance Chart */}
                   <div className="mb-6">

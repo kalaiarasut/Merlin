@@ -80,7 +80,7 @@ const sourceConfig: Record<DataSourceType, {
         icon: Radio,
         color: 'text-gray-700',
         bgColor: 'bg-gray-50 border-gray-200',
-        attribution: 'Marlin Platform Database',
+        attribution: 'Merlin Platform Database',
     },
 };
 

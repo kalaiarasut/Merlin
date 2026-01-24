@@ -63,7 +63,7 @@ export default function Sidebar() {
             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-ocean-500 to-ocean-700 flex items-center justify-center shadow-lg shadow-ocean-500/30">
               <img
                 src="/favicon.png"
-                alt="Marlin Logo"
+                alt="Merlin Logo"
                 className="w-8 h-8 object-contain brightness-0 invert dark:filter-none"
               />
             </div>
@@ -73,7 +73,7 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-ocean-600 to-ocean-800 dark:from-ocean-400 dark:to-ocean-600 bg-clip-text text-transparent">
-              Marlin
+              Merlin
             </h1>
             <p className="text-xs text-deep-500 dark:text-gray-400 font-medium">Marine Data Platform</p>
           </div>

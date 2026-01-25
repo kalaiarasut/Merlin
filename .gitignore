@@ -146,3 +146,4 @@ ai-services/classification/species_trainer.py
 
 # New Test Directory
 ai-services/tests/
+doc/

@@ -193,7 +193,13 @@ Merlin/
 - Background processing with real-time progress tracking
 - "AI Enhanced" badge for processed records
 
-### 2. Oceanographic Visualization
+### 2. Standards Compliance & Taxonomy
+- **Standards Validator**: Automated checks against Darwin Core, OBIS, MIxS, and ISO 19115.
+- **Scoring System**: Grade-based quality assessment (A-D) with detailed error reports.
+- **Taxonomy Resolver**: Auto-correction of scientific names using **WoRMS** and **ITIS**.
+- **Batch Processing**: Validate thousands of species names in one go.
+
+### 3. Oceanographic Visualization
 - Interactive GIS maps powered by **Leaflet** and **Deck.GL**
 - Parameters: SST, salinity, chlorophyll-a, dissolved oxygen, pH, currents, depth
 - Time-series data playback with date range filtering
@@ -201,7 +207,7 @@ Merlin/
 - PostGIS-powered spatial queries
 - Heatmap overlays and 3D visualization
 
-### 3. Species Explorer
+### 4. Species Explorer
 - Comprehensive species database (1000+ marine species)
 - Taxonomic tree navigation (Kingdom → Species)
 - Species distribution maps with occurrence data
@@ -211,7 +217,7 @@ Merlin/
 - **FishBase data enrichment** for detailed species information
 - Darwin Core compliant data export
 
-### 4. Fish Identifier (AI-Powered)
+### 5. Fish Identifier (AI-Powered)
 - **Custom EfficientNet-B0 model** trained from scratch
 - **84.8% validation accuracy** on 15 commercially important species
 - Real-time image classification
@@ -219,7 +225,7 @@ Merlin/
 - Species include: Yellowfin Tuna, Bigeye Tuna, Mahi-mahi, Groupers, Snappers, Barracuda, Sailfish, Swordfish, and more
 - FishBase integration for identified species details
 
-### 5. Otolith Analysis Module
+### 6. Otolith Analysis Module
 - Image upload and preprocessing
 - **Ensemble age estimation** using multiple methods:
   - Ring counting analysis
@@ -231,7 +237,7 @@ Merlin/
 - Visualization of detected growth rings
 - Confidence levels and age range estimation
 
-### 6. eDNA Sequence Management
+### 7. eDNA Sequence Management
 - FASTA/FASTQ file processing
 - Species detection from genetic sequences
 - Biodiversity metrics (Simpson's Index, Shannon Index)
@@ -240,7 +246,7 @@ Merlin/
 - Quality control and filtering
 - *Prepared for BLAST and Kraken2 integration*
 
-### 7. Cross-Domain Analytics
+### 8. Cross-Domain Analytics
 - Multi-parameter correlation analysis
 - Statistical modeling with R² values
 - Custom query builder for complex analyses
@@ -248,7 +254,13 @@ Merlin/
 - AI-generated insights from data patterns
 - Export results in CSV, JSON, and visualization formats
 
-### 8. Niche Modeling
+### 9. Fisheries & Stock Assessment
+- **Stock Status Indicators**: MSY (Maximum Sustainable Yield) and exploitation rates.
+- **Growth Modeling**: Von Bertalanffy growth parameter estimation (`K`, `Linf`).
+- **Catch Trends**: Time-series analysis of Catch Per Unit Effort (CPUE).
+- **Length-Frequency**: Cohort analysis and maturity ogive visualization.
+
+### 10. Niche Modeling
 - **MaxEnt-based habitat suitability modeling**
 - Environmental variable selection (temperature, salinity, depth, etc.)
 - Species distribution prediction maps
@@ -256,7 +268,7 @@ Merlin/
 - Model evaluation metrics
 - Future scenario projections
 
-### 9. AI Assistant
+### 11. AI Assistant
 - **Dual LLM provider support**:
   - **Groq** (cloud): Fast inference, free tier, llama-3.3-70b-versatile
   - **Ollama** (local): Privacy-focused, no internet required
@@ -266,7 +278,12 @@ Merlin/
 - Multi-session conversation history
 - Floating chat widget accessible from any page
 
-### 10. AI Research Assistant (RAG-Powered)
+### 12. Causal Analysis
+- **Granger Causality**: Statistical testing for driver-response relationships.
+- **Lag Analysis**: Identify delayed effects of environmental changes on biology.
+- **Mechanism Library**: Pre-loaded ecological interactions for hypothesis testing.
+
+### 13. AI Research Assistant (RAG-Powered)
 - **Methodology generation** with scientific protocol retrieval
 - **Hypothesis formation** assistance
 - **Data analysis** guidance with chart generation
@@ -275,7 +292,7 @@ Merlin/
 - Academic paper search integration (Semantic Scholar, CrossRef)
 - Expert review flags for complex queries
 
-### 11. Report Generator
+### 14. Report Generator
 - Multiple output formats: **PDF, Word, Excel**
 - Customizable report templates
 - Date range and data source selection
@@ -283,7 +300,13 @@ Merlin/
 - Statistical summaries
 - LLM-powered narrative generation
 
-### 12. Admin Console
+### 15. Validation & Governance
+- **Scientific Validation**: Workflow for approving AI-generated records.
+- **Curation Dashboard**: Expert review interface with WoRMS/FishBase checklists.
+- **Reproducibility**: Audit trails and snapshots for every analysis run.
+- **Data Governance**: Privacy controls and license management.
+
+### 16. Admin Console
 - User management (CRUD operations)
 - Role-based access control (admin, researcher)
 - System monitoring and health checks

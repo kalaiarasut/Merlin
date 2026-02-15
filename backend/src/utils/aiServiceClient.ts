@@ -1,9 +1,19 @@
-import fetch from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import logger from './logger';
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+async function getFetch(): Promise<typeof fetch> {
+    // Prefer Node 18+ global fetch (works in modern runtimes and Jest)
+    if (typeof (globalThis as any).fetch === 'function') {
+        return (globalThis as any).fetch as typeof fetch;
+    }
+
+    // Fallback for older Node versions (node-fetch is ESM)
+    const mod: any = await import('node-fetch');
+    return (mod.default || mod) as typeof fetch;
+}
 
 export interface MetadataExtractionResult {
     success: boolean;
@@ -47,6 +57,23 @@ export interface DataCleaningResult {
     };
 }
 
+export interface NetcdfToPointsResult {
+    success: boolean;
+    filename: string;
+    header?: any;
+    points?: any[];
+    warnings?: string[];
+    stats?: any;
+}
+
+export interface PdfToTableResult {
+    success: boolean;
+    filename: string;
+    rows?: any[];
+    warnings?: string[];
+    stats?: any;
+}
+
 /**
  * AI Service Client for CMLRE Platform
  * 
@@ -66,6 +93,7 @@ class AIServiceClient {
      */
     async extractMetadata(filePath: string): Promise<MetadataExtractionResult> {
         try {
+            const fetch = await getFetch();
             const form = new FormData();
             form.append('file', fs.createReadStream(filePath));
             form.append('extract_tags', 'true');
@@ -103,6 +131,7 @@ class AIServiceClient {
      */
     async extractMetadataFromText(content: string, contentType: string = 'text'): Promise<MetadataExtractionResult> {
         try {
+            const fetch = await getFetch();
             const response = await fetch(`${this.baseUrl}/extract-metadata-text`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -140,6 +169,7 @@ class AIServiceClient {
         imputation_strategy?: 'mean' | 'median' | 'mode' | 'interpolate';
     }): Promise<DataCleaningResult> {
         try {
+            const fetch = await getFetch();
             const response = await fetch(`${this.baseUrl}/clean-data`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -185,6 +215,7 @@ class AIServiceClient {
      */
     async healthCheck(): Promise<boolean> {
         try {
+            const fetch = await getFetch();
             const response = await fetch(`${this.baseUrl}/`, {
                 method: 'GET',
                 timeout: 5000,
@@ -193,6 +224,69 @@ class AIServiceClient {
         } catch (error) {
             logger.warn('AI service health check failed - service may be unavailable');
             return false;
+        }
+    }
+
+    /**
+     * Parse a NetCDF file into oceanography-style point records.
+     * Uses Python netCDF4 on the AI service, which supports many NetCDF4/HDF5 files.
+     */
+    async parseNetcdfToPoints(filePath: string, options?: {
+        maxPoints?: number;
+        variables?: string[];
+        defaultSource?: string;
+    }): Promise<NetcdfToPointsResult> {
+        try {
+            const fetch = await getFetch();
+            const form = new FormData();
+            form.append('file', fs.createReadStream(filePath));
+            if (options?.maxPoints !== undefined) form.append('max_points', String(options.maxPoints));
+            if (options?.variables?.length) form.append('variables', options.variables.join(','));
+            if (options?.defaultSource) form.append('default_source', options.defaultSource);
+
+            const response = await fetch(`${this.baseUrl}/parse/netcdf-to-points`, {
+                method: 'POST',
+                body: form,
+                headers: form.getHeaders(),
+            });
+
+            if (!response.ok) {
+                throw new Error(`AI service returned ${response.status}: ${await response.text()}`);
+            }
+
+            return await response.json() as NetcdfToPointsResult;
+        } catch (error: any) {
+            logger.error('AI NetCDF parsing failed:', error);
+            return { success: false, filename: filePath, points: [], warnings: [`NetCDF parsing failed: ${error.message}`] };
+        }
+    }
+
+    /**
+     * Attempt to extract tables from a PDF into rows (list of dicts).
+     */
+    async extractPdfTables(filePath: string, options?: {
+        maxRows?: number;
+    }): Promise<PdfToTableResult> {
+        try {
+            const fetch = await getFetch();
+            const form = new FormData();
+            form.append('file', fs.createReadStream(filePath));
+            if (options?.maxRows !== undefined) form.append('max_rows', String(options.maxRows));
+
+            const response = await fetch(`${this.baseUrl}/parse/pdf-to-table`, {
+                method: 'POST',
+                body: form,
+                headers: form.getHeaders(),
+            });
+
+            if (!response.ok) {
+                throw new Error(`AI service returned ${response.status}: ${await response.text()}`);
+            }
+
+            return await response.json() as PdfToTableResult;
+        } catch (error: any) {
+            logger.error('AI PDF table extraction failed:', error);
+            return { success: false, filename: filePath, rows: [], warnings: [`PDF table extraction failed: ${error.message}`] };
         }
     }
 }

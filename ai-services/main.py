@@ -3011,6 +3011,496 @@ async def clean_data(request: DataCleaningRequest):
         )
 
 
+# ====================================
+# File Parsing Utilities (NetCDF, PDF)
+# ====================================
+
+def _safe_int(value: Optional[str], default: int) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except Exception:
+        return default
+
+
+def _nc_header(ds: Any) -> Dict[str, Any]:
+    """Build a lightweight, JSON-serializable NetCDF header."""
+    dims = []
+    try:
+        for name, dim in ds.dimensions.items():
+            dims.append({"name": name, "size": int(len(dim))})
+    except Exception:
+        dims = []
+
+    global_attrs = []
+    try:
+        for a in ds.ncattrs():
+            v = getattr(ds, a)
+            # Make sure values are JSON-ish
+            if hasattr(v, "tolist"):
+                v = v.tolist()
+            global_attrs.append({"name": a, "value": v})
+    except Exception:
+        global_attrs = []
+
+    variables = []
+    try:
+        for name, var in ds.variables.items():
+            attrs = []
+            try:
+                for a in var.ncattrs():
+                    v = getattr(var, a)
+                    if hasattr(v, "tolist"):
+                        v = v.tolist()
+                    attrs.append({"name": a, "value": v})
+            except Exception:
+                attrs = []
+
+            variables.append({
+                "name": name,
+                "type": str(getattr(var, "dtype", "unknown")),
+                "dimensions": list(getattr(var, "dimensions", ())),
+                "attributes": attrs[:50],
+            })
+    except Exception:
+        variables = []
+
+    return {
+        "dimensions": dims,
+        "globalAttributes": global_attrs,
+        "variables": variables[:200],
+        "variableCount": len(variables),
+    }
+
+
+def _find_coord_var(ds: Any, kind: str) -> Optional[str]:
+    """Best-effort detection of coordinate variable names."""
+    kind = kind.lower()
+    candidates = []
+
+    # name-based
+    name_sets = {
+        "lat": {"lat", "latitude", "nav_lat", "y", "ylat"},
+        "lon": {"lon", "longitude", "nav_lon", "x", "xlon"},
+        "time": {"time", "t"},
+        "depth": {"depth", "z", "lev", "level", "depthu", "depthv"},
+    }
+    for name in ds.variables.keys():
+        if name.lower() in name_sets.get(kind, set()):
+            candidates.append(name)
+
+    # attribute-based
+    for name, var in ds.variables.items():
+        try:
+            standard_name = str(getattr(var, "standard_name", "")).lower()
+            units = str(getattr(var, "units", "")).lower()
+            axis = str(getattr(var, "axis", "")).lower()
+
+            if kind == "lat":
+                if standard_name == "latitude" or "degrees_north" in units or axis == "y":
+                    candidates.append(name)
+            elif kind == "lon":
+                if standard_name == "longitude" or "degrees_east" in units or axis == "x":
+                    candidates.append(name)
+            elif kind == "time":
+                if standard_name == "time" or ("since" in units and ("day" in units or "hour" in units or "sec" in units)):
+                    candidates.append(name)
+            elif kind == "depth":
+                if standard_name == "depth" or axis == "z" or getattr(var, "positive", "").lower() in ("up", "down"):
+                    candidates.append(name)
+        except Exception:
+            continue
+
+    # return first unique, stable
+    seen = set()
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            return c
+    return None
+
+
+@app.post("/parse/netcdf-to-points")
+async def parse_netcdf_to_points(
+    file: UploadFile = File(...),
+    max_points: Optional[str] = Form(None),
+    variables: Optional[str] = Form(None),
+    default_source: Optional[str] = Form(None),
+):
+    """Parse NetCDF into oceanography-style point records.
+
+    Designed to be safe by default (caps points, subsamples).
+    """
+    import numpy as np
+    from netCDF4 import Dataset, num2date
+
+    temp_dir = tempfile.mkdtemp(prefix="cmlre-nc-")
+    temp_path = os.path.join(temp_dir, file.filename or "upload.nc")
+    warnings: List[str] = []
+
+    MAX_POINTS = _safe_int(max_points, int(os.getenv("NETCDF_MAX_POINTS", "20000")))
+    src = default_source or "NetCDF Upload"
+
+    requested_vars: Optional[List[str]] = None
+    if variables:
+        requested_vars = [v.strip() for v in variables.split(",") if v.strip()]
+
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        ds = Dataset(temp_path, "r")
+        header = _nc_header(ds)
+
+        lat_name = _find_coord_var(ds, "lat")
+        lon_name = _find_coord_var(ds, "lon")
+        time_name = _find_coord_var(ds, "time")
+        depth_name = _find_coord_var(ds, "depth")
+
+        if not lat_name or not lon_name:
+            warnings.append("Could not detect latitude/longitude coordinate variables; returning header only.")
+            return {"success": True, "filename": file.filename, "header": header, "points": [], "warnings": warnings, "stats": {"points": 0}}
+
+        lat_var = ds.variables[lat_name]
+        lon_var = ds.variables[lon_name]
+        lat = np.array(lat_var[:])
+        lon = np.array(lon_var[:])
+
+        time_vals = None
+        time_units = None
+        time_cal = None
+        if time_name and time_name in ds.variables:
+            try:
+                tvar = ds.variables[time_name]
+                time_vals = np.array(tvar[:])
+                time_units = getattr(tvar, "units", None)
+                time_cal = getattr(tvar, "calendar", "standard")
+            except Exception:
+                time_vals = None
+
+        depth_vals = None
+        if depth_name and depth_name in ds.variables:
+            try:
+                depth_vals = np.array(ds.variables[depth_name][:])
+            except Exception:
+                depth_vals = None
+
+        # Choose data variables
+        data_var_names: List[str] = []
+        if requested_vars:
+            data_var_names = [v for v in requested_vars if v in ds.variables]
+        else:
+            # Heuristic: vars that include lat/lon dims and are numeric
+            for name, var in ds.variables.items():
+                if name in (lat_name, lon_name, time_name, depth_name):
+                    continue
+                try:
+                    dims = list(getattr(var, "dimensions", ()))
+                    if lat_name in dims and lon_name in dims:
+                        # skip non-numeric
+                        if hasattr(var, "dtype") and str(var.dtype).startswith("<U"):
+                            continue
+                        data_var_names.append(name)
+                except Exception:
+                    continue
+
+            # Prefer common oceanographic names
+            preferred = [
+                "temperature", "sst", "sea_surface_temperature", "temp",
+                "salinity", "sss",
+                "chlorophyll", "chla", "chlor_a",
+                "oxygen", "o2",
+            ]
+            def score(n: str) -> int:
+                nl = n.lower()
+                for i, p in enumerate(preferred):
+                    if p in nl:
+                        return 100 - i
+                return 0
+            data_var_names = sorted(list(dict.fromkeys(data_var_names)), key=lambda n: score(n), reverse=True)
+
+        data_var_names = data_var_names[:10]
+        if not data_var_names:
+            warnings.append("No data variables found with lat/lon dimensions; returning header only.")
+            return {"success": True, "filename": file.filename, "header": header, "points": [], "warnings": warnings, "stats": {"points": 0}}
+
+        # Determine strides to respect MAX_POINTS
+        # Works for 1D lat/lon or 2D grids.
+        def _shape_size(a: np.ndarray) -> int:
+            try:
+                return int(np.prod(a.shape))
+            except Exception:
+                return 0
+
+        lat_size = _shape_size(lat)
+        lon_size = _shape_size(lon)
+        grid_size = max(lat_size, lon_size)
+        # baseline target per variable
+        target_per_var = max(1, MAX_POINTS // max(1, len(data_var_names)))
+        # stride factor roughly sqrt(grid/target)
+        stride = int(max(1, np.sqrt(max(1, grid_size / max(1, target_per_var)))))
+
+        points: List[Dict[str, Any]] = []
+        now_iso = __import__("datetime").datetime.utcnow().isoformat() + "Z"
+
+        # Build iterators for indices
+        is_latlon_1d = (lat.ndim == 1 and lon.ndim == 1)
+        is_latlon_2d = (lat.ndim == 2 and lon.ndim == 2 and lat.shape == lon.shape)
+        if not (is_latlon_1d or is_latlon_2d):
+            warnings.append(f"Unsupported lat/lon shapes lat={getattr(lat,'shape',None)} lon={getattr(lon,'shape',None)}; returning header only.")
+            return {"success": True, "filename": file.filename, "header": header, "points": [], "warnings": warnings, "stats": {"points": 0}}
+
+        # Helper to convert time index to ISO
+        def _time_iso(t_index: Optional[int]) -> str:
+            if time_vals is None or time_units is None or t_index is None:
+                return now_iso
+            try:
+                dt = num2date(time_vals[t_index], units=time_units, calendar=time_cal)
+                # num2date may return datetime or cftime
+                return str(dt)
+            except Exception:
+                return now_iso
+
+        # Extract
+        for var_name in data_var_names:
+            var = ds.variables[var_name]
+            unit = str(getattr(var, "units", ""))
+            parameter = str(getattr(var, "standard_name", "") or getattr(var, "long_name", "") or var_name)
+
+            dims = list(getattr(var, "dimensions", ()))
+            # Identify indices for dims
+            lat_dim = dims.index(lat_name) if lat_name in dims else None
+            lon_dim = dims.index(lon_name) if lon_name in dims else None
+            time_dim = dims.index(time_name) if time_name in dims and time_name in dims else None
+            depth_dim = dims.index(depth_name) if depth_name in dims and depth_name in dims else None
+
+            # Choose time/depth ranges
+            time_indices = [0]
+            if time_dim is not None and time_vals is not None and len(time_vals.shape) == 1 and time_vals.size > 1:
+                # sample time axis too
+                t_stride = int(max(1, np.sqrt(max(1, time_vals.size / 5))))
+                time_indices = list(range(0, int(time_vals.size), t_stride))[:5]
+
+            depth_indices = [0]
+            if depth_dim is not None and depth_vals is not None and len(depth_vals.shape) == 1 and depth_vals.size > 1:
+                z_stride = int(max(1, np.sqrt(max(1, depth_vals.size / 3))))
+                depth_indices = list(range(0, int(depth_vals.size), z_stride))[:3]
+
+            # Prepare slicing template
+            for t_i in time_indices:
+                for z_i in depth_indices:
+                    if len(points) >= MAX_POINTS:
+                        break
+
+                    if is_latlon_1d:
+                        for i_lat in range(0, lat.shape[0], stride):
+                            for i_lon in range(0, lon.shape[0], stride):
+                                if len(points) >= MAX_POINTS:
+                                    break
+
+                                # Build index tuple for var
+                                idx = [slice(None)] * len(dims)
+                                if time_dim is not None:
+                                    idx[time_dim] = t_i
+                                if depth_dim is not None:
+                                    idx[depth_dim] = z_i
+                                if lat_dim is not None:
+                                    idx[lat_dim] = i_lat
+                                if lon_dim is not None:
+                                    idx[lon_dim] = i_lon
+
+                                try:
+                                    val = var[tuple(idx)]
+                                    if hasattr(val, "mask") and bool(getattr(val, "mask", False)):
+                                        continue
+                                    val_f = float(val)
+                                    if np.isnan(val_f):
+                                        continue
+                                except Exception:
+                                    continue
+
+                                depth_val = 0.0
+                                if depth_vals is not None and depth_dim is not None and depth_vals.size > z_i:
+                                    try:
+                                        depth_val = float(depth_vals[z_i])
+                                    except Exception:
+                                        depth_val = 0.0
+
+                                points.append({
+                                    "parameter": parameter,
+                                    "value": val_f,
+                                    "unit": unit,
+                                    "latitude": float(lat[i_lat]),
+                                    "longitude": float(lon[i_lon]),
+                                    "depth": depth_val,
+                                    "timestamp": _time_iso(t_i if time_dim is not None else None),
+                                    "source": src,
+                                    "quality_flag": "unknown",
+                                    "metadata": {"netcdf": {"var": var_name, "dims": dims}},
+                                })
+
+                            if len(points) >= MAX_POINTS:
+                                break
+
+                    else:  # 2D lat/lon
+                        for i in range(0, lat.shape[0], stride):
+                            for j in range(0, lat.shape[1], stride):
+                                if len(points) >= MAX_POINTS:
+                                    break
+
+                                idx = [slice(None)] * len(dims)
+                                if time_dim is not None:
+                                    idx[time_dim] = t_i
+                                if depth_dim is not None:
+                                    idx[depth_dim] = z_i
+                                if lat_dim is not None:
+                                    idx[lat_dim] = i
+                                if lon_dim is not None:
+                                    idx[lon_dim] = j
+
+                                try:
+                                    val = var[tuple(idx)]
+                                    if hasattr(val, "mask") and bool(getattr(val, "mask", False)):
+                                        continue
+                                    val_f = float(val)
+                                    if np.isnan(val_f):
+                                        continue
+                                except Exception:
+                                    continue
+
+                                try:
+                                    lat_v = float(lat[i, j])
+                                    lon_v = float(lon[i, j])
+                                except Exception:
+                                    continue
+
+                                depth_val = 0.0
+                                if depth_vals is not None and depth_dim is not None and depth_vals.size > z_i:
+                                    try:
+                                        depth_val = float(depth_vals[z_i])
+                                    except Exception:
+                                        depth_val = 0.0
+
+                                points.append({
+                                    "parameter": parameter,
+                                    "value": val_f,
+                                    "unit": unit,
+                                    "latitude": lat_v,
+                                    "longitude": lon_v,
+                                    "depth": depth_val,
+                                    "timestamp": _time_iso(t_i if time_dim is not None else None),
+                                    "source": src,
+                                    "quality_flag": "unknown",
+                                    "metadata": {"netcdf": {"var": var_name, "dims": dims}},
+                                })
+
+                            if len(points) >= MAX_POINTS:
+                                break
+
+                if len(points) >= MAX_POINTS:
+                    break
+
+        if len(points) >= MAX_POINTS:
+            warnings.append(f"NetCDF points capped at max_points={MAX_POINTS} (subsampled).")
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "header": header,
+            "points": points,
+            "warnings": warnings,
+            "stats": {
+                "points": len(points),
+                "variables": data_var_names,
+                "lat": lat_name,
+                "lon": lon_name,
+                "time": time_name,
+                "depth": depth_name,
+                "stride": stride,
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"NetCDF parsing failed: {str(e)}")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@app.post("/parse/pdf-to-table")
+async def parse_pdf_to_table(
+    file: UploadFile = File(...),
+    max_rows: Optional[str] = Form(None),
+):
+    """Extract tabular data from text-based PDFs.
+
+    Returns rows as list[dict]. For scanned/image-only PDFs, this may return 0 rows.
+    """
+    temp_dir = tempfile.mkdtemp(prefix="cmlre-pdf-")
+    temp_path = os.path.join(temp_dir, file.filename or "upload.pdf")
+    warnings: List[str] = []
+    MAX_ROWS = _safe_int(max_rows, int(os.getenv("PDF_MAX_TABLE_ROWS", "20000")))
+
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        try:
+            import pdfplumber
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"pdfplumber not available: {str(e)}")
+
+        rows: List[Dict[str, Any]] = []
+        tables_found = 0
+
+        with pdfplumber.open(temp_path) as pdf:
+            for page_index, page in enumerate(pdf.pages):
+                if len(rows) >= MAX_ROWS:
+                    break
+
+                try:
+                    tables = page.extract_tables() or []
+                except Exception:
+                    tables = []
+
+                for table in tables:
+                    if not table or len(table) < 2:
+                        continue
+                    tables_found += 1
+
+                    header = [str(c).strip() if c is not None else "" for c in table[0]]
+                    # If header is empty-ish, create generic names
+                    if sum(1 for h in header if h) < max(1, len(header) // 3):
+                        header = [f"col_{i+1}" for i in range(len(header))]
+
+                    for r in table[1:]:
+                        if len(rows) >= MAX_ROWS:
+                            break
+                        values = [str(c).strip() if c is not None else "" for c in r]
+                        rec = {header[i]: values[i] if i < len(values) else "" for i in range(len(header))}
+                        rec["__pdfPage"] = page_index + 1
+                        rows.append(rec)
+
+        if tables_found == 0:
+            warnings.append("No tables detected in PDF (may be scanned/image-only or non-tabular layout).")
+
+        if len(rows) >= MAX_ROWS:
+            warnings.append(f"PDF rows capped at max_rows={MAX_ROWS}.")
+
+        return {
+            "success": True,
+            "filename": file.filename,
+            "rows": rows,
+            "warnings": warnings,
+            "stats": {"tables": tables_found, "rows": len(rows)},
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF table extraction failed: {str(e)}")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 class NicheModelRequest(BaseModel):
     """Request model for niche modeling"""
     occurrence_data: List[Dict[str, Any]]  # List of {lat, lon, species?, date?}

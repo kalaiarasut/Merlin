@@ -43,6 +43,9 @@ biopython==1.81
 reportlab==4.0.9
 matplotlib==3.8.2
 
+# PDF table extraction
+pdfplumber==0.11.4
+
 # Utilities
 aiohttp==3.9.1
 requests==2.31.0

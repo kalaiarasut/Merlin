@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { pipeline } from 'stream/promises';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { IngestionJob } from '../models/IngestionJob';
 import { Species } from '../models/Species';
@@ -11,7 +12,25 @@ import notificationService from '../utils/notificationService';
 import * as audit from '../services/audit/dataVersioning';
 import * as activityLog from '../services/audit/activityLogger';
 import aiServiceClient from '../utils/aiServiceClient';
+import type { DataCleaningResult } from '../utils/aiServiceClient';
 import { lookupSpecies } from '../utils/fishbaseClient';
+
+type ParsedUpload = {
+  format:
+    | 'csv'
+    | 'json'
+    | 'xlsx'
+    | 'pdf'
+    | 'geojson'
+    | 'netcdf'
+    | 'zip'
+    | 'unknown';
+  data: any[];
+  warnings: string[];
+  metadata: Record<string, any>;
+  textForMetadataExtraction?: string;
+  parsedFrom?: { filename: string; format: string }[]; // for ZIP
+};
 
 const router = Router();
 
@@ -33,6 +52,391 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } });
+
+function getFileExt(filenameOrPath: string): string {
+  return path.extname(filenameOrPath || '').toLowerCase();
+}
+
+function safeBasename(filename: string): string {
+  const base = path.basename(filename || 'upload');
+  return base.replace(/[^a-zA-Z0-9._\-()\s]/g, '_');
+}
+
+function ensureWithinDir(parentDir: string, candidatePath: string): void {
+  const rel = path.relative(parentDir, candidatePath);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Unsafe ZIP entry path (path traversal detected)');
+  }
+}
+
+function summarizeTabularSample(data: any[], maxRows: number = 5): string {
+  if (!data || data.length === 0) return 'No tabular records found.';
+  const sample = data.slice(0, maxRows);
+  const fields = Object.keys(sample[0] || {}).slice(0, 25);
+  return [
+    `Record count: ${data.length}`,
+    `Fields: ${fields.join(', ')}`,
+    `Sample rows (JSON):`,
+    JSON.stringify(sample, null, 2),
+  ].join('\n');
+}
+
+async function parseCsvFile(filePath: string): Promise<any[]> {
+  const { parse } = await import('csv-parse/sync');
+  const raw = fs.readFileSync(filePath);
+  const content = raw.toString('utf-8').replace(/^\uFEFF/, '');
+  const records = parse(content, {
+    columns: true,
+    skip_empty_lines: true,
+    relax_quotes: true,
+    relax_column_count: true,
+    trim: true,
+  });
+  return Array.isArray(records) ? records : [];
+}
+
+async function parseExcelFile(filePath: string): Promise<any[]> {
+  const xlsx = (await import('xlsx')).default;
+  const workbook = xlsx.readFile(filePath, { cellDates: true, dense: true });
+  const firstSheetName = workbook.SheetNames?.[0];
+  if (!firstSheetName) return [];
+  const sheet = workbook.Sheets[firstSheetName];
+  const json = xlsx.utils.sheet_to_json(sheet, { defval: null, raw: false });
+  return Array.isArray(json) ? (json as any[]) : [];
+}
+
+async function parsePdfFile(filePath: string): Promise<{ text: string; pages?: number }> {
+  // pdf-parse is CommonJS; dynamic import keeps TS happy
+  const pdfParseMod: any = await import('pdf-parse');
+  const pdfParse = pdfParseMod.default || pdfParseMod;
+  const buffer = fs.readFileSync(filePath);
+  const result = await pdfParse(buffer);
+  return { text: (result?.text || '').trim(), pages: result?.numpages };
+}
+
+async function parseGeoJsonFile(filePath: string): Promise<{ data: any[]; summary: any }> {
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  const json = JSON.parse(raw);
+
+  // Accept both FeatureCollection and single Feature/Geometry
+  if (json?.type === 'FeatureCollection' && Array.isArray(json.features)) {
+    const features = json.features;
+    const data = features.map((f: any, idx: number) => {
+      const props = ((f && f.properties) || {}) as Record<string, any>;
+      const geometry = f?.geometry;
+
+      // Derive lat/lon from Point geometry when not explicitly present
+      let derivedLat: number | undefined;
+      let derivedLon: number | undefined;
+      if (geometry?.type === 'Point' && Array.isArray(geometry.coordinates) && geometry.coordinates.length >= 2) {
+        const [lon, lat] = geometry.coordinates;
+        const latNum = typeof lat === 'number' ? lat : parseFloat(lat);
+        const lonNum = typeof lon === 'number' ? lon : parseFloat(lon);
+        if (Number.isFinite(latNum) && Number.isFinite(lonNum)) {
+          derivedLat = latNum;
+          derivedLon = lonNum;
+        }
+      }
+
+      const hasLat = props.latitude !== undefined || props.lat !== undefined || props.decimalLatitude !== undefined;
+      const hasLon = props.longitude !== undefined || props.lon !== undefined || props.decimalLongitude !== undefined;
+
+      return {
+        __featureIndex: idx,
+        ...props,
+        ...(derivedLat !== undefined && !hasLat ? { latitude: derivedLat, lat: derivedLat, decimalLatitude: derivedLat } : {}),
+        ...(derivedLon !== undefined && !hasLon ? { longitude: derivedLon, lon: derivedLon, decimalLongitude: derivedLon } : {}),
+        geometry,
+        id: f?.id,
+        type: f?.type,
+      };
+    });
+    const geometryTypes = Array.from(new Set(features.map((f: any) => f?.geometry?.type).filter(Boolean)));
+    return {
+      data,
+      summary: { type: 'FeatureCollection', featureCount: features.length, geometryTypes },
+    };
+  }
+
+  return {
+    data: [json],
+    summary: { type: json?.type || 'unknown', note: 'Non-FeatureCollection GeoJSON stored as a single record' },
+  };
+}
+
+async function parseNetCdfFile(filePath: string): Promise<{ header: any }> {
+  const buffer = fs.readFileSync(filePath);
+  const netcdfMod: any = await import('netcdfjs');
+  const NetCDFReader = netcdfMod.NetCDFReader || netcdfMod.default || netcdfMod;
+  const reader = new NetCDFReader(buffer);
+
+  const dimensions = (reader?.dimensions || []).map((d: any) => ({ name: d.name, size: d.size }));
+  const globalAttributes = (reader?.globalAttributes || []).map((a: any) => ({ name: a.name, value: a.value }));
+  const variables = (reader?.variables || []).map((v: any) => ({
+    name: v.name,
+    type: v.type,
+    dimensions: (v.dimensions || []).map((dd: any) => (typeof dd === 'string' ? dd : dd?.name)).filter(Boolean),
+    attributes: (v.attributes || []).slice(0, 50).map((a: any) => ({ name: a.name, value: a.value })),
+  }));
+
+  return {
+    header: {
+      dimensions,
+      globalAttributes,
+      variables: variables.slice(0, 200),
+      variableCount: variables.length,
+    },
+  };
+}
+
+function isSupportedExtractedFile(ext: string): boolean {
+  return ['.csv', '.json', '.geojson', '.xlsx', '.xls', '.pdf', '.nc', '.netcdf'].includes(ext);
+}
+
+async function extractZipSafely(zipPath: string): Promise<{ dir: string; files: Array<{ filename: string; fullPath: string; size?: number }> }> {
+  const unzipperMod: any = await import('unzipper');
+  const unzipper = unzipperMod.default || unzipperMod;
+
+  const MAX_ENTRIES = parseInt(process.env.ZIP_MAX_ENTRIES || '200', 10);
+  const MAX_TOTAL_UNCOMPRESSED_BYTES = parseInt(process.env.ZIP_MAX_UNCOMPRESSED_BYTES || String(1024 * 1024 * 1024), 10); // 1GB
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmlre-zip-'));
+  const directory = await unzipper.Open.file(zipPath);
+
+  let entriesProcessed = 0;
+  let totalUncompressed = 0;
+  const extracted: Array<{ filename: string; fullPath: string; size?: number }> = [];
+
+  for (const entry of directory.files) {
+    if (entry.type === 'Directory') continue;
+    entriesProcessed++;
+    if (entriesProcessed > MAX_ENTRIES) {
+      throw new Error(`ZIP contains too many files (limit: ${MAX_ENTRIES})`);
+    }
+
+    const entryPathRaw = String(entry.path || '');
+    const normalized = path.normalize(entryPathRaw).replace(/^([/\\])+/, '');
+    const destPath = path.join(tempDir, normalized);
+    ensureWithinDir(tempDir, destPath);
+
+    const ext = getFileExt(normalized);
+    const uncompressedSize = entry.uncompressedSize || 0;
+    totalUncompressed += uncompressedSize;
+    if (totalUncompressed > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+      throw new Error(`ZIP uncompressed size too large (limit: ${MAX_TOTAL_UNCOMPRESSED_BYTES} bytes)`);
+    }
+
+    // Only extract formats we can handle
+    if (!isSupportedExtractedFile(ext)) {
+      // Drain stream to move on
+      entry.stream().resume();
+      continue;
+    }
+
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    await pipeline(entry.stream(), fs.createWriteStream(destPath));
+    extracted.push({ filename: normalized, fullPath: destPath, size: uncompressedSize });
+  }
+
+  return { dir: tempDir, files: extracted };
+}
+
+async function parseUploadedFile(
+  filePath: string,
+  originalName?: string,
+  opts?: { dataTypeHint?: string }
+): Promise<ParsedUpload> {
+  const ext = getFileExt(originalName || filePath);
+  const warnings: string[] = [];
+  const metadata: Record<string, any> = {
+    originalName: originalName || path.basename(filePath),
+    extension: ext,
+  };
+
+  try {
+    if (ext === '.csv') {
+      const data = await parseCsvFile(filePath);
+      return { format: 'csv', data, warnings, metadata };
+    }
+
+    if (ext === '.json') {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const json = JSON.parse(raw);
+      const data = Array.isArray(json) ? json : [json];
+      return { format: 'json', data, warnings, metadata };
+    }
+
+    if (ext === '.geojson') {
+      const { data, summary } = await parseGeoJsonFile(filePath);
+      metadata.geojson = summary;
+      // For AI, summarize instead of passing full geometry-heavy JSON
+      const textForMetadataExtraction = [
+        `GeoJSON upload: ${originalName || path.basename(filePath)}`,
+        JSON.stringify(summary, null, 2),
+        summarizeTabularSample(data, 3),
+      ].join('\n');
+      return { format: 'geojson', data, warnings, metadata, textForMetadataExtraction };
+    }
+
+    if (ext === '.xlsx' || ext === '.xls') {
+      const data = await parseExcelFile(filePath);
+      return { format: 'xlsx', data, warnings, metadata };
+    }
+
+    if (ext === '.pdf') {
+      // First try extracting tabular data via AI microservice (pdfplumber)
+      const maxRows = parseInt(process.env.PDF_MAX_TABLE_ROWS || '20000', 10);
+      const pdfTable = await aiServiceClient.extractPdfTables(filePath, { maxRows });
+      const tableRows = Array.isArray(pdfTable?.rows) ? pdfTable.rows : [];
+      const tableWarnings = Array.isArray(pdfTable?.warnings) ? pdfTable.warnings : [];
+
+      if (tableRows.length > 0) {
+        metadata.pdf = { tables: pdfTable?.stats?.tables, rows: tableRows.length };
+        const textForMetadataExtraction = [
+          `PDF upload: ${originalName || path.basename(filePath)}`,
+          `Extracted table rows: ${tableRows.length}`,
+          summarizeTabularSample(tableRows, 5),
+        ].join('\n');
+        return {
+          format: 'pdf',
+          data: tableRows,
+          warnings: [...warnings, ...tableWarnings],
+          metadata,
+          textForMetadataExtraction,
+        };
+      }
+
+      // Fallback: text-only extraction (metadata)
+      const { text, pages } = await parsePdfFile(filePath);
+      metadata.pdf = { pages, chars: text.length };
+      const textForMetadataExtraction = text.length
+        ? text.slice(0, 20000)
+        : `PDF upload: ${originalName || path.basename(filePath)} (no text extracted)`;
+      if (!text.length) warnings.push('PDF text extraction returned empty text (scanned PDF or unsupported encoding).');
+      if (tableWarnings.length) warnings.push(...tableWarnings);
+      return { format: 'pdf', data: [], warnings, metadata, textForMetadataExtraction };
+    }
+
+    if (ext === '.nc' || ext === '.netcdf') {
+      // Always capture a lightweight header (best-effort)
+      let header: any = undefined;
+      try {
+        const parsedHeader = await parseNetCdfFile(filePath);
+        header = parsedHeader?.header;
+      } catch (e: any) {
+        warnings.push(`NetCDF header parse failed (fallback to AI parsing only): ${e.message || String(e)}`);
+      }
+
+      const dataTypeHint = (opts?.dataTypeHint || '').toLowerCase();
+      const maxPoints = parseInt(process.env.NETCDF_MAX_POINTS || '20000', 10);
+
+      // If this upload is meant for oceanography, convert to point records for ingestion
+      if (dataTypeHint === 'oceanography') {
+        const nc = await aiServiceClient.parseNetcdfToPoints(filePath, {
+          maxPoints,
+          defaultSource: 'NetCDF Upload',
+        });
+
+        const points = Array.isArray(nc?.points) ? nc.points : [];
+        const ncWarnings = Array.isArray(nc?.warnings) ? nc.warnings : [];
+        if (nc?.header) header = nc.header;
+        if (points.length > 0) {
+          metadata.netcdf = header || nc.header || {};
+          metadata.netcdf_points = { count: points.length, stats: nc?.stats };
+          const textForMetadataExtraction = [
+            `NetCDF upload: ${originalName || path.basename(filePath)}`,
+            `Extracted oceanography point records: ${points.length}`,
+            header
+              ? `Variables (first 30): ${(header.variables || []).slice(0, 30).map((v: any) => v.name).join(', ')}`
+              : '',
+            summarizeTabularSample(points, 3),
+          ].filter(Boolean).join('\n');
+          return {
+            format: 'netcdf',
+            data: points,
+            warnings: [...warnings, ...ncWarnings],
+            metadata,
+            textForMetadataExtraction,
+          };
+        }
+
+        warnings.push(...ncWarnings);
+        warnings.push('NetCDF oceanography parsing returned zero points; storing header metadata only.');
+      }
+
+      metadata.netcdf = header || {};
+      const textForMetadataExtraction = [
+        `NetCDF upload: ${originalName || path.basename(filePath)}`,
+        header
+          ? `Dimensions: ${(header.dimensions || []).map((d: any) => `${d.name}=${d.size}`).join(', ')}`
+          : 'Dimensions: (unavailable)',
+        header
+          ? `Variables (first 30): ${(header.variables || []).slice(0, 30).map((v: any) => v.name).join(', ')}`
+          : 'Variables: (unavailable)',
+      ].join('\n');
+      warnings.push('NetCDF upload: header metadata extracted. For full ingestion into oceanography, set dataType=oceanography.');
+      return { format: 'netcdf', data: [], warnings, metadata, textForMetadataExtraction };
+    }
+
+    if (ext === '.zip') {
+      const { dir, files } = await extractZipSafely(filePath);
+      const parsedFrom: { filename: string; format: string }[] = [];
+      const mergedData: any[] = [];
+      const zipWarnings: string[] = [];
+      const zipMeta: any = {
+        extractedCount: files.length,
+        files: files.map(f => ({ filename: f.filename, size: f.size })),
+      };
+
+      for (const f of files) {
+        const sub = await parseUploadedFile(f.fullPath, f.filename, opts);
+        parsedFrom.push({ filename: f.filename, format: sub.format });
+        if (Array.isArray(sub.data) && sub.data.length) {
+          mergedData.push(
+            ...sub.data.map((r: any) => ({ __sourceFile: f.filename, ...r }))
+          );
+        }
+        if (sub.warnings?.length) zipWarnings.push(...sub.warnings.map(w => `${f.filename}: ${w}`));
+      }
+
+      // Build a compact text summary for AI extraction
+      const textForMetadataExtraction = [
+        `ZIP upload: ${originalName || path.basename(filePath)}`,
+        `Extracted supported files: ${files.length}`,
+        `Formats: ${Array.from(new Set(parsedFrom.map(p => p.format))).join(', ') || 'none'}`,
+        `Merged record count (tabular-like): ${mergedData.length}`,
+        `Files:`,
+        parsedFrom.map(p => `- ${p.filename} (${p.format})`).join('\n'),
+        mergedData.length ? summarizeTabularSample(mergedData, 3) : 'No merged tabular records.',
+      ].join('\n');
+
+      // Cleanup extracted dir
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch (e) {
+        // ignore
+      }
+
+      return {
+        format: 'zip',
+        data: mergedData,
+        warnings: [...warnings, ...zipWarnings],
+        metadata: { ...metadata, zip: zipMeta },
+        textForMetadataExtraction,
+        parsedFrom,
+      };
+    }
+
+    return { format: 'unknown', data: [], warnings: ['Unsupported file format'], metadata };
+  } catch (err: any) {
+    return {
+      format: 'unknown',
+      data: [],
+      warnings: [`Failed to parse file: ${err.message}`],
+      metadata,
+    };
+  }
+}
 
 router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, res: Response, next) => {
   try {
@@ -82,30 +486,29 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       throw new Error(`File not found: ${filePath}`);
     }
 
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    let data: any[];
+    const parsed = await parseUploadedFile(filePath, path.basename(filePath), { dataTypeHint: dataType });
+    let data: any[] = parsed.data || [];
     let recordsProcessedCount = 0;
 
-    // Parse file based on type
-    if (filePath.endsWith('.json')) {
-      data = JSON.parse(fileContent);
-      if (!Array.isArray(data)) {
-        data = [data];
-      }
-    } else if (filePath.endsWith('.csv')) {
-      // Simple CSV parsing (for production use a proper CSV library)
-      const lines = fileContent.split('\n').filter(line => line.trim());
-      const headers = lines[0].split(',').map(h => h.trim());
-      data = lines.slice(1).map(line => {
-        const values = line.split(',');
-        const obj: any = {};
-        headers.forEach((header, i) => {
-          obj[header] = values[i]?.trim();
-        });
-        return obj;
+    await IngestionJob.findByIdAndUpdate(jobId, {
+      $set: {
+        'metadata.parse': {
+          format: parsed.format,
+          details: parsed.metadata,
+          warnings: parsed.warnings,
+          parsedFrom: parsed.parsedFrom || [],
+        },
+      },
+    });
+
+    if (parsed.warnings?.length) {
+      await IngestionJob.findByIdAndUpdate(jobId, {
+        $addToSet: { warnings: { $each: parsed.warnings } },
       });
-    } else {
-      throw new Error('Unsupported file format');
+    }
+
+    if (parsed.format === 'unknown') {
+      throw new Error(parsed.warnings?.[0] || 'Unsupported file format');
     }
 
     logger.info(`📊 Parsed ${data.length} records from file`);
@@ -116,16 +519,44 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
     // AI-powered metadata extraction
     logger.info('🤖 Extracting metadata using AI...');
-    const metadataResult = await aiServiceClient.extractMetadata(filePath);
+    const metadataResult = parsed.textForMetadataExtraction
+      ? await aiServiceClient.extractMetadataFromText(parsed.textForMetadataExtraction, parsed.format)
+      : await aiServiceClient.extractMetadata(filePath);
     await IngestionJob.findByIdAndUpdate(jobId, { progress: 40 });
 
     // AI-powered data cleaning and standardization
-    logger.info('🧹 Cleaning and standardizing data using AI...');
-    const cleaningResult = await aiServiceClient.cleanData(data, {
-      remove_duplicates: true,
-      standardize: true,
-      normalize_formats: true,
-    });
+    const MAX_AI_CLEAN_RECORDS = parseInt(process.env.AI_CLEAN_MAX_RECORDS || '20000', 10);
+    let cleaningResult: DataCleaningResult = {
+      success: false,
+      cleaned_data: data,
+      report: { duplicates_removed: 0, values_standardized: 0, missing_imputed: 0, outliers_detected: 0 },
+      corrections: [],
+      warnings: [] as string[],
+      summary: {
+        original_records: data.length,
+        cleaned_records: data.length,
+        duplicates_removed: 0,
+        values_standardized: 0,
+        missing_values_imputed: 0,
+        outliers_detected: 0,
+      },
+    };
+
+    if (data.length > 0) {
+      if (data.length > MAX_AI_CLEAN_RECORDS) {
+        logger.warn(`Skipping AI cleaning: ${data.length} records exceeds limit ${MAX_AI_CLEAN_RECORDS}`);
+        cleaningResult.warnings.push(`AI cleaning skipped (record count ${data.length} exceeds limit ${MAX_AI_CLEAN_RECORDS})`);
+      } else {
+        logger.info('🧹 Cleaning and standardizing data using AI...');
+        cleaningResult = await aiServiceClient.cleanData(data, {
+          remove_duplicates: true,
+          standardize: true,
+          normalize_formats: true,
+        });
+      }
+    } else {
+      logger.info('🧹 Skipping AI cleaning: no tabular records');
+    }
 
     // Use cleaned data if AI processing succeeded
     if (cleaningResult.success && cleaningResult.cleaned_data.length > 0) {
@@ -256,7 +687,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
     await IngestionJob.findByIdAndUpdate(jobId, {
       progress: 55,
-      metadata: { validation: validationResults }
+      $set: { 'metadata.validation': validationResults }
     });
 
     // Insert data based on dataType
@@ -389,7 +820,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           await IngestionJob.findByIdAndUpdate(jobId, {
             progress: 30 + Math.floor((processed / data.length) * 60),
             recordsProcessed: processed,
-            metadata: { created, updated }
+            $set: { 'metadata.created': created, 'metadata.updated': updated }
           });
         } catch (err: any) {
           logger.warn(`Failed to insert species record: ${err.message}`);
@@ -485,7 +916,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           await IngestionJob.findByIdAndUpdate(jobId, {
             progress: 30 + Math.floor((processed / data.length) * 60),
             recordsProcessed: processed,
-            metadata: { created }
+            $set: { 'metadata.created': created }
           });
         } catch (err: any) {
           logger.warn(`Failed to insert oceanography record: ${err.message}`);
@@ -587,7 +1018,7 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
           await IngestionJob.findByIdAndUpdate(jobId, {
             progress: 30 + Math.floor((processed / data.length) * 60),
             recordsProcessed: processed,
-            metadata: { created, updated }
+            $set: { 'metadata.created': created, 'metadata.updated': updated }
           });
         } catch (err: any) {
           logger.warn(`Failed to insert eDNA record: ${err.message}`);
@@ -659,12 +1090,12 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
 
         // Update job metadata with dataset info
         await IngestionJob.findByIdAndUpdate(jobId, {
-          metadata: {
-            datasetId: dataset.id,
-            datasetType,
-            species: dataset.species,
-            dateRange: dataset.dateRange,
-            ...metadataResult.extracted_metadata
+          $set: {
+            'metadata.datasetId': dataset.id,
+            'metadata.datasetType': datasetType,
+            'metadata.species': dataset.species,
+            'metadata.dateRange': dataset.dateRange,
+            'metadata.extracted': metadataResult.extracted_metadata,
           }
         });
       } catch (fishError: any) {
@@ -676,6 +1107,19 @@ async function processFile(filePath: string, dataType: string, jobId: string, us
       logger.info(`📦 Processing ${dataType} data (basic handling)...`);
       recordsProcessedCount = data.length;
       logger.info(`✅ ${dataType} import complete: ${data.length} records`);
+    }
+
+    // Persist parse warnings / format info on job
+    try {
+      await IngestionJob.findByIdAndUpdate(jobId, {
+        $set: {
+          'metadata.parse.format': parsed.format,
+          'metadata.parse.warnings': parsed.warnings,
+          'metadata.parse.details': parsed.metadata,
+        }
+      });
+    } catch (e) {
+      // non-critical
     }
 
     // Create or update dataset version history
@@ -828,29 +1272,11 @@ router.post('/analyze', authenticate, upload.single('file'), async (req: AuthReq
     }
 
     const filePath = req.file.path;
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    let data: any[] = [];
+    const parsed = await parseUploadedFile(filePath, req.file.originalname);
+    let data: any[] = parsed.data || [];
 
-    // Parse file
-    if (filePath.endsWith('.json')) {
-      data = JSON.parse(fileContent);
-      if (!Array.isArray(data)) {
-        data = [data];
-      }
-    } else if (filePath.endsWith('.csv')) {
-      const lines = fileContent.split('\n').filter(line => line.trim());
-      if (lines.length > 0) {
-        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-        data = lines.slice(1, Math.min(11, lines.length)).map(line => {
-          const values = line.split(',');
-          const obj: any = {};
-          headers.forEach((header, i) => {
-            obj[header] = values[i]?.trim().replace(/^"|"$/g, '');
-          });
-          return obj;
-        });
-      }
-    }
+    // Keep analysis light: only sample first 10 records for detection
+    if (data.length > 10) data = data.slice(0, 10);
 
     // Clean up temp file
     try {
@@ -865,6 +1291,8 @@ router.post('/analyze', authenticate, upload.single('file'), async (req: AuthReq
       filename: req.file.originalname,
       fileSize: req.file.size,
       recordCount: data.length,
+      parsedFormat: parsed.format,
+      parseWarnings: parsed.warnings,
       ...detection,
       sampleData: data.slice(0, 3),
     });

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../services/api';
+import { apiClient, AI_SERVICE_URL } from '../services/api';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -157,7 +157,7 @@ const OtolithAnalysis: React.FC = () => {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch(`${import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'}/otolith/shape/analyze`, {
+      const response = await fetch(`${AI_SERVICE_URL}/otolith/shape/analyze`, {
         method: 'POST',
         body: formData
       });
@@ -173,7 +173,7 @@ const OtolithAnalysis: React.FC = () => {
   // Find similar otoliths mutation
   const findSimilarMutation = useMutation({
     mutationFn: async (descriptor: any) => {
-      const response = await fetch(`${import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'}/otolith/shape/find-similar`, {
+      const response = await fetch(`${AI_SERVICE_URL}/otolith/shape/find-similar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shape_descriptor: descriptor, top_k: 10 })

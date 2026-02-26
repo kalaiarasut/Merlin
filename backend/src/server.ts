@@ -68,6 +68,24 @@ const envInfo = {
 logger.info(`🔧 Env loaded for PostgreSQL: ${JSON.stringify(envInfo)}`);
 
 const app: Application = express();
+
+// Trust reverse proxy headers (e.g., Render/NGINX) so req.ip and rate limiting work correctly.
+// - In production we default to trusting a single proxy hop.
+// - You can override with TRUST_PROXY (e.g., "true", "false", "1", "2", "loopback").
+const trustProxyRaw = process.env.TRUST_PROXY;
+if (typeof trustProxyRaw === 'string' && trustProxyRaw.length > 0) {
+  const lower = trustProxyRaw.toLowerCase();
+  if (lower === 'true') {
+    app.set('trust proxy', true);
+  } else if (lower === 'false') {
+    app.set('trust proxy', false);
+  } else {
+    const asNumber = Number(trustProxyRaw);
+    app.set('trust proxy', Number.isFinite(asNumber) ? asNumber : trustProxyRaw);
+  }
+} else if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 const httpServer = createServer(app);
 const PORT = process.env.BACKEND_PORT || 5000;
 

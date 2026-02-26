@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const AI_SERVICE_URL = (import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 class ApiClient {
   private client: AxiosInstance;
@@ -79,7 +80,7 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient();
-export const aiServicesClient = new ApiClient('http://localhost:8000');
+export const aiServicesClient = new ApiClient(AI_SERVICE_URL);
 
 // Auth service
 export const authService = {
@@ -496,7 +497,7 @@ export const aiService = {
   // Streaming chat - yields tokens as they're generated
   // Calls Python directly to avoid Express auth issues with streaming
   chatStream: async function* (message: string, context?: any, requestId?: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') {
-    const response = await fetch('http://localhost:8000/chat/stream', {
+    const response = await fetch(`${AI_SERVICE_URL}/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

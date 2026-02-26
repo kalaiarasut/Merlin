@@ -7,7 +7,7 @@ import {
     Plus, Trash2, ChevronLeft, History, MessageCircle, Square
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { aiService } from '@/services/api';
+import { aiService, AI_SERVICE_URL } from '@/services/api';
 
 interface Message {
     id: string;
@@ -161,7 +161,7 @@ export default function FloatingAIChat() {
         // Start polling for progress (via REST API since SSE would need more setup)
         const pollInterval = setInterval(async () => {
             try {
-                const res = await fetch(`http://localhost:8000/chat/progress-status/${requestId}`);
+                const res = await fetch(`${AI_SERVICE_URL}/chat/progress-status/${requestId}`);
                 const data = await res.json();
                 if (data.stage && data.stage !== 'not_found') {
                     setProgress({
@@ -267,7 +267,7 @@ export default function FloatingAIChat() {
         if (!currentRequestId) return;
 
         try {
-            await fetch(`http://localhost:8000/chat/cancel/${currentRequestId}`, {
+            await fetch(`${AI_SERVICE_URL}/chat/cancel/${currentRequestId}`, {
                 method: 'POST'
             });
             setIsLoading(false);

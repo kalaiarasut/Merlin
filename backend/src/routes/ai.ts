@@ -87,7 +87,7 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
         logger.error(`Response data: ${JSON.stringify(aiError.response.data)}`);
       }
 
-      const warningPrefix = "⚠️ **Both Gemini and Ollama are facing issues.** (Offline Mode)\n\nCould not generate a response.";
+      const warningPrefix = "⚠️ **Both Groq and Ollama are facing issues.** (Offline Mode)\n\nCould not generate a response.";
       const errorSuffix = `\n\n**System Error (Backend):** ${aiError.message}`;
 
       res.json({

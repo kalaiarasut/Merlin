@@ -27,7 +27,7 @@ export default function Login() {
   };
 
   const features = [
-    { icon: Database, label: 'Comprehensive Database', desc: '850K+ marine records' },
+    { icon: Database, label: 'Unified Database', desc: 'Species, Oceanography, Fisheries Catch, Otolith, eDNA, Survey' },
     { icon: Fish, label: 'Species Analysis', desc: 'AI-powered identification' },
     { icon: Sparkles, label: 'Smart Analytics', desc: 'Cross-domain insights' },
     { icon: Shield, label: 'Secure Access', desc: 'Enterprise-grade security' },

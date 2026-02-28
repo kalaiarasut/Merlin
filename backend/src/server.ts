@@ -89,6 +89,12 @@ if (typeof trustProxyRaw === 'string' && trustProxyRaw.length > 0) {
 const httpServer = createServer(app);
 const PORT = process.env.BACKEND_PORT || 5000;
 
+const shouldSkipDbConnect = (() => {
+  const raw = process.env.SKIP_DB_CONNECT;
+  if (!raw) return false;
+  return ['1', 'true', 'yes'].includes(raw.toLowerCase());
+})();
+
 // Initialize WebSocket
 websocketService.initialize(httpServer);
 
@@ -152,8 +158,12 @@ app.use(errorHandler);
 // Database connections and server start
 const startServer = async () => {
   try {
-    await connectMongoDB();
-    await connectPostgreSQL();
+    if (shouldSkipDbConnect) {
+      logger.warn('⚠️ SKIP_DB_CONNECT enabled: starting without MongoDB/PostgreSQL connections');
+    } else {
+      await connectMongoDB();
+      await connectPostgreSQL();
+    }
 
     httpServer.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);

@@ -9,10 +9,8 @@ import logger from '../utils/logger';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// HARDCODED to bypass .env loading issues - was: process.env.AI_SERVICE_URL || 'http://localhost:8000'
-const AI_SERVICE_URL = 'http://127.0.0.1:8000';
+const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 logger.info(`AI Service URL configured as: ${AI_SERVICE_URL}`);
-// Reload trigger: force nodemon reload at 18:50
 
 // Helper function to generate context-aware responses when AI service is unavailable
 const generateLocalResponse = async (message: string): Promise<string> => {

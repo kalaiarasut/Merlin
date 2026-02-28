@@ -25,6 +25,11 @@ wheels/
 .installed.cfg
 *.egg
 
+# Pip download artifacts (often show up as untracked files)
+*.whl
+*.whl.*
+pip-wheel-metadata/
+
 # IDEs
 .vscode/
 .idea/
@@ -147,3 +152,5 @@ ai-services/classification/species_trainer.py
 # New Test Directory
 ai-services/tests/
 doc/
+
+AWS_BEDROCK_APP_RUNNER_GUIDE.md

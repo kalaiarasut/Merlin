@@ -1,5 +1,6 @@
 # AI Services Dockerfile – Slim Cloud Build (Groq + Fish Classifier)
-# NOTE: This file is used by docker-compose.yml (build context: ./ai-services)
+# Removes tensorflow, llama-cpp-python, sentence-transformers, transformers
+# Keeps PyTorch CPU + EfficientNet for fish identification
 FROM --platform=linux/amd64 python:3.10-slim-bookworm
 
 # Make pip more resilient on slow/flaky networks (large wheels like numpy/torch).
@@ -42,8 +43,12 @@ COPY . .
 # Create model & cache directories
 RUN mkdir -p models cache
 
-# Expose port
+# Expose port (Render injects $PORT)
 EXPOSE 8000
 
-# Start FastAPI server
+# Health check (FastAPI root returns JSON)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8000}/')" || exit 1
+
+# Start – respects Render's $PORT env var
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

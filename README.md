@@ -533,6 +533,7 @@ JWT_EXPIRES_IN=24h
 # AI Services
 GROQ_API_KEY=your_groq_api_key  # Optional: for cloud LLM
 OLLAMA_URL=http://localhost:11434  # For local LLM
+AI_SERVICE_URL=http://localhost:8000  # Backend -> Python AI services base URL
 
 # Frontend (Vite/Vercel)
 # Set these in your Vercel project (Environment Variables) so the deployed UI

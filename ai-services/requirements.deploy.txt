@@ -1,0 +1,74 @@
+# ==============================================
+# AI Services - Slim Cloud Deployment
+# ==============================================
+# Groq (cloud LLM) + Fish Classifier (PyTorch)
+# Removes: tensorflow, llama-cpp-python, sentence-transformers, transformers
+# These 4 packages are NOT imported anywhere in source code.
+# ==============================================
+
+# --- Core API ---
+fastapi==0.115.9
+uvicorn[standard]==0.25.0
+python-multipart==0.0.6
+pydantic==2.9.2
+python-dotenv==1.0.0
+httpx==0.28.1
+groq==1.0.0
+
+# --- AWS (Bedrock) ---
+boto3==1.42.22
+
+# --- Database ---
+pymongo==4.6.1
+motor==3.3.2
+redis==5.0.1
+
+# --- Data Processing ---
+pandas==2.1.4
+numpy==1.26.2
+scipy==1.11.4
+
+# --- Image Processing ---
+opencv-python-headless==4.9.0.80
+pillow==10.1.0
+scikit-image==0.22.0
+piexif==1.1.3
+
+# --- Fish Classifier (PyTorch + EfficientNet) ---
+# CPU-only builds are much smaller (~200MB vs ~2GB for CUDA)
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- ML (lightweight) ---
+scikit-learn==1.3.2
+
+# --- NLP (spacy only - used by metadata_tagger & data_pipeline) ---
+spacy==3.7.2
+pytesseract==0.3.10
+
+# --- Bioinformatics ---
+biopython==1.81
+
+# --- Report Generation ---
+reportlab==4.0.9
+matplotlib==3.8.2
+
+# --- PDF ---
+pdfplumber==0.11.4
+
+# --- RAG (ChromaDB) ---
+# Pin to avoid extremely slow resolver backtracking during Docker builds.
+chromadb==1.4.0
+
+# --- Oceanographic ---
+copernicusmarine==2.2.5
+netCDF4==1.7.4
+
+# --- Utilities ---
+aiohttp==3.9.1
+requests==2.31.0
+pyyaml==6.0.1
+tqdm==4.66.1
+
+# --- LLM (cloud only - Groq/Bedrock) ---

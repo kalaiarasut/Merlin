@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 class LLMProvider(Enum):
     """Available LLM providers"""
+    BEDROCK = "bedrock"  # AWS Bedrock (managed LLMs)
     GROQ = "groq"      # Cloud API (fast, free tier, no local resources)
     OLLAMA = "ollama"  # Local (private, requires local install, context-injection)
     OLLAMA_AGENT = "ollama_agent" # Local (agentic, native tools, experimental)
@@ -60,6 +61,9 @@ class ChatMessage:
 class ChatConfig:
     """Configuration for LLM chat"""
     provider: str = "auto"  # "auto", "groq", or "ollama"
+    # Bedrock settings (AWS)
+    bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    bedrock_region: str = ""
     # Groq settings (cloud)
     groq_model: str = "llama-3.3-70b-versatile"  # High-performance Groq model
     groq_api_key: str = ""  # Will be loaded from env
@@ -320,10 +324,18 @@ class LLMService:
         self.config = config or ChatConfig()
         
         # Override from environment
+        self.config.provider = os.getenv("LLM_PROVIDER", self.config.provider)
         self.config.ollama_url = os.getenv("OLLAMA_URL", self.config.ollama_url)
         self.config.groq_api_key = os.getenv("GROQ_API_KEY", self.config.groq_api_key)
         self.config.ollama_model = os.getenv("OLLAMA_MODEL", self.config.ollama_model)
         self.config.groq_model = os.getenv("GROQ_MODEL", self.config.groq_model)
+        self.config.bedrock_model_id = os.getenv("BEDROCK_MODEL_ID", self.config.bedrock_model_id)
+        self.config.bedrock_region = (
+            os.getenv("BEDROCK_REGION", "")
+            or os.getenv("AWS_REGION", "")
+            or os.getenv("AWS_DEFAULT_REGION", "")
+            or self.config.bedrock_region
+        )
         
         # Handle preferred provider override
         if preferred_provider:
@@ -340,7 +352,9 @@ class LLMService:
         self._active_provider = self._detect_provider()
         
         # Set active model based on provider
-        if self._active_provider == LLMProvider.GROQ:
+        if self._active_provider == LLMProvider.BEDROCK:
+            self.config.model = self.config.bedrock_model_id
+        elif self._active_provider == LLMProvider.GROQ:
             self.config.model = self.config.groq_model
         else:
             self.config.model = self.config.ollama_model
@@ -349,6 +363,13 @@ class LLMService:
     
     def _detect_provider(self) -> LLMProvider:
         # Detect Provider
+
+        # If explicitly set to bedrock
+        if self.config.provider == "bedrock":
+            if self._check_bedrock_availability():
+                logger.info("Using Bedrock (explicitly requested)")
+                return LLMProvider.BEDROCK
+            logger.warning("Bedrock requested but not available. Falling back.")
         
         # If explicitly set to groq
         if self.config.provider == "groq":
@@ -376,6 +397,11 @@ class LLMService:
         
         # Auto-detect: Try Groq first (better for cloud), then Ollama
         elif self.config.provider == "auto":
+            # Prefer Bedrock when running on AWS (or when configured)
+            if self._check_bedrock_availability():
+                logger.info("Auto-detect: Bedrock available, using Bedrock")
+                return LLMProvider.BEDROCK
+
             # Check Groq first (preferred for cloud hosting)
             if self.config.groq_api_key:
                 logger.info("Auto-detect: Groq API key found, using Groq")
@@ -389,6 +415,20 @@ class LLMService:
         # Fallback
         logger.warning("No LLM provider available. Using static fallback.")
         return LLMProvider.FALLBACK
+
+    def _check_bedrock_availability(self) -> bool:
+        try:
+            import boto3  # noqa: F401
+        except Exception:
+            return False
+
+        if not self.config.bedrock_region:
+            return False
+        if not self.config.bedrock_model_id:
+            return False
+
+        # Do not make network calls here; rely on AWS SDK credential chain at runtime.
+        return True
     
     def _check_ollama_sync(self) -> bool:
         # Ollama Sync Check
@@ -458,6 +498,9 @@ class LLMService:
             if self._active_provider == LLMProvider.GROQ:
                 logger.info("Executing via Groq Cloud API")
                 response_text = await self._chat_groq(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
+            elif self._active_provider == LLMProvider.BEDROCK:
+                logger.info("Executing via AWS Bedrock")
+                response_text = await self._chat_bedrock(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
             elif self._active_provider == LLMProvider.OLLAMA:
                 logger.info("Executing via Ollama")
                 response_text = await self._chat_ollama(enhanced_message, conversation_history, skip_db_context=skip_db, request_id=request_id)
@@ -470,7 +513,7 @@ class LLMService:
 
             result = {
                 "response": response_text,
-                "confidence": 0.95 if self._active_provider in [LLMProvider.GROQ, LLMProvider.OLLAMA] else 0.5,
+                "confidence": 0.95 if self._active_provider in [LLMProvider.BEDROCK, LLMProvider.GROQ, LLMProvider.OLLAMA] else 0.5,
                 "provider": self._active_provider.value,
                 "model": self.config.model
             }
@@ -511,13 +554,16 @@ class LLMService:
             except Exception as e:
                 logger.error(f"Groq streaming failed: {e}")
                 # Fallback to Ollama if configured
-                if self.config.ollama_available:
-                     logger.info("Falling back to Ollama streaming")
-                     async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
+                if await self._check_ollama_availability():
+                    logger.info("Falling back to Ollama streaming")
+                    async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
                         yield token
                 else:
                     yield f"Error: Groq failed and Ollama is unavailable. ({str(e)})"
                     
+        elif self._active_provider == LLMProvider.BEDROCK:
+            async for token in self._chat_bedrock_stream(message, history, skip_db_context, request_id):
+                yield token
         elif self._active_provider == LLMProvider.OLLAMA:
              async for token in self._chat_ollama_stream(message, history, skip_db_context, request_id):
                  yield token
@@ -526,6 +572,176 @@ class LLMService:
                  yield token
         else:
              yield "System is offline or no provider available."
+
+    def _bedrock_build_messages(
+        self,
+        user_message: str,
+        history: Optional[List[ChatMessage]] = None,
+    ) -> List[Dict[str, Any]]:
+        messages: List[Dict[str, Any]] = []
+        if history:
+            for msg in history[-10:]:
+                if msg.role not in ("user", "assistant"):
+                    continue
+                messages.append({
+                    "role": msg.role,
+                    "content": [{"text": msg.content}]
+                })
+        messages.append({"role": "user", "content": [{"text": user_message}]})
+        return messages
+
+    async def _chat_bedrock(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None,
+    ) -> str:
+        import asyncio
+        import json
+
+        try:
+            import boto3
+        except ImportError:
+            raise Exception("boto3 not installed (required for Bedrock).")
+
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            # Bedrock path does not currently support tool-calling in this service; keep legacy enrichment enabled.
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=False)
+
+        bedrock_region = self.config.bedrock_region
+        model_id = self.config.bedrock_model_id
+
+        runtime = boto3.client("bedrock-runtime", region_name=bedrock_region)
+        messages = self._bedrock_build_messages(message, history)
+
+        def _call_sync() -> str:
+            # Prefer the model-agnostic Converse API when available.
+            if hasattr(runtime, "converse"):
+                resp = runtime.converse(
+                    modelId=model_id,
+                    system=[{"text": system_prompt}],
+                    messages=messages,
+                    inferenceConfig={
+                        "maxTokens": int(self.config.max_tokens),
+                        "temperature": float(self.config.temperature),
+                    },
+                )
+                content_blocks = resp.get("output", {}).get("message", {}).get("content", [])
+                text = "".join([b.get("text", "") for b in content_blocks if isinstance(b, dict)])
+                return text.strip() or "I couldn't generate a response."
+
+            # Fallback: raw InvokeModel (best-effort, Claude-style payload)
+            body = {
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": int(self.config.max_tokens),
+                "temperature": float(self.config.temperature),
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": message}]}
+                ],
+            }
+            resp = runtime.invoke_model(
+                modelId=model_id,
+                body=json.dumps(body).encode("utf-8"),
+                contentType="application/json",
+                accept="application/json",
+            )
+            raw = resp["body"].read().decode("utf-8")
+            data = json.loads(raw)
+            # Claude-style response
+            content = data.get("content", [])
+            text = "".join([c.get("text", "") for c in content if isinstance(c, dict)])
+            return text.strip() or data.get("completion", "") or "I couldn't generate a response."
+
+        try:
+            return await asyncio.to_thread(_call_sync)
+        except Exception as e:
+            logger.error(f"Bedrock error: {e}")
+            # Fall back to Groq if available
+            if self._check_groq_availability():
+                logger.info("Falling back to Groq...")
+                return await self._chat_groq(message, history, skip_db_context, request_id)
+            # Then Ollama
+            if await self._check_ollama_availability():
+                logger.info("Falling back to Ollama...")
+                return await self._chat_ollama(message, history, skip_db_context, request_id)
+            raise
+
+    async def _chat_bedrock_stream(
+        self,
+        message: str,
+        history: Optional[List[ChatMessage]] = None,
+        skip_db_context: bool = False,
+        request_id: Optional[str] = None,
+    ):
+        import asyncio
+        import threading
+
+        try:
+            import boto3
+        except ImportError:
+            # No boto3: emit a single error token.
+            yield "Bedrock unavailable (boto3 not installed)."
+            return
+
+        if skip_db_context:
+            system_prompt = MARINE_SYSTEM_PROMPT + "\n\n(Using web search results instead of database context)"
+            logger.info("Skipping DB context (search-mode)")
+        else:
+            system_prompt = await get_dynamic_system_prompt(message, request_id=request_id, skip_enrichment=False)
+
+        bedrock_region = self.config.bedrock_region
+        model_id = self.config.bedrock_model_id
+        runtime = boto3.client("bedrock-runtime", region_name=bedrock_region)
+        messages = self._bedrock_build_messages(message, history)
+
+        # If ConverseStream is available, stream deltas without blocking the event loop.
+        if hasattr(runtime, "converse_stream"):
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue = asyncio.Queue()
+
+            def run_stream():
+                try:
+                    resp = runtime.converse_stream(
+                        modelId=model_id,
+                        system=[{"text": system_prompt}],
+                        messages=messages,
+                        inferenceConfig={
+                            "maxTokens": int(self.config.max_tokens),
+                            "temperature": float(self.config.temperature),
+                        },
+                    )
+
+                    for event in resp.get("stream", []):
+                        delta = event.get("contentBlockDelta", {}).get("delta", {})
+                        text = delta.get("text")
+                        if text:
+                            asyncio.run_coroutine_threadsafe(queue.put(text), loop)
+
+                except Exception as e:
+                    asyncio.run_coroutine_threadsafe(queue.put(f"[Bedrock stream error: {e}]"), loop)
+                finally:
+                    asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+            threading.Thread(target=run_stream, daemon=True).start()
+
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+
+            return
+
+        # Fallback: non-streaming call, then chunk it so the frontend SSE still behaves.
+        full = await self._chat_bedrock(message, history, skip_db_context, request_id)
+        chunk_size = 12
+        for i in range(0, len(full), chunk_size):
+            yield full[i:i + chunk_size]
 
     def _enhance_with_context(self, message: str, context: Optional[Dict[str, Any]]) -> str:
         # Helper response

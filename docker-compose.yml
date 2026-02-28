@@ -122,6 +122,7 @@ services:
 
   # AI Services (Python)
   ai-services:
+    platform: linux/amd64
     build:
       context: ./ai-services
       dockerfile: ../docker/ai-services.Dockerfile

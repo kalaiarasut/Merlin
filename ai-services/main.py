@@ -175,7 +175,7 @@ class ChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
     request_id: Optional[str] = None  # For progress tracking
-    provider: Optional[str] = None  # LLM provider: "groq", "ollama", or "auto"
+    provider: Optional[str] = None  # LLM provider: "bedrock", "groq", "ollama", "ollama_agent", or "auto"
 
 class ChatResponse(BaseModel):
     response: str
@@ -329,7 +329,8 @@ async def chat(request: ChatRequest):
     """
     Intelligent marine-domain chat endpoint.
     
-    Supports two LLM providers:
+    Supports LLM providers:
+    - bedrock: AWS Bedrock (managed LLMs)
     - groq: Cloud API (fast, free tier, no local resources needed)
     - ollama: Local LLM (private, requires local install)
     - auto: Auto-detect (Groq if API key present, else Ollama)

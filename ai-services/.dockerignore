@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+.env
+.git/
+.gitignore
+.cache/
+.pytest_cache/
+.mypy_cache/
+models/
+cache/
+training_data/
+*.ipynb
+# Large notebook checkpoints
+.ipynb_checkpoints/
+# Downloaded training images
+classification/training_data/
+# Keep classification/models/*.pth — needed for fish identification at runtime

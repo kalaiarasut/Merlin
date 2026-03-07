@@ -221,7 +221,7 @@ export default function NicheModeling() {
         model_type: modelType,
         prediction_resolution: resolution,
         study_area: studyArea,
-        n_background: 10000,
+        n_background: 1000,
       });
       return response;
     },

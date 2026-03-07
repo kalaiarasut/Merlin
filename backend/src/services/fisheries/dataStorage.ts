@@ -204,7 +204,11 @@ export async function createDataset(params: {
 export async function getAllDatasets(validatedOnly?: boolean): Promise<FisheriesDataset[]> {
     const query: any = {};
     if (validatedOnly) {
-        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+        query.$or = [
+            { 'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] } },
+            { validationStatus: { $exists: false } },
+            { 'validationStatus.status': { $exists: false } },
+        ];
     }
     const docs = await DatasetModel.find(query).sort({ uploadedAt: -1 }).lean();
     return docs.map(d => ({
@@ -232,7 +236,11 @@ export async function getCatchRecords(filters?: {
     const query: any = {};
 
     if (filters?.validatedOnly) {
-        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+        query.$or = [
+            { 'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] } },
+            { validationStatus: { $exists: false } },
+            { 'validationStatus.status': { $exists: false } },
+        ];
     }
 
     if (filters?.species) {
@@ -278,7 +286,11 @@ export async function getLengthRecords(filters?: {
     const query: any = {};
 
     if (filters?.validatedOnly) {
-        query['validationStatus.status'] = { $in: ['auto-validated', 'expert-validated'] };
+        query.$or = [
+            { 'validationStatus.status': { $in: ['auto-validated', 'expert-validated'] } },
+            { validationStatus: { $exists: false } },
+            { 'validationStatus.status': { $exists: false } },
+        ];
     }
 
     if (filters?.species) {

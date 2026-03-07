@@ -15,24 +15,24 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 // API service
 const validationApi = {
-    getInfo: () => fetch(`${API_URL}/api/validation/info`).then(r => r.json()),
+    getInfo: () => fetch(`${BACKEND_ROOT_URL}/api/validation/info`).then(r => r.json()),
     getPending: (filters?: any) => {
         const params = new URLSearchParams(filters || {});
-        return fetch(`${API_URL}/api/validation/pending?${params}`).then(r => r.json());
+        return fetch(`${BACKEND_ROOT_URL}/api/validation/pending?${params}`).then(r => r.json());
     },
-    getStats: () => fetch(`${API_URL}/api/validation/stats`).then(r => r.json()),
-    getThresholds: () => fetch(`${API_URL}/api/validation/thresholds`).then(r => r.json()),
-    getCertificates: () => fetch(`${API_URL}/api/validation/certificates?limit=10`).then(r => r.json()),
-    submitReview: (data: any) => fetch(`${API_URL}/api/validation/review`, {
+    getStats: () => fetch(`${BACKEND_ROOT_URL}/api/validation/stats`).then(r => r.json()),
+    getThresholds: () => fetch(`${BACKEND_ROOT_URL}/api/validation/thresholds`).then(r => r.json()),
+    getCertificates: () => fetch(`${BACKEND_ROOT_URL}/api/validation/certificates?limit=10`).then(r => r.json()),
+    submitReview: (data: any) => fetch(`${BACKEND_ROOT_URL}/api/validation/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
     }).then(r => r.json()),
-    updateThresholds: (data: any) => fetch(`${API_URL}/api/validation/thresholds`, {
+    updateThresholds: (data: any) => fetch(`${BACKEND_ROOT_URL}/api/validation/thresholds`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

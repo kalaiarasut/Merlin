@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 // Standards information
 const STANDARDS = [
@@ -61,18 +62,37 @@ interface Grade {
     color: string;
 }
 
+type ValidationMode = 'primary' | 'all';
+type StandardId = 'dwc' | 'obis' | 'mixs' | 'iso19115' | 'cf';
+
+function detectStandardFromFile(file: File): StandardId {
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.includes('iso') || lowerName.includes('19115') || lowerName.includes('metadata')) return 'iso19115';
+    if (lowerName.includes('mixs') || lowerName.includes('edna') || lowerName.includes('sequence')) return 'mixs';
+    if (lowerName.includes('obis') || lowerName.includes('marine')) return 'obis';
+    if (lowerName.includes('cf') || lowerName.includes('netcdf')) return 'cf';
+    if (lowerName.endsWith('.csv')) return 'dwc';
+    return 'iso19115';
+}
+
 export default function StandardsCompliance() {
     const [files, setFiles] = useState<File[]>([]);
     const [validating, setValidating] = useState(false);
     const [report, setReport] = useState<ComplianceReport | null>(null);
     const [grade, setGrade] = useState<Grade | null>(null);
     const [selectedStandard, setSelectedStandard] = useState<ValidationResult | null>(null);
+    const [validationMode, setValidationMode] = useState<ValidationMode>('primary');
+    const [primaryStandard, setPrimaryStandard] = useState<StandardId>('iso19115');
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         setFiles(acceptedFiles);
         setReport(null);
         setGrade(null);
         setSelectedStandard(null);
+
+        if (acceptedFiles[0]) {
+            setPrimaryStandard(detectStandardFromFile(acceptedFiles[0]));
+        }
     }, []);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -85,16 +105,80 @@ export default function StandardsCompliance() {
     });
 
     const validateMutation = useMutation({
-        mutationFn: async (data: any[]) => {
-            const response = await fetch('http://localhost:5000/api/standards/report/validation', {
+        mutationFn: async (payload: {
+            rows: any[];
+            rawJsonObject: Record<string, any> | null;
+            mode: ValidationMode;
+            standard: StandardId;
+        }) => {
+            if (payload.mode === 'primary') {
+                const singleStandardData = payload.standard === 'iso19115' && payload.rawJsonObject
+                    ? payload.rawJsonObject
+                    : payload.rows;
+
+                const response = await fetch(`${BACKEND_ROOT_URL}/api/standards/validate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        data: singleStandardData,
+                        standard: payload.standard,
+                    }),
+                });
+
+                return {
+                    mode: 'primary' as const,
+                    ...(await response.json()),
+                };
+            }
+
+            const allStandardsBody = payload.rawJsonObject
+                ? { data: [], metadata: payload.rawJsonObject }
+                : { data: payload.rows };
+
+            const response = await fetch(`${BACKEND_ROOT_URL}/api/standards/report/validation`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ data }),
+                body: JSON.stringify(allStandardsBody),
             });
-            return response.json();
+
+            return {
+                mode: 'all' as const,
+                ...(await response.json()),
+            };
         },
         onSuccess: (data) => {
             if (data.success) {
+                if (data.mode === 'primary') {
+                    const result = data.result as ValidationResult;
+                    const singleReport: ComplianceReport = {
+                        datasetId: 'validation',
+                        timestamp: new Date().toISOString(),
+                        overallScore: result.score,
+                        overallValid: result.valid,
+                        standardResults: [result],
+                        summary: {
+                            totalErrors: result.errors.length,
+                            totalWarnings: result.warnings.length,
+                            passedStandards: result.valid ? [result.standardName] : [],
+                            failedStandards: result.valid ? [] : [result.standardName],
+                        },
+                        recommendations: result.requiredFor?.length
+                            ? [`This standard is commonly required for: ${result.requiredFor.join(', ')}`]
+                            : [],
+                    };
+
+                    setReport(singleReport);
+                    setGrade(data.grade);
+                    setSelectedStandard(result);
+
+                    if (result.valid) {
+                        toast.success(`${result.standardName} check passed! Score: ${result.score}%`);
+                    } else {
+                        toast.error(`${result.standardName} issues found. Score: ${result.score}%`);
+                    }
+                    return;
+                }
+
                 setReport(data.report);
                 setGrade(data.grade);
                 if (data.report.standardResults.length > 0) {
@@ -124,16 +208,22 @@ export default function StandardsCompliance() {
         try {
             const file = files[0];
             const text = await file.text();
-            let data: any[];
+            let rows: any[] = [];
+            let rawJsonObject: Record<string, any> | null = null;
 
             if (file.name.endsWith('.json')) {
                 const parsed = JSON.parse(text);
-                data = Array.isArray(parsed) ? parsed : [parsed];
+                if (Array.isArray(parsed)) {
+                    rows = parsed;
+                } else {
+                    rawJsonObject = parsed;
+                    rows = [parsed];
+                }
             } else {
                 // Parse CSV
                 const lines = text.split('\n').filter(l => l.trim());
                 const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                data = lines.slice(1).map(line => {
+                rows = lines.slice(1).map(line => {
                     const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
                     const obj: any = {};
                     headers.forEach((h, i) => {
@@ -143,7 +233,12 @@ export default function StandardsCompliance() {
                 });
             }
 
-            validateMutation.mutate(data);
+            validateMutation.mutate({
+                rows,
+                rawJsonObject,
+                mode: validationMode,
+                standard: primaryStandard,
+            });
         } catch (error) {
             console.error('Error parsing file:', error);
             toast.error('Failed to parse file');
@@ -207,6 +302,50 @@ export default function StandardsCompliance() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
+                            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800/40">
+                                    <button
+                                        type="button"
+                                        onClick={() => setValidationMode('primary')}
+                                        className={cn(
+                                            'px-3 py-1.5 text-sm rounded-md transition-colors',
+                                            validationMode === 'primary'
+                                                ? 'bg-white text-deep-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                                                : 'text-deep-600 dark:text-gray-300'
+                                        )}
+                                    >
+                                        Primary standard only
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setValidationMode('all')}
+                                        className={cn(
+                                            'px-3 py-1.5 text-sm rounded-md transition-colors',
+                                            validationMode === 'all'
+                                                ? 'bg-white text-deep-900 shadow-sm dark:bg-gray-700 dark:text-white'
+                                                : 'text-deep-600 dark:text-gray-300'
+                                        )}
+                                    >
+                                        All standards
+                                    </button>
+                                </div>
+
+                                {validationMode === 'primary' && (
+                                    <div className="w-full md:w-64">
+                                        <label className="text-xs font-medium text-deep-600 dark:text-gray-400">Primary standard</label>
+                                        <select
+                                            value={primaryStandard}
+                                            onChange={(e) => setPrimaryStandard(e.target.value as StandardId)}
+                                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-deep-900 focus:border-ocean-400 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                                        >
+                                            {STANDARDS.map((std) => (
+                                                <option key={std.id} value={std.id}>{std.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
                             <div
                                 {...getRootProps()}
                                 className={cn(
@@ -446,7 +585,7 @@ export default function StandardsCompliance() {
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-base flex items-center gap-2">
                                     <Sparkles className="w-4 h-4 text-ocean-500" />
-                                    Recommendations
+                                    {validationMode === 'all' ? 'Cross-standard recommendations' : 'Recommendations'}
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>

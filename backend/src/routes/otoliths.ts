@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
 import logger from '../utils/logger';
+import { uploadFileToS3 } from '../utils/s3Storage';
 
 // Use native FormData from Node.js (available in Node 18+)
 // or fallback to form-data package if available
@@ -48,6 +49,32 @@ const upload = multer({
 });
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+function createRequestId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getAiErrorDetails(error: any) {
+  const details: Record<string, any> = {
+    message: error?.message || String(error),
+  };
+
+  if (error?.code) details.code = error.code;
+  if (error?.name) details.name = error.name;
+  if (error?.config?.url) details.url = error.config.url;
+  if (error?.config?.timeout) details.timeout = error.config.timeout;
+  if (error?.response?.status) details.status = error.response.status;
+  if (error?.response?.statusText) details.statusText = error.response.statusText;
+
+  const responseData = error?.response?.data;
+  if (typeof responseData === 'string') {
+    details.responseData = responseData.slice(0, 500);
+  } else if (responseData && typeof responseData === 'object') {
+    details.responseData = JSON.stringify(responseData).slice(0, 500);
+  }
+
+  return details;
+}
 
 // Otolith Schema
 const otolithSchema = new mongoose.Schema({
@@ -209,9 +236,17 @@ router.post('/upload', authenticate, upload.single('image'), async (req: AuthReq
     await otolith.save();
     logger.info(`Otolith image uploaded: ${sampleId}`);
 
+    const s3Upload = await uploadFileToS3({
+      filePath: req.file.path,
+      keyPrefix: 'uploads/otoliths/images',
+      contentType: req.file.mimetype,
+      originalName: req.file.originalname
+    });
+
     res.status(201).json({
       message: 'Otolith image uploaded successfully',
-      otolith
+      otolith,
+      s3: s3Upload
     });
   } catch (error) {
     logger.error('Error uploading otolith image:', error);
@@ -224,6 +259,10 @@ router.post('/upload', authenticate, upload.single('image'), async (req: AuthReq
 
 // Analyze otolith (shape analysis)
 router.post('/:id/analyze', authenticate, async (req: AuthRequest, res: Response) => {
+  const requestId = createRequestId('otolith-shape');
+  const startedAt = Date.now();
+  res.setHeader('X-Request-Id', requestId);
+
   try {
     const record = await Otolith.findById(req.params.id);
     if (!record) {
@@ -256,10 +295,21 @@ router.post('/:id/analyze', authenticate, async (req: AuthRequest, res: Response
       record.updatedAt = new Date();
       await record.save();
 
-      logger.info(`Otolith analysis completed: ${record.sampleId}`);
-      res.json({ message: 'Analysis completed', record });
+      logger.info('Otolith shape analysis completed', {
+        requestId,
+        sampleId: record.sampleId,
+        endpoint: '/analyze-otolith',
+        durationMs: Date.now() - startedAt,
+      });
+      res.json({ message: 'Analysis completed', requestId, record });
     } catch (aiError: any) {
-      logger.warn('AI service unavailable, using fallback analysis:', aiError.message);
+      logger.warn('AI service unavailable, using fallback analysis', {
+        requestId,
+        sampleId: record.sampleId,
+        endpoint: '/analyze-otolith',
+        durationMs: Date.now() - startedAt,
+        aiError: getAiErrorDetails(aiError),
+      });
       
       // Fallback analysis with mock data
       record.analysisStatus = 'completed';
@@ -280,12 +330,17 @@ router.post('/:id/analyze', authenticate, async (req: AuthRequest, res: Response
 
       res.json({ 
         message: 'Analysis completed (fallback mode)', 
+        requestId,
         record,
         warning: 'AI service unavailable, results are estimated'
       });
     }
   } catch (error) {
-    logger.error('Error analyzing otolith:', error);
+    logger.error('Error analyzing otolith', {
+      requestId,
+      durationMs: Date.now() - startedAt,
+      error: getAiErrorDetails(error),
+    });
     
     // Update record status to failed
     try {
@@ -294,7 +349,10 @@ router.post('/:id/analyze', authenticate, async (req: AuthRequest, res: Response
         updatedAt: new Date()
       });
     } catch (updateError) {
-      logger.error('Failed to update otolith status:', updateError);
+      logger.error('Failed to update otolith status', {
+        requestId,
+        error: getAiErrorDetails(updateError),
+      });
     }
     
     res.status(500).json({ error: 'Failed to analyze otolith' });
@@ -303,6 +361,10 @@ router.post('/:id/analyze', authenticate, async (req: AuthRequest, res: Response
 
 // Analyze age from uploaded image
 router.post('/analyze-age', authenticate, upload.single('image'), async (req: AuthRequest, res: Response) => {
+  const requestId = createRequestId('otolith-age');
+  const startedAt = Date.now();
+  res.setHeader('X-Request-Id', requestId);
+
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
@@ -355,6 +417,7 @@ router.post('/analyze-age', authenticate, upload.single('image'), async (req: Au
 
       res.json({
         success: true,
+        requestId,
         analysis: {
           estimated_age: response.data.estimated_age,
           confidence: response.data.confidence,
@@ -371,8 +434,23 @@ router.post('/analyze-age', authenticate, upload.single('image'), async (req: Au
           average_ring_spacing: Math.round(avgRingSpacing * 10) / 10
         }
       });
+
+      logger.info('Otolith age analysis completed', {
+        requestId,
+        endpoint: '/analyze-otolith-age',
+        method,
+        species: species || 'unknown',
+        durationMs: Date.now() - startedAt,
+      });
     } catch (aiError: any) {
-      logger.warn('AI service unavailable, using fallback analysis:', aiError.message);
+      logger.warn('AI service unavailable, using fallback analysis', {
+        requestId,
+        endpoint: '/analyze-otolith-age',
+        method,
+        species: species || 'unknown',
+        durationMs: Date.now() - startedAt,
+        aiError: getAiErrorDetails(aiError),
+      });
       
       // Clean up temp file
       if (fs.existsSync(req.file.path)) {
@@ -383,6 +461,7 @@ router.post('/analyze-age', authenticate, upload.single('image'), async (req: Au
       const estimatedAge = Math.floor(Math.random() * 10) + 2;
       res.json({
         success: true,
+        requestId,
         analysis: {
           estimated_age: estimatedAge,
           confidence: 0.5 + Math.random() * 0.2,
@@ -399,7 +478,11 @@ router.post('/analyze-age', authenticate, upload.single('image'), async (req: Au
       });
     }
   } catch (error) {
-    logger.error('Error analyzing otolith age:', error);
+    logger.error('Error analyzing otolith age', {
+      requestId,
+      durationMs: Date.now() - startedAt,
+      error: getAiErrorDetails(error),
+    });
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }

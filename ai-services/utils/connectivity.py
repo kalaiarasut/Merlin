@@ -98,7 +98,15 @@ async def check_ollama(url: str = None) -> bool:
 async def check_tavily() -> bool:
     """Check if Tavily API is configured."""
     key = os.getenv("TAVILY_API_KEY")
-    return bool(key)
+    if not key:
+        return False
+
+    try:
+        import tavily  # noqa: F401
+    except Exception:
+        return False
+
+    return True
 
 
 async def check_fishbase() -> bool:

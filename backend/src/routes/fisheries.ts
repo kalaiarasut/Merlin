@@ -358,7 +358,7 @@ router.post('/datasets', authenticate, async (req: AuthRequest, res: Response) =
         }
 
         const { dataStorage } = await import('../services/fisheries');
-        const dataset = dataStorage.createDataset({
+        const dataset = await dataStorage.createDataset({
             name,
             type,
             records,

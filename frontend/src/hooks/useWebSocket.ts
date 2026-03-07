@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 // Event types matching backend
 export enum SocketEvents {
@@ -54,7 +55,7 @@ interface UseWebSocketOptions {
   onDisconnect?: (reason: string) => void;
 }
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+const SOCKET_URL = BACKEND_ROOT_URL;
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {

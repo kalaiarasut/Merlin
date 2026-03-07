@@ -1,4 +1,4 @@
-# PostgreSQL Initialization Script
+-- PostgreSQL Initialization Script
 
 -- Enable PostGIS extension
 CREATE EXTENSION IF NOT EXISTS postgis;
@@ -56,5 +56,10 @@ CREATE INDEX idx_occurrences_location ON occurrence_records USING GIST(location)
 CREATE INDEX idx_occurrences_species ON occurrence_records(species_id);
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO cmlre_admin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO cmlre_admin;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cmlre_admin') THEN
+        GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO cmlre_admin;
+        GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO cmlre_admin;
+    END IF;
+END $$;

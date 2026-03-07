@@ -1,5 +1,7 @@
 import winston from 'winston';
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
@@ -10,20 +12,20 @@ const logger = winston.createLogger({
   ),
   defaultMeta: { service: 'cmlre-backend' },
   transports: [
+    // Always log to stdout so App Runner / CloudWatch captures errors.
+    new winston.transports.Console(
+      isProduction
+        ? {}
+        : {
+            format: winston.format.combine(
+              winston.format.colorize(),
+              winston.format.simple()
+            ),
+          }
+    ),
     new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
     new winston.transports.File({ filename: 'logs/combined.log' }),
   ],
 });
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      ),
-    })
-  );
-}
 
 export default logger;

@@ -38,6 +38,21 @@ interface ProgressState {
   eta_seconds?: number;
 }
 
+interface AIStatusResponse {
+  internet: boolean;
+  ollama: boolean;
+  groq: boolean;
+  fishbase: boolean;
+  tavily?: boolean;
+  active_provider: string;
+  provider_mode?: string;
+  active_model?: string;
+  providers?: {
+    groq?: { model?: string };
+    ollama?: { model?: string };
+  };
+}
+
 // Shared localStorage key - SAME as FloatingAIChat
 const CHAT_STORAGE_KEY = 'cmlre-ai-chats';
 const FREQUENT_PROMPTS_KEY = 'cmlre-frequent-prompts';
@@ -164,18 +179,32 @@ export default function AIAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch AI system status
-  const { data: aiStatus } = useQuery({
+  const { data: aiStatus } = useQuery<AIStatusResponse>({
     queryKey: ['ai-status'],
-    queryFn: async () => {
+    queryFn: async (): Promise<AIStatusResponse> => {
       try {
         const response = await fetch(`${AI_SERVICE_URL}/ai/status`);
         return response.json();
       } catch {
-        return { internet: false, ollama: false, groq: false, fishbase: false, active_provider: 'offline', mode: 'offline' };
+        return {
+          internet: false,
+          ollama: false,
+          groq: false,
+          fishbase: false,
+          active_provider: 'offline',
+        };
       }
     },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
+
+  const envOllamaModel = import.meta.env.VITE_OLLAMA_MODEL || 'llama3.2:1b';
+  const envGroqModel = import.meta.env.VITE_GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const modelBadgeLabel =
+    aiStatus?.active_model ||
+    (selectedProvider === 'groq'
+      ? (aiStatus?.providers?.groq?.model || envGroqModel)
+      : (aiStatus?.providers?.ollama?.model || envOllamaModel));
 
   const activeChat = chats.find(c => c.id === activeChatId) || chats[0];
 
@@ -438,7 +467,7 @@ export default function AIAssistant() {
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="success" dot>Online</Badge>
-            <Badge variant="outline" className="text-xs">llama3.2:1b</Badge>
+            <Badge variant="outline" className="text-xs">{modelBadgeLabel}</Badge>
             <button
               onClick={() => setShowHowItWorks(!showHowItWorks)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -484,7 +513,7 @@ export default function AIAssistant() {
             <span className="text-sm">Provider:</span>
             <div className="relative group z-50">
               <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/50 border border-gray-200 hover:border-ocean-300 transition-colors text-xs font-medium text-deep-700">
-                {selectedProvider === 'auto' && 'Auto (Groq)'}
+                {selectedProvider === 'auto' && 'Auto (Ollama First)'}
                 {selectedProvider === 'groq' && 'Groq (Cloud)'}
                 {selectedProvider === 'ollama' && 'Ollama (Local)'}
                 {selectedProvider === 'ollama_agent' && 'Ollama (Agentic)'}
@@ -494,8 +523,8 @@ export default function AIAssistant() {
               <div className="absolute top-full left-0 pt-2 w-48 hidden group-hover:block z-50">
                 <div className="bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
                   <button onClick={() => { setSelectedProvider('auto'); localStorage.setItem('cmlre-llm-provider', 'auto'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                    <span className="font-medium">Auto (Groq)</span>
-                    <span className="block text-[10px] text-gray-400">Best performance</span>
+                    <span className="font-medium">Auto (Ollama First)</span>
+                    <span className="block text-[10px] text-gray-400">Ollama primary, Groq fallback</span>
                   </button>
                   <button onClick={() => { setSelectedProvider('groq'); localStorage.setItem('cmlre-llm-provider', 'groq'); }} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                     <span className="font-medium">Groq (Cloud)</span>
@@ -507,7 +536,7 @@ export default function AIAssistant() {
                   </button>
                   <button onClick={() => { setSelectedProvider('ollama_agent'); localStorage.setItem('cmlre-llm-provider', 'ollama_agent'); }} className="w-full text-left px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50 transition-colors border-t border-gray-100">
                     <span className="font-medium">Ollama (Agentic)</span>
-                    <span className="block text-[10px] text-emerald-500">Local tools (Experimental)</span>
+                    <span className="block text-[10px] text-emerald-500">Ollama + tool-use workflow (Experimental)</span>
                   </button>
                 </div>
               </div>
@@ -525,15 +554,6 @@ export default function AIAssistant() {
               </>
             )}
           </div>
-          {aiStatus?.groq && (
-            <>
-              <div className="h-4 w-px bg-gray-300" />
-              <div className="flex items-center gap-1">
-                <Sparkles className="w-4 h-4 text-purple-500" />
-                <span className="text-sm text-purple-600 font-medium">Groq Active</span>
-              </div>
-            </>
-          )}
         </div>
 
         {/* How It Works Panel */}

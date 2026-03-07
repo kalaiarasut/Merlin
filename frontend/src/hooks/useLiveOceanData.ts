@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 // Types for oceanographic data
 export interface OceanReading {
@@ -42,7 +43,7 @@ interface UseLiveOceanDataOptions {
     maxHistoryLength?: number;
 }
 
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const SOCKET_URL = BACKEND_ROOT_URL;
 
 export function useLiveOceanData(options: UseLiveOceanDataOptions = {}) {
     const {

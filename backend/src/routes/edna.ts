@@ -5,6 +5,7 @@ import logger from '../utils/logger';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { uploadFileToS3 } from '../utils/s3Storage';
 
 const router = Router();
 
@@ -275,6 +276,12 @@ router.post('/upload/sequence', authenticate, sequenceUpload.single('file'), asy
     }
 
     const filePath = req.file.path;
+    const s3Upload = await uploadFileToS3({
+      filePath,
+      keyPrefix: 'uploads/edna/sequences',
+      contentType: req.file.mimetype,
+      originalName: req.file.originalname
+    });
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     const filename = req.file.originalname;
     const isFastq = /\.(fastq|fq)$/i.test(filename);
@@ -328,6 +335,7 @@ router.post('/upload/sequence', authenticate, sequenceUpload.single('file'), asy
     res.json({
       filename: req.file.originalname,
       filepath: filePath,
+      s3: s3Upload,
       format: isFastq ? 'FASTQ' : 'FASTA',
       sequenceCount: sequences.length,
       sequences: sequences.slice(0, 100), // Return first 100 for preview

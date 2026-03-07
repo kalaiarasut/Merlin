@@ -63,7 +63,9 @@ NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
 
 # Rate limiting
 MAX_REQUESTS_PER_SECOND = 3 if NCBI_API_KEY else 1
-MAX_CONCURRENT_BLAST_JOBS = 2  # Global limit across parallel jobs
+MAX_CONCURRENT_BLAST_JOBS = int(
+    os.environ.get("MAX_CONCURRENT_BLAST_JOBS", os.environ.get("WORKER_CONCURRENCY", "2"))
+)  # Global limit across parallel jobs
 BLAST_TIMEOUT_SECONDS = 300
 
 # Caching

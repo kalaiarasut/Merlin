@@ -54,7 +54,7 @@ const generateLocalResponse = async (message: string): Promise<string> => {
 
 router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
-    const { message, context, requestId } = req.body;
+    const { message, context, requestId, provider } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -69,6 +69,7 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
         message,
         context,
         request_id: requestId,  // Forward to Python for progress tracking
+        provider,
       }, { timeout: 600000 }); // 600 seconds (10 mins) for LLM + FishBase enrichment
 
       const elapsed = Date.now() - startTime;
@@ -102,7 +103,7 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
 // Streaming chat endpoint - proxies SSE from Python
 router.post('/chat/stream', authenticate, async (req: AuthRequest, res: Response, next) => {
   try {
-    const { message, context, requestId } = req.body;
+    const { message, context, requestId, provider } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -117,7 +118,7 @@ router.post('/chat/stream', authenticate, async (req: AuthRequest, res: Response
       const response = await axios({
         method: 'post',
         url: `${AI_SERVICE_URL}/chat/stream`,
-        data: { message, context, request_id: requestId },
+        data: { message, context, request_id: requestId, provider },
         responseType: 'stream',
         timeout: 600000
       });

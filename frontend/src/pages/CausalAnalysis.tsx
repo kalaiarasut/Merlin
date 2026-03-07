@@ -11,28 +11,29 @@ import {
 } from 'recharts';
 import {
     GitBranch, TrendingUp, TrendingDown, Activity, RefreshCw, Zap,
-    Loader2, CheckCircle, AlertTriangle, Clock, Target, Info, ChevronRight
+    Loader2, CheckCircle, AlertTriangle, Clock, Target, Info, ChevronRight,
+    Database, Radio
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 // API service for causal analysis
 const causalService = {
     getInfo: async () => {
-        const res = await fetch(`${API_BASE}/api/causal/info`);
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/info`);
         return res.json();
     },
     getAvailableSeries: async () => {
-        const res = await fetch(`${API_BASE}/api/causal/available-series`);
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/available-series`);
         return res.json();
     },
-    getTimeSeries: async (seriesId: string, aggregation: string = 'monthly') => {
-        const res = await fetch(`${API_BASE}/api/causal/time-series/${seriesId}?aggregation=${aggregation}`);
+    getTimeSeries: async (seriesId: string, aggregation: string = 'monthly', source: string = 'live') => {
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/time-series/${seriesId}?aggregation=${aggregation}&source=${source}`);
         return res.json();
     },
     correlate: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/causal/correlate`, {
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/correlate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -40,7 +41,7 @@ const causalService = {
         return res.json();
     },
     lagAnalysis: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/causal/lag-analysis`, {
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/lag-analysis`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -48,7 +49,7 @@ const causalService = {
         return res.json();
     },
     grangerCausality: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/causal/granger`, {
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/granger`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -56,7 +57,7 @@ const causalService = {
         return res.json();
     },
     fullAnalysis: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/causal/analyze`, {
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -64,7 +65,7 @@ const causalService = {
         return res.json();
     },
     getMechanisms: async () => {
-        const res = await fetch(`${API_BASE}/api/causal/mechanisms`);
+        const res = await fetch(`${BACKEND_ROOT_URL}/api/causal/mechanisms`);
         return res.json();
     },
 };
@@ -109,6 +110,7 @@ export default function CausalAnalysis() {
     const [driverSeriesId, setDriverSeriesId] = useState<string>('sst');
     const [responseSeriesId, setResponseSeriesId] = useState<string>('');
     const [aggregation, setAggregation] = useState<'monthly' | 'weekly'>('monthly');
+    const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
 
     const chartColors = {
         grid: isDark ? '#374151' : '#e5e7eb',
@@ -125,15 +127,15 @@ export default function CausalAnalysis() {
 
     // Fetch driver time series (CPUE or oceanographic)
     const { data: driverData, isLoading: driverLoading } = useQuery({
-        queryKey: ['causal-driver-series', driverSeriesId, aggregation],
-        queryFn: () => causalService.getTimeSeries(driverSeriesId, aggregation),
+        queryKey: ['causal-driver-series', driverSeriesId, aggregation, dataSource],
+        queryFn: () => causalService.getTimeSeries(driverSeriesId, aggregation, dataSource),
         enabled: !!driverSeriesId,
     });
 
     // Fetch response time series (CPUE or oceanographic)
     const { data: responseData, isLoading: responseLoading } = useQuery({
-        queryKey: ['causal-response-series', responseSeriesId, aggregation],
-        queryFn: () => causalService.getTimeSeries(responseSeriesId, aggregation),
+        queryKey: ['causal-response-series', responseSeriesId, aggregation, dataSource],
+        queryFn: () => causalService.getTimeSeries(responseSeriesId, aggregation, dataSource),
         enabled: !!responseSeriesId,
     });
 
@@ -265,6 +267,33 @@ export default function CausalAnalysis() {
                 </div>
             </div>
 
+            {/* Ocean Data Source (outside card for compact selection panel) */}
+            <div className="max-w-xl">
+                <label className="text-sm font-medium text-deep-700 dark:text-gray-300 mb-2 block">
+                    Ocean Data Source
+                </label>
+                <div className="flex gap-2">
+                    <Button
+                        variant={dataSource === 'database' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDataSource('database')}
+                        className="flex-1"
+                    >
+                        <Database className="w-3.5 h-3.5 mr-1" />
+                        Database
+                    </Button>
+                    <Button
+                        variant={dataSource === 'live' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setDataSource('live')}
+                        className="flex-1"
+                    >
+                        <Radio className="w-3.5 h-3.5 mr-1" />
+                        Live Feed
+                    </Button>
+                </div>
+            </div>
+
             {/* Dataset Selection Panel */}
             <Card>
                 <CardHeader className="pb-3">
@@ -283,7 +312,7 @@ export default function CausalAnalysis() {
                                 onChange={(e) => setDriverSeriesId(e.target.value)}
                                 className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-deep-800 text-deep-900 dark:text-gray-100"
                             >
-                                <optgroup label="Oceanographic (ERDDAP)">
+                                <optgroup label={`Oceanographic (${dataSource === 'live' ? 'ERDDAP Live' : 'Database'})`}>
                                     {availableSeries?.oceanographic?.map((s: any) => (
                                         <option key={s.id} value={s.id}>{s.name}</option>
                                     ))}
@@ -403,19 +432,19 @@ export default function CausalAnalysis() {
 
                             {/* Overlapping Points */}
                             <div className={`p-3 rounded-lg ${(() => {
-                                    const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
-                                    const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
-                                    const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
-                                    return overlap >= 12 ? 'bg-green-50 dark:bg-green-900/20' : overlap >= 6 ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-red-50 dark:bg-red-900/20';
-                                })()
+                                const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
+                                return overlap >= 12 ? 'bg-green-50 dark:bg-green-900/20' : overlap >= 6 ? 'bg-yellow-50 dark:bg-yellow-900/20' : 'bg-red-50 dark:bg-red-900/20';
+                            })()
                                 }`}>
                                 <div className="text-deep-500 dark:text-gray-400 mb-1">Overlapping Points</div>
                                 <div className={`text-2xl font-bold ${(() => {
-                                        const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
-                                        const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
-                                        const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
-                                        return overlap >= 12 ? 'text-green-600 dark:text-green-400' : overlap >= 6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
-                                    })()
+                                    const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const responseDates = new Set(responseData?.timeSeries?.map((d: any) => d.date) || []);
+                                    const overlap = [...driverDates].filter(d => responseDates.has(d)).length;
+                                    return overlap >= 12 ? 'text-green-600 dark:text-green-400' : overlap >= 6 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400';
+                                })()
                                     }`}>
                                     {(() => {
                                         const driverDates = new Set(driverData?.timeSeries?.map((d: any) => d.date) || []);

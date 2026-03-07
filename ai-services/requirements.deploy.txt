@@ -21,6 +21,7 @@ boto3==1.42.22
 # --- Database ---
 pymongo==4.6.1
 motor==3.3.2
+psycopg2-binary==2.9.9
 redis==5.0.1
 
 # --- Data Processing ---
@@ -70,5 +71,9 @@ aiohttp==3.9.1
 requests==2.31.0
 pyyaml==6.0.1
 tqdm==4.66.1
+
+# --- Web search (optional) ---
+# Provides `from tavily import TavilyClient`
+tavily-python
 
 # --- LLM (cloud only - Groq/Bedrock) ---

@@ -283,29 +283,66 @@ router.get('/growth', authenticate, async (req: AuthRequest, res: Response) => {
 // Environmental Niche Modeling
 router.post('/niche-model', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { occurrence_data, environmental_variables, model_type, prediction_resolution } = req.body;
+    const {
+      occurrence_data,
+      environmental_variables,
+      model_type,
+      prediction_resolution,
+      n_background,
+      study_area,
+    } = req.body;
 
     const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
     const response = await fetch(`${AI_SERVICE_URL}/model-niche`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10 * 60 * 1000),
       body: JSON.stringify({
         occurrence_data,
         environmental_variables,
         model_type: model_type || 'maxent',
-        prediction_resolution: prediction_resolution || 0.5
+        prediction_resolution: prediction_resolution || 0.5,
+        n_background: n_background || 1000,
+        study_area: study_area || 'arabian_sea',
       })
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error((error as any).detail || 'Niche modeling failed');
+      let upstreamError: any = null;
+      try {
+        upstreamError = await response.json();
+      } catch {
+        upstreamError = { detail: await response.text() };
+      }
+
+      const message =
+        upstreamError?.detail ||
+        upstreamError?.error ||
+        `Niche modeling failed with status ${response.status}`;
+
+      logger.error('Niche modeling upstream error:', {
+        status: response.status,
+        message,
+      });
+
+      return res.status(response.status).json({
+        error: message,
+        upstream_status: response.status,
+      });
     }
 
     const result = await response.json();
     res.json(result);
   } catch (error: any) {
+    const causeCode = error?.cause?.code;
+    if (causeCode === 'ECONNREFUSED' || causeCode === 'ENOTFOUND') {
+      logger.error('Niche modeling AI service unavailable:', error);
+      return res.status(503).json({
+        error: 'AI service unavailable. Please ensure ai-services is running on port 8000.',
+      });
+    }
+
     logger.error('Niche modeling error:', error);
     res.status(500).json({ error: error.message || 'Niche modeling failed' });
   }

@@ -20,10 +20,21 @@ app = FastAPI(
 )
 
 # CORS
+# Note: Starlette will not return `Access-Control-Allow-Origin: *` when
+# `allow_credentials=True`. Use explicit origins when credentials are needed.
+raw_cors_origins = (
+    os.getenv("CORS_ALLOW_ORIGINS")
+    or os.getenv("CORS_ORIGINS")
+    or "https://merlinhq.vercel.app,http://localhost:5173,http://localhost:3000"
+)
+
+cors_origins = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]
+cors_allow_all = any(origin == "*" for origin in cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if cors_allow_all else cors_origins,
+    allow_credentials=False if cors_allow_all else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -268,40 +279,43 @@ async def get_ai_status():
         - mode: Current operation mode (offline/online)
     """
     from utils.connectivity import get_cached_status
+    from chat.llm_service import LLMService
     import os
     
     try:
         status = await get_cached_status(max_age_seconds=30)
         
-        # Check Groq availability
+        # Check provider availability/config
         groq_api_key = os.getenv("GROQ_API_KEY", "")
         groq_available = bool(groq_api_key)
-        
-        # Determine active provider based on what's available
-        if groq_available:
-            active_provider = "groq"
-        elif status.ollama:
-            active_provider = "ollama"
-        else:
-            active_provider = "fallback"
+        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+        groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        llm_provider_mode = os.getenv("LLM_PROVIDER", "auto")
+
+        llm_service = LLMService(preferred_provider="auto")
+        effective_provider = llm_service._active_provider.value
+        effective_model = llm_service.config.model
         
         return {
             "success": True,
             **status.to_dict(),
             "groq": groq_available,
-            "active_provider": active_provider,  # Override with actual provider
+            "active_provider": effective_provider,
+            "provider_mode": llm_provider_mode,
+            "auto_order": ["ollama", "groq", "bedrock"],
+            "active_model": effective_model,
             "providers": {
                 "groq": {
                     "name": "Groq (Cloud)",
                     "available": groq_available,
                     "description": "Cloud LLM - Fast, Free Tier",
-                    "model": "llama-3.3-70b-versatile"
+                    "model": groq_model
                 },
                 "ollama": {
                     "name": "Ollama (Local)",
                     "available": status.ollama,
                     "description": "Local LLM - 100% Private",
-                    "model": "llama3.2:1b"
+                    "model": ollama_model
                 }
             },
             "data_sources": {
@@ -333,7 +347,7 @@ async def chat(request: ChatRequest):
     - bedrock: AWS Bedrock (managed LLMs)
     - groq: Cloud API (fast, free tier, no local resources needed)
     - ollama: Local LLM (private, requires local install)
-    - auto: Auto-detect (Groq if API key present, else Ollama)
+    - auto: Auto-detect (Ollama first, then Groq fallback)
     
     Provides context-aware responses for:
     - Species identification and information
@@ -344,14 +358,27 @@ async def chat(request: ChatRequest):
     Context can include domain-specific data to enhance responses.
     """
     from chat.llm_service import get_llm_service
+    from chat.progress import get_progress_tracker
     
     try:
+        tracker = get_progress_tracker()
+        if request.request_id:
+            tracker.start_request(request.request_id)
+            tracker.update(request.request_id, "processing_llm", 0, 0, "Processing chat request...")
+
         llm_service = get_llm_service(preferred_provider=request.provider)
         result = await llm_service.chat(
             message=request.message,
             context=request.context,
             request_id=request.request_id  # For progress tracking
         )
+
+        if request.request_id:
+            tracker.complete(
+                request.request_id,
+                "Chat completed",
+                result_pointer={"source": "chat", "provider": result.get("provider")}
+            )
         
         return ChatResponse(
             response=result.get("response", "I couldn't generate a response."),
@@ -360,6 +387,11 @@ async def chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"Chat error: {str(e)}\n{traceback.format_exc()}")
+        if request.request_id:
+            try:
+                get_progress_tracker().error(request.request_id, str(e), result_pointer={"source": "chat", "error": str(e)})
+            except Exception:
+                pass
         # Fallback response
         return ChatResponse(
             response=f"I apologize, but I encountered an error processing your request. Please try again. Error: {str(e)}",
@@ -379,14 +411,15 @@ async def chat_stream(request: ChatRequest):
         data: {"token": "chunk of text"}
         data: {"done": true, "full_response": "complete text"}
     """
-    from chat.llm_service import get_llm_service
-    from utils.redis_cache import cache_get
     import json
     import asyncio
     import hashlib
     
     async def generate_stream():
         try:
+            from chat.llm_service import get_llm_service
+            from utils.redis_cache import cache_get
+
             llm_service = get_llm_service(preferred_provider=request.provider)
             
             # Check if search context is needed
@@ -3508,7 +3541,7 @@ class NicheModelRequest(BaseModel):
     environmental_variables: Optional[List[str]] = None
     model_type: str = "maxent"  # maxent, bioclim, gower
     prediction_resolution: float = 0.5  # Grid resolution in degrees
-    n_background: int = 10000  # Number of background points (scientifically valid: 5000-10000)
+    n_background: int = 1000  # Number of background points (balanced default for interactive runs)
     study_area: str = "arabian_sea"  # Study area key: arabian_sea, bay_of_bengal, indian_ocean
 
 
@@ -4108,6 +4141,19 @@ async def generate_report(request: ReportGenerationRequest):
             format=report_format,
             filename=filename
         )
+
+        # Required: push report artifact to S3
+        from utils.s3_storage import upload_file_to_s3
+
+        s3_upload = upload_file_to_s3(
+            filepath,
+            key_prefix=os.getenv("S3_REPORTS_PREFIX", "reports"),
+        )
+        if not s3_upload:
+            raise HTTPException(
+                status_code=500,
+                detail="Report generated but S3 upload failed. Ensure S3_BUCKET and AWS credentials/role are configured."
+            )
         
         # Read file content for response
         with open(filepath, 'r' if request.format != 'pdf' else 'rb') as f:
@@ -4125,6 +4171,7 @@ async def generate_report(request: ReportGenerationRequest):
             "filename": filename,
             "format": request.format,
             "filepath": filepath,
+            "s3": s3_upload,
             "content": content_response,
             "report_type": request.report_type,
             "sections_count": len(sections)
@@ -4465,10 +4512,24 @@ async def generate_quick_report(request: QuickReportRequest):
         
         with open(filepath, 'r') as f:
             content = f.read()
+
+        # Required: push quick report artifact to S3
+        from utils.s3_storage import upload_file_to_s3
+
+        s3_upload = upload_file_to_s3(
+            filepath,
+            key_prefix=os.getenv("S3_REPORTS_PREFIX", "reports"),
+        )
+        if not s3_upload:
+            raise HTTPException(
+                status_code=500,
+                detail="Quick report generated but S3 upload failed. Ensure S3_BUCKET and AWS credentials/role are configured."
+            )
         
         return {
             "success": True,
             "filepath": filepath,
+            "s3": s3_upload,
             "content": content
         }
         

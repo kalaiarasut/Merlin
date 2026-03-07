@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,68 +16,177 @@ import {
 import {
     Anchor, TrendingUp, TrendingDown, Activity, BarChart2, RefreshCw,
     AlertTriangle, CheckCircle, Loader2, Fish, Calendar, MapPin, Info,
-    Database, Sparkles
+    Database, Sparkles, Search, ChevronDown, X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { apiClient } from '@/services/api';
+
+interface ApiResponseBase {
+    success: boolean;
+    error?: string;
+}
+
+interface CPUEValue {
+    cpue?: number;
+    totalCatch?: number;
+    totalEffort?: number;
+    trend?: 'increasing' | 'decreasing' | 'stable' | string;
+    confidence95?: {
+        lower?: number;
+        upper?: number;
+    };
+}
+
+interface CPUETimePoint {
+    period: string;
+    cpue?: number;
+    catch?: number;
+    effort?: number;
+    sampleSize?: number;
+}
+
+interface YearlyCPUEPoint {
+    year: number;
+    catch?: number;
+    effort?: number;
+    cpue?: number;
+}
+
+interface StockStatus {
+    biomassStatus?: string;
+    exploitationLevel?: string;
+    sustainabilityScore?: number;
+    recommendations?: string[];
+}
+
+interface Mortality {
+    totalMortality?: number;
+    naturalMortality?: number;
+    naturalMortalityEstimates?: {
+        pauly?: number;
+    };
+    fishingMortality?: number;
+    exploitationRate?: number;
+    F?: number;
+    M?: number;
+}
+
+interface Recruitment {
+    pattern?: string;
+    index?: number;
+}
+
+interface LengthDistribution {
+    bins?: Array<{ lengthClass: number; count: number }>;
+    sampleSize?: number;
+    meanLength?: number;
+    minLength?: number;
+    maxLength?: number;
+    mode?: number;
+    medianLength?: number;
+    standardDeviation?: number;
+}
+
+interface GrowthParams {
+    Linf?: number;
+    K?: number;
+    r2?: number;
+}
+
+interface LengthAnalysis {
+    distribution?: LengthDistribution;
+    cohorts?: unknown;
+    growthParams?: GrowthParams;
+    lengthWeight?: unknown;
+    maturityOgive?: Array<{ lengthClass: number; percentMature: number }>;
+}
+
+interface AnalyzeStockBundle {
+    stockStatus?: StockStatus;
+    mortality?: Mortality;
+    recruitment?: Recruitment;
+    fmRatio?: number | null;
+    sustainabilityStatus?: 'sustainable' | 'fully_exploited' | 'overfished' | string;
+}
+
+interface DatasetsResponse extends ApiResponseBase {
+    datasets?: Array<{ species?: string[] }>;
+    stats?: {
+        totalCatchRecords?: number;
+        totalLengthRecords?: number;
+        species?: string[];
+    };
+}
+
+interface AnalyzeWithDataResponse extends ApiResponseBase {
+    recordsUsed?: { catch?: number; length?: number };
+    cpue?: CPUEValue;
+    timeSeries?: CPUETimePoint[];
+    yearlyTimeSeries?: YearlyCPUEPoint[];
+    dateRange?: { startYear?: number; endYear?: number };
+    length?: LengthAnalysis | null;
+    stock?: AnalyzeStockBundle | null;
+    fmRatio?: number | null;
+    sustainabilityStatus?: 'sustainable' | 'fully_exploited' | 'overfished' | string;
+}
+
+interface StockAssessmentResponse extends ApiResponseBase {
+    stockStatus?: StockStatus;
+    mortality?: Mortality;
+    recruitment?: Recruitment;
+}
+
+interface CPUEAnalysisResponse extends ApiResponseBase {
+    cpue?: CPUEValue;
+    timeSeries?: CPUETimePoint[];
+}
+
+interface DepthDistributionResponse extends ApiResponseBase {
+    data?: Array<{
+        depthRange: string;
+        depthMid: number;
+        totalCatch: number;
+        sampleCount: number;
+        avgCatch: number;
+    }>;
+    summary?: {
+        totalSamples?: number;
+        depthRange?: { min: number; max: number } | null;
+        peakDepth?: { depthRange: string; totalCatch: number } | null;
+    };
+}
 
 // API service for fisheries
 const fisheriesService = {
     getInfo: async () => {
-        const res = await fetch(`${API_BASE}/api/fisheries/info`);
-        return res.json();
+        return apiClient.get<ApiResponseBase>('/fisheries/info');
     },
-    calculateCPUE: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/fisheries/cpue`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        return res.json();
+    calculateCPUE: async (data: unknown) => {
+        return apiClient.post<CPUEAnalysisResponse>('/fisheries/cpue', data);
     },
-    analyzeLengthFrequency: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/fisheries/length-analysis`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        return res.json();
+    analyzeLengthFrequency: async (data: unknown) => {
+        return apiClient.post<ApiResponseBase>('/fisheries/length-analysis', data);
     },
-    assessStock: async (data: any) => {
-        const res = await fetch(`${API_BASE}/api/fisheries/stock-assessment`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        return res.json();
+    assessStock: async (data: unknown) => {
+        return apiClient.post<StockAssessmentResponse>('/fisheries/stock-assessment', data);
     },
     // NEW: Get uploaded datasets
     getDatasets: async () => {
-        const res = await fetch(`${API_BASE}/api/fisheries/datasets`);
-        return res.json();
+        return apiClient.get<DatasetsResponse>('/fisheries/datasets');
     },
     // NEW: Analyze using uploaded data
     analyzeWithData: async (species: string, datasetId?: string) => {
-        const res = await fetch(`${API_BASE}/api/fisheries/analyze-with-data`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ species, datasetId }),
-        });
-        return res.json();
+        return apiClient.post<AnalyzeWithDataResponse>('/fisheries/analyze-with-data', { species, datasetId });
     },
     // Spatial CPUE for heatmap
     getSpatialCpue: async (species?: string) => {
-        const params = species ? `?species=${encodeURIComponent(species)}` : '';
-        const res = await fetch(`${API_BASE}/api/fisheries/spatial-cpue${params}`);
-        return res.json();
+        return apiClient.get('/fisheries/spatial-cpue', species ? { species } : undefined);
     },
     // Depth distribution
     getDepthDistribution: async (species?: string) => {
-        const params = species ? `?species=${encodeURIComponent(species)}` : '';
-        const res = await fetch(`${API_BASE}/api/fisheries/depth-distribution${params}`);
-        return res.json();
+        return apiClient.get<DepthDistributionResponse>('/fisheries/depth-distribution', species ? { species } : undefined);
     },
 };
 
@@ -89,6 +198,9 @@ export default function FisheriesAnalytics() {
     const isDark = resolvedTheme === 'dark';
     const [activeTab, setActiveTab] = useState<'overview' | 'cpue' | 'length' | 'stock'>('overview');
     const [useUploadedData, setUseUploadedData] = useState(true); // Default to uploaded data
+    const [showSpeciesDropdown, setShowSpeciesDropdown] = useState(false);
+    const speciesInputRef = useRef<HTMLInputElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Session store for persistence across tab switches - stores entire raw API response
     const { selectedSpecies, setSelectedSpecies, analysisData, setAnalysisData } = useFisheriesStore();
@@ -96,6 +208,22 @@ export default function FisheriesAnalytics() {
     // Use store species as input (synced)
     const speciesInput = selectedSpecies;
     const setSpeciesInput = setSelectedSpecies;
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node) &&
+                speciesInputRef.current &&
+                !speciesInputRef.current.contains(event.target as Node)
+            ) {
+                setShowSpeciesDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Chart colors based on theme
     const chartColors = {
@@ -260,7 +388,27 @@ export default function FisheriesAnalytics() {
 
     // Data source info for UI
     const localDataStats = datasetsData?.stats;
+
+    const availableSpecies: string[] = (() => {
+        const fromDatasets = (datasetsData?.datasets || [])
+            .flatMap((dataset: any) => Array.isArray(dataset?.species) ? dataset.species : [])
+            .filter((species: unknown): species is string => typeof species === 'string' && species.trim().length > 0);
+
+        if (fromDatasets.length > 0) {
+            return Array.from(new Set(fromDatasets)).sort((a, b) => a.localeCompare(b));
+        }
+
+        const fromStats = Array.isArray(localDataStats?.species) ? localDataStats.species : [];
+        return fromStats;
+    })();
     const isAnalyzing = cpueMutation.isPending || stockMutation.isPending || analyzeWithDataMutation.isPending;
+
+    // Filter species list based on input (for searchable dropdown)
+    const filteredSpecies = speciesInput.trim()
+        ? availableSpecies.filter((s: string) =>
+            s.toLowerCase().includes(speciesInput.toLowerCase())
+        )
+        : availableSpecies;
 
     return (
         <div className="space-y-6">
@@ -282,9 +430,11 @@ export default function FisheriesAnalytics() {
                     <Button
                         variant="outline"
                         onClick={runCPUEAnalysis}
-                        disabled={cpueMutation.isPending}
+                        disabled={cpueMutation.isPending || analyzeWithDataMutation.isPending}
                     >
-                        {cpueMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                        {(cpueMutation.isPending || analyzeWithDataMutation.isPending)
+                            ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            : <RefreshCw className="w-4 h-4 mr-2" />}
                         Analyze CPUE
                     </Button>
                     <Button
@@ -302,15 +452,134 @@ export default function FisheriesAnalytics() {
             <Card>
                 <CardContent className="pt-6">
                     <div className="flex gap-4 items-start flex-wrap">
-                        <div className="flex-1 min-w-[200px]">
+                        <div className="flex-1 min-w-[200px] relative">
                             <label className="block text-sm font-medium text-deep-700 dark:text-gray-300 mb-2">
                                 Target Species
                             </label>
-                            <Input
-                                value={speciesInput}
-                                onChange={(e) => setSpeciesInput(e.target.value)}
-                                placeholder="e.g., Thunnus albacares, Sardina pilchardus"
-                            />
+                            <div className="relative">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-deep-400 dark:text-gray-500">
+                                    <Search className="w-4 h-4" />
+                                </div>
+                                <input
+                                    ref={speciesInputRef}
+                                    type="text"
+                                    value={speciesInput}
+                                    onChange={(e) => {
+                                        setSpeciesInput(e.target.value);
+                                        setShowSpeciesDropdown(true);
+                                    }}
+                                    onFocus={() => setShowSpeciesDropdown(true)}
+                                    placeholder="Search species or type a name..."
+                                    className={cn(
+                                        "w-full h-10 pl-9 pr-16 text-sm rounded-lg border transition-all",
+                                        "bg-white dark:bg-gray-900 text-deep-900 dark:text-gray-100",
+                                        "placeholder:text-deep-400 dark:placeholder:text-gray-500",
+                                        showSpeciesDropdown
+                                            ? "border-ocean-400 ring-2 ring-ocean-100 dark:ring-ocean-900/30"
+                                            : "border-gray-200 dark:border-gray-700 hover:border-gray-300",
+                                        "focus:outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100 dark:focus:ring-ocean-900/30"
+                                    )}
+                                />
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                    {speciesInput && (
+                                        <button
+                                            onClick={() => { setSpeciesInput(''); speciesInputRef.current?.focus(); }}
+                                            className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-deep-400 dark:text-gray-500"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setShowSpeciesDropdown(!showSpeciesDropdown)}
+                                        className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-deep-400 dark:text-gray-500"
+                                    >
+                                        <ChevronDown className={cn("w-4 h-4 transition-transform", showSpeciesDropdown && "rotate-180")} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Species Dropdown Overlay */}
+                            {showSpeciesDropdown && (
+                                <div
+                                    ref={dropdownRef}
+                                    className={cn(
+                                        "absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border shadow-xl",
+                                        "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700",
+                                        "animate-in fade-in slide-in-from-top-2 duration-200"
+                                    )}
+                                >
+                                    {availableSpecies.length === 0 ? (
+                                        <div className="px-4 py-6 text-center">
+                                            <Fish className="w-8 h-8 mx-auto mb-2 text-ocean-300" />
+                                            <p className="text-sm text-deep-500 dark:text-gray-400">No species in database</p>
+                                            <p className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                                Upload fisheries data via <a href="/ingestion" className="underline text-ocean-500">Data Ingestion</a>
+                                            </p>
+                                        </div>
+                                    ) : filteredSpecies.length === 0 ? (
+                                        <div className="px-4 py-4 text-center">
+                                            <p className="text-sm text-deep-500 dark:text-gray-400">No matching species</p>
+                                            <p className="text-xs text-deep-400 dark:text-gray-500 mt-1">
+                                                Press Enter to use "{speciesInput}" anyway
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                                                <p className="text-[10px] font-medium text-deep-400 dark:text-gray-500 uppercase tracking-wider">
+                                                    {filteredSpecies.length} species available
+                                                </p>
+                                            </div>
+                                            {filteredSpecies.map((species: string) => {
+                                                const isSelected = speciesInput.toLowerCase() === species.toLowerCase();
+                                                return (
+                                                    <button
+                                                        key={species}
+                                                        onClick={() => {
+                                                            setSpeciesInput(species);
+                                                            setShowSpeciesDropdown(false);
+                                                        }}
+                                                        className={cn(
+                                                            "w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors",
+                                                            isSelected
+                                                                ? "bg-ocean-50 dark:bg-ocean-900/20 text-ocean-700 dark:text-ocean-300"
+                                                                : "hover:bg-gray-50 dark:hover:bg-gray-800/50 text-deep-800 dark:text-gray-200"
+                                                        )}
+                                                    >
+                                                        <Fish className={cn(
+                                                            "w-4 h-4 flex-shrink-0",
+                                                            isSelected ? "text-ocean-500" : "text-deep-300 dark:text-gray-600"
+                                                        )} />
+                                                        <span className="flex-1">
+                                                            {speciesInput.trim() ? (
+                                                                // Highlight matching text
+                                                                (() => {
+                                                                    const idx = species.toLowerCase().indexOf(speciesInput.toLowerCase());
+                                                                    if (idx === -1) return <em className="italic">{species}</em>;
+                                                                    return (
+                                                                        <>
+                                                                            {species.slice(0, idx)}
+                                                                            <span className="font-semibold text-ocean-600 dark:text-ocean-400 bg-ocean-50 dark:bg-ocean-900/30 rounded px-0.5">
+                                                                                {species.slice(idx, idx + speciesInput.length)}
+                                                                            </span>
+                                                                            {species.slice(idx + speciesInput.length)}
+                                                                        </>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                <em className="italic">{species}</em>
+                                                            )}
+                                                        </span>
+                                                        {isSelected && (
+                                                            <CheckCircle className="w-4 h-4 text-ocean-500 flex-shrink-0" />
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Data Stats or Upload Prompt */}
@@ -328,7 +597,7 @@ export default function FisheriesAnalytics() {
                                         <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
                                         <div className="text-sm text-green-700 dark:text-green-300">
                                             <p className="font-medium">Real Data Available</p>
-                                            <p className="text-xs">{localDataStats.totalCatchRecords} catch records • {localDataStats.totalLengthRecords} length records • {localDataStats.species?.length || 0} species</p>
+                                            <p className="text-xs">{localDataStats.totalCatchRecords} catch records • {localDataStats.totalLengthRecords} length records • {availableSpecies.length} species</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -429,7 +698,7 @@ export default function FisheriesAnalytics() {
                                 <CardDescription>Latest catch per unit effort calculations</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                {cpueMutation.isPending ? (
+                                {(cpueMutation.isPending || analyzeWithDataMutation.isPending) ? (
                                     <div className="h-60 flex items-center justify-center">
                                         <Loader2 className="w-8 h-8 animate-spin text-ocean-500" />
                                     </div>

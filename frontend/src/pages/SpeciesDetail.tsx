@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,56 @@ import {
   Camera, ChevronRight, AlertTriangle, X, Save, Loader2
 } from 'lucide-react';
 import { speciesService } from '@/services/api';
+import { cn } from '@/lib/utils';
+
+// Cache for fetched species images
+const speciesImageCache: Record<string, string | null> = {};
+
+// Generate a consistent color based on species name for placeholder
+const getSpeciesColor = (name: string): string => {
+  const colors = [
+    'from-blue-400 to-cyan-500',
+    'from-teal-400 to-emerald-500',
+    'from-indigo-400 to-purple-500',
+    'from-orange-400 to-amber-500',
+    'from-pink-400 to-rose-500',
+    'from-cyan-400 to-blue-500',
+    'from-emerald-400 to-teal-500',
+    'from-violet-400 to-indigo-500',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+};
+
+// Fetch image from iNaturalist API
+const fetchSpeciesImage = async (scientificName: string): Promise<string | null> => {
+  if (speciesImageCache[scientificName] !== undefined) {
+    return speciesImageCache[scientificName];
+  }
+  try {
+    const response = await fetch(
+      `https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(scientificName)}&per_page=1`
+    );
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      const taxon = data.results[0];
+      if (taxon.default_photo && taxon.default_photo.medium_url) {
+        const imageUrl = taxon.default_photo.medium_url;
+        speciesImageCache[scientificName] = imageUrl;
+        return imageUrl;
+      }
+    }
+    speciesImageCache[scientificName] = null;
+    return null;
+  } catch (error) {
+    console.error('Error fetching species image:', error);
+    speciesImageCache[scientificName] = null;
+    return null;
+  }
+};
 
 const SAMPLE_SPECIES = {
   _id: '1',
@@ -30,6 +80,76 @@ const SAMPLE_SPECIES = {
   observations: 12450,
   lastObserved: '2024-01-15',
   images: ['/placeholder1.jpg', '/placeholder2.jpg'],
+};
+
+// Species Detail Image with iNaturalist fetching + gradient fallback
+const SpeciesDetailImage: React.FC<{
+  scientificName: string;
+  images?: string[];
+}> = ({ scientificName, images }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (images && images.length > 0 && images[0] && !images[0].includes('placeholder')) {
+      setImageUrl(images[0]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    fetchSpeciesImage(scientificName).then((url) => {
+      setImageUrl(url);
+      setIsLoading(false);
+    });
+  }, [scientificName, images]);
+
+  const getInitials = (name: string) => {
+    const parts = name.split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const gradientClass = `bg-gradient-to-br ${getSpeciesColor(scientificName)}`;
+
+  // Gradient fallback placeholder
+  if (isLoading || !imageUrl || imageError) {
+    return (
+      <div className={cn(
+        "w-full md:w-64 h-48 md:h-64 rounded-2xl flex flex-col items-center justify-center",
+        gradientClass,
+        isLoading && "animate-pulse"
+      )}>
+        <span className="text-4xl font-bold text-white/90 drop-shadow-md">{getInitials(scientificName)}</span>
+        <Fish className="w-12 h-12 text-white/60 mt-2" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full md:w-64 h-48 md:h-64 rounded-2xl overflow-hidden relative">
+      {!imageLoaded && (
+        <div className={cn(
+          "absolute inset-0 flex flex-col items-center justify-center",
+          gradientClass
+        )}>
+          <span className="text-4xl font-bold text-white/90 drop-shadow-md animate-pulse">{getInitials(scientificName)}</span>
+          <Fish className="w-12 h-12 text-white/60 mt-2 animate-pulse" />
+        </div>
+      )}
+      <img
+        src={imageUrl}
+        alt={scientificName}
+        className={cn(
+          "w-full h-full object-cover transition-all duration-500",
+          imageLoaded ? "opacity-100" : "opacity-0"
+        )}
+        onLoad={() => setImageLoaded(true)}
+        onError={() => setImageError(true)}
+      />
+    </div>
+  );
 };
 
 export default function SpeciesDetail() {
@@ -145,10 +265,11 @@ export default function SpeciesDetail() {
         <Card variant="premium" className="flex-1">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
-              {/* Image Placeholder */}
-              <div className="w-full md:w-64 h-48 md:h-64 rounded-2xl bg-gradient-to-br from-ocean-100 to-marine-100 flex items-center justify-center">
-                <Fish className="w-24 h-24 text-ocean-300" />
-              </div>
+              {/* Species Image - fetched from iNaturalist with gradient fallback */}
+              <SpeciesDetailImage
+                scientificName={displaySpecies.scientificName}
+                images={displaySpecies.images}
+              />
 
               {/* Species Info */}
               <div className="flex-1">
@@ -176,21 +297,29 @@ export default function SpeciesDetail() {
                       <Waves className="w-4 h-4" />
                       <span className="text-xs font-medium">Depth</span>
                     </div>
-                    <p className="font-semibold text-deep-900">{displaySpecies.depth?.min}-{displaySpecies.depth?.max}m</p>
+                    <p className="font-semibold text-deep-900">
+                      {displaySpecies.depth?.min != null && displaySpecies.depth?.max != null
+                        ? `${displaySpecies.depth.min}-${displaySpecies.depth.max}m`
+                        : displaySpecies.depthRange || '-'}
+                    </p>
                   </div>
                   <div className="p-3 bg-coral-50 rounded-xl">
                     <div className="flex items-center gap-2 text-coral-600 mb-1">
                       <Thermometer className="w-4 h-4" />
                       <span className="text-xs font-medium">Temperature</span>
                     </div>
-                    <p className="font-semibold text-deep-900">{displaySpecies.temperature?.min}-{displaySpecies.temperature?.max}°C</p>
+                    <p className="font-semibold text-deep-900">
+                      {displaySpecies.temperature?.min != null && displaySpecies.temperature?.max != null
+                        ? `${displaySpecies.temperature.min}-${displaySpecies.temperature.max}°C`
+                        : displaySpecies.temperatureRange || '-°C'}
+                    </p>
                   </div>
                   <div className="p-3 bg-abyss-50 rounded-xl">
                     <div className="flex items-center gap-2 text-abyss-600 mb-1">
                       <Camera className="w-4 h-4" />
                       <span className="text-xs font-medium">Observations</span>
                     </div>
-                    <p className="font-semibold text-deep-900">{displaySpecies.observations?.toLocaleString()}</p>
+                    <p className="font-semibold text-deep-900">{displaySpecies.observations?.toLocaleString() || displaySpecies.recordCount?.toLocaleString() || '-'}</p>
                   </div>
                 </div>
 

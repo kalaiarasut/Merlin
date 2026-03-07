@@ -1083,14 +1083,14 @@ export default function AIResearchAssistant() {
           <div className="flex items-center gap-2">
             <div className="relative group">
               <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors text-xs font-medium text-slate-300">
-                {selectedProvider === 'auto' && 'Auto (Groq)'}
+                {selectedProvider === 'auto' && 'Auto (Ollama First)'}
                 {selectedProvider === 'groq' && 'Groq (Cloud)'}
                 {selectedProvider === 'ollama' && 'Ollama (Local)'}
                 {selectedProvider === 'ollama_agent' && 'Ollama (Agentic)'}
                 <ChevronDown className="w-3 h-3 ml-1 opacity-50" />
               </button>
               <div className="absolute top-full mt-2 right-0 w-40 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden hidden group-hover:block z-50">
-                <button onClick={() => { setSelectedProvider('auto'); localStorage.setItem('cmlre-llm-provider', 'auto'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Auto (Groq)</button>
+                <button onClick={() => { setSelectedProvider('auto'); localStorage.setItem('cmlre-llm-provider', 'auto'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Auto (Ollama First)</button>
                 <button onClick={() => { setSelectedProvider('groq'); localStorage.setItem('cmlre-llm-provider', 'groq'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Groq (Cloud)</button>
                 <button onClick={() => { setSelectedProvider('ollama'); localStorage.setItem('cmlre-llm-provider', 'ollama'); }} className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">Ollama (Local)</button>
                 <button onClick={() => { setSelectedProvider('ollama_agent'); localStorage.setItem('cmlre-llm-provider', 'ollama_agent'); }} className="w-full text-left px-4 py-2 text-sm text-emerald-400 hover:bg-slate-800 hover:text-emerald-300 transition-colors">Ollama (Agentic)</button>

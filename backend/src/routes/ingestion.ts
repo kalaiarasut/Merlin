@@ -14,6 +14,8 @@ import * as activityLog from '../services/audit/activityLogger';
 import aiServiceClient from '../utils/aiServiceClient';
 import type { DataCleaningResult } from '../utils/aiServiceClient';
 import { lookupSpecies } from '../utils/fishbaseClient';
+import { uploadFileToS3 } from '../utils/s3Storage';
+import { parseFasta, parseFastq } from '../services/edna/qualityFilter';
 
 type ParsedUpload = {
   format:
@@ -23,6 +25,8 @@ type ParsedUpload = {
     | 'pdf'
     | 'geojson'
     | 'netcdf'
+    | 'fasta'
+    | 'fastq'
     | 'zip'
     | 'unknown';
   data: any[];
@@ -190,7 +194,7 @@ async function parseNetCdfFile(filePath: string): Promise<{ header: any }> {
 }
 
 function isSupportedExtractedFile(ext: string): boolean {
-  return ['.csv', '.json', '.geojson', '.xlsx', '.xls', '.pdf', '.nc', '.netcdf'].includes(ext);
+  return ['.csv', '.json', '.geojson', '.xlsx', '.xls', '.pdf', '.nc', '.netcdf', '.fasta', '.fa', '.fastq', '.fq'].includes(ext);
 }
 
 async function extractZipSafely(zipPath: string): Promise<{ dir: string; files: Array<{ filename: string; fullPath: string; size?: number }> }> {
@@ -315,6 +319,66 @@ async function parseUploadedFile(
       if (!text.length) warnings.push('PDF text extraction returned empty text (scanned PDF or unsupported encoding).');
       if (tableWarnings.length) warnings.push(...tableWarnings);
       return { format: 'pdf', data: [], warnings, metadata, textForMetadataExtraction };
+    }
+
+    if (ext === '.fasta' || ext === '.fa') {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const normalized = raw.replace(/\r\n/g, '\n').replace(/^\uFEFF/, '');
+      const reads = parseFasta(normalized);
+      const data = reads.map((read, index) => ({
+        id: read.id || `FASTA_${index + 1}`,
+        sequence: read.sequence || '',
+        length: (read.sequence || '').length,
+        method: 'FASTA',
+      }));
+
+      metadata.edna = {
+        sourceFormat: 'fasta',
+        sequenceCount: data.length,
+      };
+
+      if (data.length === 0) {
+        warnings.push('No sequences parsed from FASTA file. Ensure headers start with ">".');
+      }
+
+      const textForMetadataExtraction = [
+        `FASTA upload: ${originalName || path.basename(filePath)}`,
+        `Parsed sequences: ${data.length}`,
+        summarizeTabularSample(data, 3),
+      ].join('\n');
+
+      return { format: 'fasta', data, warnings, metadata, textForMetadataExtraction };
+    }
+
+    if (ext === '.fastq' || ext === '.fq') {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const normalized = raw.replace(/\r\n/g, '\n').replace(/^\uFEFF/, '');
+      const reads = parseFastq(normalized);
+      const data = reads.map((read, index) => ({
+        id: read.id || `FASTQ_${index + 1}`,
+        sequence: read.sequence || '',
+        quality: read.quality || '',
+        length: (read.sequence || '').length,
+        method: 'FASTQ',
+        reads: 1,
+      }));
+
+      metadata.edna = {
+        sourceFormat: 'fastq',
+        sequenceCount: data.length,
+      };
+
+      if (data.length === 0) {
+        warnings.push('No reads parsed from FASTQ file. Ensure records follow 4-line FASTQ blocks.');
+      }
+
+      const textForMetadataExtraction = [
+        `FASTQ upload: ${originalName || path.basename(filePath)}`,
+        `Parsed reads: ${data.length}`,
+        summarizeTabularSample(data, 3),
+      ].join('\n');
+
+      return { format: 'fastq', data, warnings, metadata, textForMetadataExtraction };
     }
 
     if (ext === '.nc' || ext === '.netcdf') {
@@ -453,6 +517,22 @@ router.post('/', authenticate, upload.single('file'), async (req: AuthRequest, r
       progress: 0,
       userId: req.user.id,
     });
+
+    // Optional: archive raw upload to S3 (best-effort, does not affect Mongo/Postgres)
+    uploadFileToS3({
+      filePath: req.file.path,
+      keyPrefix: 'uploads/ingestion/raw',
+      contentType: req.file.mimetype,
+      originalName: req.file.originalname
+    })
+      .then((result) => {
+        if (result) {
+          logger.info(`Uploaded raw ingestion file to S3: ${result.uri}`);
+        }
+      })
+      .catch((err) => {
+        logger.warn('Failed to upload raw ingestion file to S3 (continuing):', err);
+      });
 
     // Process file asynchronously
     processFile(req.file.path, req.body.dataType, job._id.toString(), req.user.id).catch((error) => {

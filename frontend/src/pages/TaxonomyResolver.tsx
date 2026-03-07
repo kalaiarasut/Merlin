@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
+import { BACKEND_ROOT_URL } from '@/services/api';
 
 interface TaxonomyResult {
     success: boolean;
@@ -62,7 +63,7 @@ export default function TaxonomyResolver() {
 
     const resolveMutation = useMutation({
         mutationFn: async (name: string) => {
-            const response = await fetch('http://localhost:5000/api/taxonomy/resolve', {
+            const response = await fetch(`${BACKEND_ROOT_URL}/api/taxonomy/resolve`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name }),
@@ -96,7 +97,7 @@ export default function TaxonomyResolver() {
 
     const batchMutation = useMutation({
         mutationFn: async (names: string[]) => {
-            const response = await fetch('http://localhost:5000/api/taxonomy/resolve-batch', {
+            const response = await fetch(`${BACKEND_ROOT_URL}/api/taxonomy/resolve-batch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ names }),

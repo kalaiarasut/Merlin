@@ -338,11 +338,13 @@ class LLMService:
         )
         
         # Handle preferred provider override
-        if preferred_provider:
+        # Treat "auto" as no explicit override so env-configured provider stays authoritative.
+        if preferred_provider and preferred_provider != "auto":
             self.config.provider = preferred_provider
         
         # Initialize Search Service
         self.search_service = SearchService()
+        self._ollama_model_override: Optional[str] = None
         
         # Legacy model compatibility
         if self.config.ollama_model == "llama3.2":
@@ -360,6 +362,43 @@ class LLMService:
             self.config.model = self.config.ollama_model
             
         logger.info(f"LLM Service initialized with provider: {self._active_provider.value}, model: {self.config.model}")
+
+    def _is_ollama_model_not_found(self, status_code: int, body: str) -> bool:
+        text = (body or "").lower()
+        return status_code in (400, 404) and "model" in text and "not found" in text
+
+    async def _get_ollama_available_models(self) -> List[str]:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self.config.ollama_url}/api/tags")
+                if response.status_code != 200:
+                    return []
+                payload = response.json()
+                models = payload.get("models", []) if isinstance(payload, dict) else []
+                names = [m.get("name") for m in models if isinstance(m, dict) and m.get("name")]
+                return [n for n in names if isinstance(n, str)]
+        except Exception as exc:
+            logger.warning(f"Failed to fetch Ollama models: {exc}")
+            return []
+
+    async def _resolve_available_ollama_model(self, preferred_model: str) -> Optional[str]:
+        available = await self._get_ollama_available_models()
+        if not available:
+            return None
+
+        preferred_candidates = [
+            preferred_model,
+            self.config.ollama_model,
+            "llama3.1:8b",
+            "llama3.2:3b",
+            "llama3.2:1b",
+        ]
+
+        for candidate in preferred_candidates:
+            if candidate in available:
+                return candidate
+
+        return available[0]
     
     def _detect_provider(self) -> LLMProvider:
         # Detect Provider
@@ -395,22 +434,20 @@ class LLMService:
             else:
                 logger.warning("Ollama Agent requested but not available. Falling back.")
         
-        # Auto-detect: Try Groq first (better for cloud), then Ollama
+        # Auto-detect: Try Ollama first (private/local), then Groq fallback.
         elif self.config.provider == "auto":
-            # Prefer Bedrock when running on AWS (or when configured)
-            if self._check_bedrock_availability():
-                logger.info("Auto-detect: Bedrock available, using Bedrock")
-                return LLMProvider.BEDROCK
-
-            # Check Groq first (preferred for cloud hosting)
-            if self.config.groq_api_key:
-                logger.info("Auto-detect: Groq API key found, using Groq")
-                return LLMProvider.GROQ
-            
-            # Then check Ollama
             if self._check_ollama_sync():
                 logger.info("Auto-detect: Ollama available, using Ollama")
                 return LLMProvider.OLLAMA
+
+            if self.config.groq_api_key:
+                logger.info("Auto-detect: Ollama unavailable, falling back to Groq")
+                return LLMProvider.GROQ
+
+            # Then Bedrock only as last resort.
+            if self._check_bedrock_availability():
+                logger.info("Auto-detect: Bedrock available, using Bedrock")
+                return LLMProvider.BEDROCK
         
         # Fallback
         logger.warning("No LLM provider available. Using static fallback.")
@@ -772,7 +809,8 @@ class LLMService:
         message: str,
         history: Optional[List[ChatMessage]] = None,
         skip_db_context: bool = False,
-        request_id: Optional[str] = None  # For progress tracking
+        request_id: Optional[str] = None,  # For progress tracking
+        _retry_attempted: bool = False
     ) -> str:
         # Helper response
         # Skip heavy DB context loading if search results are already in message
@@ -791,27 +829,49 @@ class LLMService:
         # Add current message
         messages.append({"role": "user", "content": message})
         
-        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minute timeout for slower hardware
-            response = await client.post(
-                f"{self.config.ollama_url}/api/chat",
-                json={
-                    "model": self.config.model,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {
-                        "temperature": self.config.temperature,
-                        "num_predict": self.config.max_tokens
+        try:
+            model_to_use = self._ollama_model_override or self.config.model
+            async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minute timeout for slower hardware
+                response = await client.post(
+                    f"{self.config.ollama_url}/api/chat",
+                    json={
+                        "model": model_to_use,
+                        "messages": messages,
+                        "stream": False,
+                        "options": {
+                            "temperature": self.config.temperature,
+                            "num_predict": self.config.max_tokens
+                        }
                     }
-                }
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Ollama error: {response.text}")
-            
-            result = response.json()
-            content = result.get("message", {}).get("content", "I apologize, I couldn't generate a response.")
-            logger.info(f"Ollama Raw Response: {content[:200]}...")  # Debug log
-            return content
+                )
+
+                if response.status_code != 200:
+                    if not _retry_attempted and self._is_ollama_model_not_found(response.status_code, response.text):
+                        fallback_model = await self._resolve_available_ollama_model(model_to_use)
+                        if fallback_model and fallback_model != model_to_use:
+                            self._ollama_model_override = fallback_model
+                            logger.warning(
+                                f"Configured Ollama model '{model_to_use}' not found. Retrying with available model '{fallback_model}'."
+                            )
+                            return await self._chat_ollama(
+                                message,
+                                history,
+                                skip_db_context,
+                                request_id,
+                                _retry_attempted=True,
+                            )
+                    raise Exception(f"Ollama error: {response.text}")
+
+                result = response.json()
+                content = result.get("message", {}).get("content", "I apologize, I couldn't generate a response.")
+                logger.info(f"Ollama Raw Response: {content[:200]}...")  # Debug log
+                return content
+        except Exception as e:
+            logger.error(f"Ollama error: {e}")
+            if self._check_groq_availability():
+                logger.info("Falling back to Groq...")
+                return await self._chat_groq(message, history, skip_db_context, request_id)
+            raise
     
     async def _chat_groq(
         self,
@@ -947,7 +1007,8 @@ class LLMService:
         message: str,
         history: Optional[List[ChatMessage]] = None,
         skip_db_context: bool = False,
-        request_id: Optional[str] = None
+        request_id: Optional[str] = None,
+        _retry_attempted: bool = False
     ):
         # Ollama Streaming Output
         # Skip heavy DB context loading if search results are already in message
@@ -967,35 +1028,62 @@ class LLMService:
         # Add current message
         messages.append({"role": "user", "content": message})
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            async with client.stream(
-                "POST",
-                f"{self.config.ollama_url}/api/chat",
-                json={
-                    "model": self.config.model,
-                    "messages": messages,
-                    "stream": True,  # Enable streaming
-                    "options": {
-                        "temperature": self.config.temperature,
-                        "num_predict": self.config.max_tokens
+        try:
+            model_to_use = self._ollama_model_override or self.config.model
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.config.ollama_url}/api/chat",
+                    json={
+                        "model": model_to_use,
+                        "messages": messages,
+                        "stream": True,  # Enable streaming
+                        "options": {
+                            "temperature": self.config.temperature,
+                            "num_predict": self.config.max_tokens
+                        }
                     }
-                }
-            ) as response:
-                if response.status_code != 200:
-                    raise Exception(f"Ollama streaming error: {response.status_code}")
-                
-                async for line in response.aiter_lines():
-                    if line:
-                        try:
-                            import json
-                            data = json.loads(line)
-                            content = data.get("message", {}).get("content", "")
-                            if content:
-                                yield content
-                            if data.get("done"):
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = (await response.aread()).decode("utf-8", errors="ignore")
+                        if not _retry_attempted and self._is_ollama_model_not_found(response.status_code, error_text):
+                            fallback_model = await self._resolve_available_ollama_model(model_to_use)
+                            if fallback_model and fallback_model != model_to_use:
+                                self._ollama_model_override = fallback_model
+                                logger.warning(
+                                    f"Configured Ollama model '{model_to_use}' not found for streaming. Retrying with '{fallback_model}'."
+                                )
+                                async for token in self._chat_ollama_stream(
+                                    message,
+                                    history,
+                                    skip_db_context,
+                                    request_id,
+                                    _retry_attempted=True,
+                                ):
+                                    yield token
+                                return
+                        raise Exception(f"Ollama streaming error: {response.status_code}")
+
+                    async for line in response.aiter_lines():
+                        if line:
+                            try:
+                                import json
+                                data = json.loads(line)
+                                content = data.get("message", {}).get("content", "")
+                                if content:
+                                    yield content
+                                if data.get("done"):
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            logger.error(f"Ollama streaming error: {e}")
+            if self._check_groq_availability():
+                logger.info("Streaming fallback to Groq...")
+                async for token in self._chat_groq_stream(message, history, skip_db_context, request_id):
+                    yield token
+                return
+            raise
     
     async def _chat_groq_stream(
         self,
@@ -1429,25 +1517,29 @@ _current_provider: Optional[str] = None
 
 def get_llm_service(preferred_provider: Optional[str] = None) -> LLMService:
     global _llm_service, _current_provider
+
+    normalized_provider = preferred_provider
+    if normalized_provider == "auto":
+        normalized_provider = None
     
     # Check if we need to force re-init because we are stuck in fallback
     # but the user is requesting a specific provider (e.g. they just started Ollama)
     force_reinit = False
-    if _llm_service and preferred_provider:
+    if _llm_service and normalized_provider:
         # If we asked for Ollama before, got Fallback, and are asking for Ollama again...
-        if preferred_provider in ["ollama", "ollama_agent"]:
+        if normalized_provider in ["ollama", "ollama_agent"]:
             if _llm_service._active_provider == LLMProvider.FALLBACK:
                 force_reinit = True
                 logger.info("Forcing LLM service re-init (stuck in fallback)")
 
     # If a specific provider is requested and different from current, OR forced
-    if (preferred_provider and preferred_provider != _current_provider) or force_reinit:
-        logger.info(f"Switching LLM provider to: {preferred_provider}")
-        _llm_service = LLMService(preferred_provider=preferred_provider)
-        _current_provider = preferred_provider
+    if (normalized_provider and normalized_provider != _current_provider) or force_reinit:
+        logger.info(f"Switching LLM provider to: {normalized_provider}")
+        _llm_service = LLMService(preferred_provider=normalized_provider)
+        _current_provider = normalized_provider
     elif _llm_service is None:
-        _llm_service = LLMService(preferred_provider=preferred_provider)
-        _current_provider = preferred_provider or "auto"
+        _llm_service = LLMService(preferred_provider=normalized_provider)
+        _current_provider = normalized_provider or "auto"
     
     return _llm_service
 

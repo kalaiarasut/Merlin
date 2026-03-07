@@ -50,11 +50,13 @@ class BlastJobWorker:
         mongodb_uri: str = None,
         backend_url: str = None,
         poll_interval: int = 5,
-        max_concurrent: int = 2
+        max_concurrent: int = None
     ):
         self.mongodb_uri = mongodb_uri or os.getenv('MONGODB_URI', 'mongodb://localhost:27017/cmlre')
         self.backend_url = backend_url or os.getenv('BACKEND_URL', 'http://localhost:5000')
         self.poll_interval = poll_interval
+        if max_concurrent is None:
+            max_concurrent = int(os.getenv('WORKER_CONCURRENCY', os.getenv('MAX_CONCURRENT_JOBS', '2')))
         self.max_concurrent = max_concurrent
         
         self.client: Optional[AsyncIOMotorClient] = None

@@ -11,6 +11,7 @@ from typing import Dict, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
+from utils.dynamo_progress_store import get_dynamo_progress_store
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,18 @@ class ProgressTracker:
         self._progress: Dict[str, ProgressState] = {}
         self._subscribers: Dict[str, asyncio.Queue] = {}
         self._cancelled: set = set()  # Track cancelled requests
+        self._dynamo = get_dynamo_progress_store()
+
+    def _persist(self, state: ProgressState, result_pointer: Optional[Dict[str, Any]] = None):
+        self._dynamo.upsert(
+            request_id=state.request_id,
+            stage=state.stage,
+            current=state.current,
+            total=state.total,
+            message=state.message,
+            cancelled=state.cancelled,
+            result_pointer=result_pointer,
+        )
     
     def cancel(self, request_id: str) -> bool:
         """Cancel a running request."""
@@ -77,6 +90,7 @@ class ProgressTracker:
             state.stage = "cancelled"
             state.cancelled = True
             state.message = "Request cancelled by user"
+            self._persist(state)
             self._notify_subscribers(request_id, state)
             logger.info(f"Request cancelled: {request_id}")
             return True
@@ -92,6 +106,7 @@ class ProgressTracker:
             request_id = str(uuid.uuid4())[:8]
         
         self._progress[request_id] = ProgressState(request_id=request_id)
+        self._persist(self._progress[request_id])
         logger.debug(f"Progress tracking started: {request_id}")
         return request_id
     
@@ -105,33 +120,51 @@ class ProgressTracker:
         state.current = current
         state.total = total
         state.message = message
+        self._persist(state)
         
         logger.debug(f"Progress update: {request_id} - {stage} ({current}/{total}) {message}")
         
         # Notify subscribers
         self._notify_subscribers(request_id, state)
     
-    def complete(self, request_id: str, message: str = "Complete"):
+    def complete(self, request_id: str, message: str = "Complete", result_pointer: Optional[Dict[str, Any]] = None):
         """Mark request as complete."""
         if request_id in self._progress:
             state = self._progress[request_id]
             state.stage = "complete"
             state.message = message
             state.completed_at = datetime.now()
+            self._persist(state, result_pointer=result_pointer)
             self._notify_subscribers(request_id, state)
     
-    def error(self, request_id: str, error_message: str):
+    def error(self, request_id: str, error_message: str, result_pointer: Optional[Dict[str, Any]] = None):
         """Mark request as error."""
         if request_id in self._progress:
             state = self._progress[request_id]
             state.stage = "error"
             state.message = error_message
+            self._persist(state, result_pointer=result_pointer)
             self._notify_subscribers(request_id, state)
     
     def get_progress(self, request_id: str) -> Optional[Dict[str, Any]]:
         """Get current progress for a request."""
         if request_id in self._progress:
             return self._progress[request_id].to_dict()
+
+        persisted = self._dynamo.get(request_id)
+        if persisted:
+            progress = persisted.get("progress") or {}
+            return {
+                "request_id": request_id,
+                "stage": persisted.get("status", "unknown"),
+                "current": int(progress.get("current", 0)),
+                "total": int(progress.get("total", 0)),
+                "message": progress.get("message", ""),
+                "elapsed_seconds": 0,
+                "eta_seconds": None,
+                "cancelled": bool(progress.get("cancelled", False)),
+                "result_pointer": persisted.get("resultPointer"),
+            }
         return None
     
     def subscribe(self, request_id: str) -> asyncio.Queue:

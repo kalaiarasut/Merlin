@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Redis configuration
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-QUEUE_NAME = "edna:jobs"
+QUEUE_NAME = os.environ.get("QUEUE_NAME") or os.environ.get("EDNA_QUEUE_NAME", "edna:jobs")
 
 # Job limits
 JOB_LIMITS = {

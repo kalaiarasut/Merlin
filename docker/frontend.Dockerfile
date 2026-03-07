@@ -1,5 +1,5 @@
 # Frontend Dockerfile
-FROM node:18-alpine as build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
@@ -11,6 +11,12 @@ RUN npm ci
 
 # Copy source code
 COPY . .
+
+# Vite env vars are baked in at build time
+ARG VITE_API_URL
+ARG VITE_AI_SERVICE_URL
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_AI_SERVICE_URL=${VITE_AI_SERVICE_URL}
 
 # Build application
 RUN npm run build

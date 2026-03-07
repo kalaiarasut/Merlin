@@ -138,13 +138,26 @@ class OceanMask:
         
         timeout = aiohttp.ClientTimeout(total=120)
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    logger.info(f"✓ ETOPO1 data received")
-                    return data
-                else:
-                    raise Exception(f"ERDDAP returned HTTP {response.status}")
+            try:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        logger.info(f"✓ ETOPO1 data received")
+                        return data
+                    else:
+                        raise Exception(f"ERDDAP returned HTTP {response.status}")
+            except Exception as e:
+                err = str(e)
+                cert_error = ('CERTIFICATE_VERIFY_FAILED' in err) or ('Hostname mismatch' in err)
+                if 'coastwatch.pfeg.noaa.gov' in url and cert_error:
+                    logger.warning("⚠ SSL cert verification failed for CoastWatch ERDDAP, retrying with ssl=False")
+                    async with session.get(url, ssl=False) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            logger.info(f"✓ ETOPO1 data received (insecure SSL fallback)")
+                            return data
+                        raise Exception(f"ERDDAP returned HTTP {response.status}")
+                raise
     
     def _parse_etopo_response(self, data: Dict):
         """Parse ERDDAP JSON response into mask array."""

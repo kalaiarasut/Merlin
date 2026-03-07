@@ -932,6 +932,8 @@ class EnvironmentalNicheModeler:
         logger.info(f"\n🌍 Fetching REAL environmental data...")
         
         data_sources_used = {}
+        used_real_data = True
+        data_fetch_warning = None
         
         try:
             # Fetch real environmental data for PRESENCE points
@@ -951,12 +953,27 @@ class EnvironmentalNicheModeler:
                 logger.info(f"  • {var}: {source}")
             
         except Exception as e:
-            logger.error(f"  ✗ Environmental data fetch failed: {e}")
-            raise ValueError(
-                f"Failed to fetch real environmental data: {str(e)}. "
-                "Niche modeling requires authoritative data sources. "
-                "Please check network connectivity or try again later."
+            logger.warning(f"  ⚠ Environmental data fetch failed: {e}")
+            logger.warning("  → Falling back to synthetic environmental proxies for interactive/demo run")
+
+            used_real_data = False
+            data_fetch_warning = (
+                f"Real environmental data unavailable ({str(e)}). "
+                "Used synthetic proxy values for this run."
             )
+            data_sources_used = {f: 'SYNTHETIC_PROXY_FALLBACK' for f in feature_names}
+
+            presence_env = []
+            for lat, lon in coordinates:
+                point = {'latitude': lat, 'longitude': lon}
+                point.update(self._generate_environmental_values(lat, lon, feature_names))
+                presence_env.append(point)
+
+            background_env = []
+            for lat, lon in background_coords:
+                point = {'latitude': lat, 'longitude': lon}
+                point.update(self._generate_environmental_values(lat, lon, feature_names))
+                background_env.append(point)
         
         # Build feature matrices
         # Handle cases where some variables might be missing
@@ -1079,13 +1096,15 @@ class EnvironmentalNicheModeler:
         self._last_features = available_features
         self._last_coordinates = coordinates
         self._data_sources = data_sources_used
-        self._use_real_data = True # Always use real data now
+        self._use_real_data = used_real_data
         
         # Build warnings list
         warnings = []
         if len(available_features) < len(feature_names):
             missing = set(feature_names) - set(available_features)
             warnings.append(f"Missing data for variables: {', '.join(missing)}")
+        if data_fetch_warning:
+            warnings.append(data_fetch_warning)
         
         logger.info(f"\n✅ Model Training Complete!")
         logger.info(f"  • AUC: {result.auc_score:.3f}")
@@ -1135,7 +1154,7 @@ class EnvironmentalNicheModeler:
             # Legacy fields for backwards compatibility
             'data_sources': data_sources_used,
             'variables_used': available_features,
-            'real_data': True,  # Always true now
+            'real_data': used_real_data,
             'warnings': warnings,
             'collinearity_warnings': collinearity_warnings
         }
@@ -1183,12 +1202,12 @@ class EnvironmentalNicheModeler:
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(asyncio.run, fetch())
-                    env_data = future.result(timeout=120)
+                    env_data = future.result(timeout=45)
             else:
-                env_data = loop.run_until_complete(fetch())
+                env_data = loop.run_until_complete(asyncio.wait_for(fetch(), timeout=45))
         except RuntimeError:
             # No event loop, create one
-            env_data = asyncio.run(fetch())
+            env_data = asyncio.run(asyncio.wait_for(fetch(), timeout=45))
         
         # Extract data sources from first result
         data_sources = {}
@@ -1310,6 +1329,48 @@ class EnvironmentalNicheModeler:
                 'resolution': resolution
             }
         }
+
+    def _generate_environmental_values(
+        self,
+        lat: float,
+        lon: float,
+        feature_names: List[str]
+    ) -> Dict[str, float]:
+        """Generate deterministic synthetic environmental proxy values for a coordinate."""
+        values: Dict[str, float] = {}
+
+        lat_rad = np.radians(lat)
+        lon_rad = np.radians(lon)
+
+        for feature in feature_names:
+            if feature == 'temperature':
+                val = 28.0 - (abs(lat) * 0.35) + (np.sin(lon_rad) * 1.5)
+            elif feature == 'salinity':
+                val = 34.5 + (np.cos(lat_rad) * 0.8) + (np.sin(lon_rad * 2) * 0.4)
+            elif feature == 'depth':
+                val = 50 + (abs(lon - 70.0) * 25) + (abs(lat - 12.0) * 18)
+            elif feature == 'chlorophyll':
+                val = 0.2 + (max(0.0, 1.0 - abs(lat - 12.0) / 20.0) * 1.8)
+            elif feature == 'dissolved_oxygen':
+                val = 4.5 + (np.cos(lat_rad) * 1.4)
+            elif feature == 'ph':
+                val = 8.0 + (np.sin(lat_rad) * 0.1)
+            elif feature == 'current_speed':
+                val = 0.2 + (abs(np.sin(lon_rad)) * 0.8)
+            elif feature == 'distance_coast':
+                val = abs(lon - 72.0) * 35
+            else:
+                val = 0.5
+
+            ranges = self.ENV_RANGES.get(feature)
+            if ranges:
+                val = float(np.clip(val, ranges['min'], ranges['max']))
+            else:
+                val = float(val)
+
+            values[feature] = val
+
+        return values
     
     def _envelope_score(
         self,

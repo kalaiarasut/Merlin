@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
-import { oceanographyService } from '@/services/api';
+import { oceanographyService, BACKEND_ROOT_URL } from '@/services/api';
 import { erddapService, ERDDAPDataPoint } from '@/services/erddapService';
 import { copernicusService } from '@/services/copernicusService';
 
@@ -279,8 +279,7 @@ export default function OceanographyViewer() {
   const { data: fisheriesCpueData, isLoading: fisheriesCpueLoading } = useQuery({
     queryKey: ['fisheries-cpue-spatial'],
     queryFn: async () => {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const res = await fetch(`${API_BASE}/api/fisheries/spatial-cpue`);
+      const res = await fetch(`${BACKEND_ROOT_URL}/api/fisheries/spatial-cpue`);
       return res.json();
     },
     enabled: selectedParameter === 'fisheries_cpue',
@@ -1032,25 +1031,44 @@ export default function OceanographyViewer() {
             </Card>
           )}
 
-          {/* Available Parameters */}
+          {/* Sources */}
           <Card variant="glass">
             <CardContent className="p-4">
-              <div className="flex gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="p-2 rounded-lg bg-ocean-50/60">
-                  <Layers className="w-5 h-5 text-ocean-400" />
+                  <Satellite className="w-5 h-5 text-ocean-400" />
                 </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-semibold text-deep-900">Available Data</h4>
-                  <div className="mt-2 space-y-1">
-                    {parameters?.slice(0, 5).map((param: any) => (
-                      <div key={param.parameter} className="flex justify-between text-xs">
-                        <span className="text-deep-600 capitalize">{param.parameter?.replace('_', ' ')}</span>
-                        <span className="text-deep-400">{param.count} pts</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <h4 className="text-sm font-semibold text-deep-900">Sources</h4>
               </div>
+              {dataSourceMode === 'erddap' ? (
+                <div className="space-y-2.5">
+                  {[
+                    { param: 'SST', source: 'NOAA CoastWatch', detail: 'JPL MUR · 1km · Daily' },
+                    { param: 'Chlorophyll', source: 'NOAA VIIRS', detail: '4km · Monthly' },
+                    { param: 'Salinity', source: 'NOAA SMAP', detail: '0.25° · Daily' },
+                    { param: 'DO & pH', source: 'Copernicus Marine', detail: '0.25° · Monthly' },
+                    { param: 'In-Situ', source: 'Argo BGC Floats', detail: 'Real-time Profiles' },
+                    { param: 'CPUE', source: 'Fisheries Layer', detail: 'Database Records' },
+                  ].map(({ param, source, detail }) => (
+                    <div key={param} className="p-2 rounded-lg bg-white/60 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-deep-800 dark:text-gray-200">{param}</span>
+                        <span className="text-[10px] text-ocean-500 font-medium">{detail}</span>
+                      </div>
+                      <p className="text-[11px] text-deep-500 dark:text-gray-400 mt-0.5">{source}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {parameters?.slice(0, 5).map((param: any) => (
+                    <div key={param.parameter} className="flex justify-between text-xs p-1.5">
+                      <span className="text-deep-600 capitalize">{param.parameter?.replace('_', ' ')}</span>
+                      <span className="text-deep-400">{param.count} pts</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

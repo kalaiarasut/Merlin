@@ -12,7 +12,10 @@ import traceback
 import hashlib
 from typing import Optional
 
-from tavily import TavilyClient
+try:
+    from tavily import TavilyClient  # type: ignore
+except Exception:  # pragma: no cover
+    TavilyClient = None
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,11 @@ class SearchService:
         self.api_key = os.getenv("TAVILY_API_KEY", "")
         self.client = None
         self.enabled = False
-        
+
+        if TavilyClient is None:
+            logger.warning("Tavily SDK not installed. Web search disabled.")
+            return
+
         if self.api_key:
             try:
                 self.client = TavilyClient(api_key=self.api_key)
@@ -64,6 +71,9 @@ class SearchService:
         Uses Redis caching to avoid repeated API calls for the same query.
         Returns AI-ready summarized results from Tavily.
         """
+        if TavilyClient is None:
+            return "⚠️ Web search unavailable (Tavily SDK not installed)."
+
         if not self.enabled or not self.client:
             return "⚠️ Web search unavailable (TAVILY_API_KEY not configured)."
         

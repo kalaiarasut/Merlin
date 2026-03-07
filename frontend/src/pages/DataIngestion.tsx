@@ -58,10 +58,34 @@ export default function DataIngestion() {
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const queryClient = useQueryClient();
 
+  const hasActiveJobs = (jobs: any[] | undefined) =>
+    (jobs || []).some((j) => j?.status === 'pending' || j?.status === 'processing');
+
+  const jobsRefetchIntervalMs = (jobs: any[] | undefined) => {
+    // Initial load: fetch reasonably soon
+    if (!jobs) return 15000;
+
+    // While jobs are running, poll for progress updates
+    if (hasActiveJobs(jobs)) return 15000;
+
+    // When idle, back off to reduce API traffic
+    return 60000;
+  };
+
   const { data: jobs, refetch: refetchJobs } = useQuery({
     queryKey: ['ingestion-jobs'],
     queryFn: () => ingestionService.getJobs(),
-    refetchInterval: 5000,
+    refetchInterval: (query) => jobsRefetchIntervalMs(query.state.data as any[] | undefined),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
+    retry: (failureCount, error: any) => {
+      const status = error?.response?.status;
+      if (status === 429) return false;
+      if (status >= 400 && status < 500) return false;
+      return failureCount < 2;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   const deleteMutation = useMutation({

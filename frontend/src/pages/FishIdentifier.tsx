@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useMutation } from '@tanstack/react-query';
-import { Upload, Fish, Camera, Loader2, CheckCircle, AlertCircle, Info, Sparkles, X, Waves, Utensils, Heart, Shield, Anchor, Activity } from 'lucide-react';
+import { Upload, Fish, Camera, Loader2, CheckCircle, AlertCircle, Info, Sparkles, X, Waves, Utensils, Heart, Shield, Anchor, Activity, HelpCircle } from 'lucide-react';
 import { aiService } from '@/services/api';
 import { cn } from '@/lib/utils';
 
@@ -38,6 +38,7 @@ export default function FishIdentifier() {
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [result, setResult] = useState<ClassificationResult | null>(null);
+  const [showSpeciesTooltip, setShowSpeciesTooltip] = useState(false);
 
   const classifyMutation = useMutation({
     mutationFn: (file: File) => aiService.classifyFish(file),
@@ -137,9 +138,76 @@ export default function FishIdentifier() {
               Unknown species are automatically flagged for expert review.
             </p>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200">
-                15+ Indian Ocean Species
-              </span>
+              <div className="relative inline-flex"
+                onMouseEnter={() => setShowSpeciesTooltip(true)}
+                onMouseLeave={() => setShowSpeciesTooltip(false)}
+              >
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200 cursor-help">
+                  15+ Indian Ocean Species
+                  <HelpCircle className="h-3 w-3 opacity-60" />
+                </span>
+
+                {/* Species Tooltip Popover */}
+                {showSpeciesTooltip && (
+                  <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white dark:bg-deep-800 rounded-xl shadow-2xl border border-cyan-200 dark:border-cyan-700/50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="absolute -top-2 left-4 w-4 h-4 bg-white dark:bg-deep-800 border-l border-t border-cyan-200 dark:border-cyan-700/50 rotate-45" />
+                    <p className="text-sm font-bold text-deep-900 dark:text-white mb-3 flex items-center gap-1.5">
+                      <Fish className="h-4 w-4 text-cyan-500" />
+                      Trained Species Catalog
+                    </p>
+                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+                      {/* Tunas */}
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-1">Tunas — Scombridae</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-cyan-200 dark:border-cyan-700">
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Yellowfin Tuna <span className="italic text-deep-400 dark:text-gray-500">(Thunnus albacares)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Skipjack Tuna <span className="italic text-deep-400 dark:text-gray-500">(Katsuwonus pelamis)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Bigeye Tuna <span className="italic text-deep-400 dark:text-gray-500">(Thunnus obesus)</span></p>
+                        </div>
+                      </div>
+                      {/* Jacks */}
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400 mb-1">Jacks & Trevallies — Carangidae</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-teal-200 dark:border-teal-700">
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Giant Trevally <span className="italic text-deep-400 dark:text-gray-500">(Caranx ignobilis)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Bigeye Trevally <span className="italic text-deep-400 dark:text-gray-500">(Caranx sexfasciatus)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Double-spotted Queenfish <span className="italic text-deep-400 dark:text-gray-500">(Scomberoides lysan)</span></p>
+                        </div>
+                      </div>
+                      {/* Snappers */}
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400 mb-1">Snappers — Lutjanidae</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-orange-200 dark:border-orange-700">
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Two-spot Red Snapper <span className="italic text-deep-400 dark:text-gray-500">(Lutjanus bohar)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Mangrove Red Snapper <span className="italic text-deep-400 dark:text-gray-500">(Lutjanus argentimaculatus)</span></p>
+                        </div>
+                      </div>
+                      {/* Groupers */}
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">Groupers — Serranidae</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-emerald-200 dark:border-emerald-700">
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Orange-spotted Grouper <span className="italic text-deep-400 dark:text-gray-500">(Epinephelus coioides)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Malabar Grouper <span className="italic text-deep-400 dark:text-gray-500">(Epinephelus malabaricus)</span></p>
+                        </div>
+                      </div>
+                      {/* Others */}
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">Other Major Species</p>
+                        <div className="space-y-0.5 pl-2 border-l-2 border-indigo-200 dark:border-indigo-700">
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Mahi-mahi <span className="italic text-deep-400 dark:text-gray-500">(Coryphaena hippurus)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Swordfish <span className="italic text-deep-400 dark:text-gray-500">(Xiphias gladius)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Indo-Pacific Sailfish <span className="italic text-deep-400 dark:text-gray-500">(Istiophorus platypterus)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Great Barracuda <span className="italic text-deep-400 dark:text-gray-500">(Sphyraena barracuda)</span></p>
+                          <p className="text-xs text-deep-700 dark:text-gray-300">Cobia <span className="italic text-deep-400 dark:text-gray-500">(Rachycentron canadum)</span></p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <p className="text-[10px] text-deep-400 dark:text-gray-500 italic">Model can detect unknown species not in this list</p>
+                    </div>
+                  </div>
+                )}
+              </div>
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-800 dark:bg-cyan-800/50 dark:text-cyan-200">
                 Hierarchical Classification
               </span>

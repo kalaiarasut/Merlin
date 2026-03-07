@@ -1,6 +1,15 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+function normalizeApiBaseUrl(rawBaseUrl: string): string {
+  const trimmed = (rawBaseUrl || '').trim();
+  if (!trimmed) return 'http://localhost:5000/api';
+
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, '');
+  return withoutTrailingSlash.endsWith('/api') ? withoutTrailingSlash : `${withoutTrailingSlash}/api`;
+}
+
+const API_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || 'http://localhost:5000');
+export const BACKEND_ROOT_URL = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL.replace(/\/+$/, '');
 export const AI_SERVICE_URL = (import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 class ApiClient {

@@ -205,6 +205,26 @@ class EnvironmentalDataService:
         """Close the session."""
         if self.session and not self.session.closed:
             await self.session.close()
+
+    async def _fetch_erddap_json(self, url: str) -> Tuple[int, Optional[Dict[str, Any]]]:
+        """Fetch ERDDAP JSON with targeted SSL fallback for CoastWatch cert issues."""
+        session = await self._get_session()
+
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    return response.status, await response.json()
+                return response.status, None
+        except Exception as e:
+            err = str(e)
+            cert_error = ('CERTIFICATE_VERIFY_FAILED' in err) or ('Hostname mismatch' in err)
+            if 'coastwatch.pfeg.noaa.gov' in url and cert_error:
+                logger.warning("SSL cert verification failed for CoastWatch ERDDAP, retrying with ssl=False")
+                async with session.get(url, ssl=False) as response:
+                    if response.status == 200:
+                        return response.status, await response.json()
+                    return response.status, None
+            raise
     
     async def get_environmental_data(
         self,
@@ -405,8 +425,6 @@ class EnvironmentalDataService:
     async def _fetch_sst_erddap(self, bbox: Dict) -> Dict:
         """Fetch SST from MODIS via NOAA ERDDAP (backup source)."""
         try:
-            session = await self._get_session()
-            
             # Try erdMH1sstd8day (8-day composite) which has more recent data
             # Use 'last' to get most recent available data
             url = (
@@ -415,13 +433,11 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_erddap_grid(data, 'sst', 'NOAA_MODIS_SST')
-                else:
-                    logger.warning(f"ERDDAP SST 8-day returned {response.status}, trying monthly")
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                return self._parse_erddap_grid(data, 'sst', 'NOAA_MODIS_SST')
+            logger.warning(f"ERDDAP SST 8-day returned {status}, trying monthly")
             
             # Fallback: try monthly with 'last'
             url = (
@@ -430,11 +446,10 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_erddap_grid(data, 'sst', 'NOAA_MODIS_SST')
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                return self._parse_erddap_grid(data, 'sst', 'NOAA_MODIS_SST')
                     
         except Exception as e:
             logger.error(f"ERDDAP SST fetch failed: {e}")
@@ -509,8 +524,6 @@ class EnvironmentalDataService:
     async def _fetch_salinity_climatology(self, bbox: Dict) -> Dict:
         """Fetch salinity from World Ocean Atlas climatology via ERDDAP."""
         try:
-            session = await self._get_session()
-            
             # WOA18 Salinity climatology
             url = (
                 f"https://coastwatch.pfeg.noaa.gov/erddap/griddap/woa18_decav_s00_04.json?"
@@ -518,11 +531,10 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_erddap_grid(data, 's_an', 'WOA18_SALINITY_CLIMATOLOGY')
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                return self._parse_erddap_grid(data, 's_an', 'WOA18_SALINITY_CLIMATOLOGY')
                     
         except Exception as e:
             logger.error(f"WOA salinity fetch failed: {e}")
@@ -544,30 +556,27 @@ class EnvironmentalDataService:
         print(LogStyle.trying("GEBCO/ETOPO via NOAA ERDDAP", "Depth"))
         
         try:
-            session = await self._get_session()
-            
             # ETOPO1 bathymetry - high resolution global
             url = (
                 f"https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo180.json?"
                 f"altitude[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = self._parse_erddap_grid(data, 'altitude', 'GEBCO_ETOPO1')
-                    
-                    # Convert altitude to depth (negative elevation = ocean depth)
-                    if result.get('grid'):
-                        values = result['grid']['values']
-                        # Make depth positive (bathymetry convention)
-                        result['grid']['values'] = np.abs(np.minimum(values, 0))
-                        print(LogStyle.success("GEBCO/ETOPO1", "Depth", "1 arc-minute resolution"))
-                    
-                    return result
-                else:
-                    print(LogStyle.error("GEBCO/ETOPO ERDDAP", f"HTTP {response.status}"))
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                result = self._parse_erddap_grid(data, 'altitude', 'GEBCO_ETOPO1')
+
+                # Convert altitude to depth (negative elevation = ocean depth)
+                if result.get('grid'):
+                    values = result['grid']['values']
+                    # Make depth positive (bathymetry convention)
+                    result['grid']['values'] = np.abs(np.minimum(values, 0))
+                    print(LogStyle.success("GEBCO/ETOPO1", "Depth", "1 arc-minute resolution"))
+
+                return result
+
+            print(LogStyle.error("GEBCO/ETOPO ERDDAP", f"HTTP {status}"))
         except Exception as e:
             print(LogStyle.error("GEBCO/ETOPO ERDDAP", str(e)[:50]))
         
@@ -588,8 +597,6 @@ class EnvironmentalDataService:
         print(LogStyle.trying("NOAA VIIRS Monthly", "Chlorophyll"))
         
         try:
-            session = await self._get_session()
-            
             # Get recent monthly composite
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=45)  # Get last month's data
@@ -601,23 +608,22 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = self._parse_erddap_grid(data, 'chlor_a', 'NOAA_VIIRS_CHLOROPHYLL')
-                    
-                    # Apply log transformation for chlorophyll (standard practice)
-                    if result.get('grid') and result['grid']['values'] is not None:
-                        values = result['grid']['values']
-                        # Cap extreme values (quality control)
-                        values = np.clip(values, 0.01, 100)
-                        result['grid']['values'] = values
-                        print(LogStyle.success("NOAA VIIRS Monthly", "Chlorophyll", "ocean color sensor"))
-                    
-                    return result
-                else:
-                    print(LogStyle.fallback("NOAA VIIRS Monthly", "NOAA MODIS", f"HTTP {response.status}"))
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                result = self._parse_erddap_grid(data, 'chlor_a', 'NOAA_VIIRS_CHLOROPHYLL')
+
+                # Apply log transformation for chlorophyll (standard practice)
+                if result.get('grid') and result['grid']['values'] is not None:
+                    values = result['grid']['values']
+                    # Cap extreme values (quality control)
+                    values = np.clip(values, 0.01, 100)
+                    result['grid']['values'] = values
+                    print(LogStyle.success("NOAA VIIRS Monthly", "Chlorophyll", "ocean color sensor"))
+
+                return result
+
+            print(LogStyle.fallback("NOAA VIIRS Monthly", "NOAA MODIS", f"HTTP {status}"))
                     
         except Exception as e:
             error_msg = str(e)[:50] if len(str(e)) > 50 else str(e)
@@ -632,8 +638,6 @@ class EnvironmentalDataService:
     async def _fetch_chlorophyll_modis(self, bbox: Dict) -> Dict:
         """Backup: MODIS Aqua chlorophyll."""
         try:
-            session = await self._get_session()
-            
             # Use 'last' for most recent available data
             url = (
                 f"https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMH1chlamday.json?"
@@ -641,13 +645,12 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_erddap_grid(data, 'chlorophyll', 'NOAA_MODIS_CHLOROPHYLL')
-                else:
-                    print(LogStyle.error("MODIS Chlorophyll", f"HTTP {response.status}"))
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                return self._parse_erddap_grid(data, 'chlorophyll', 'NOAA_MODIS_CHLOROPHYLL')
+
+            print(LogStyle.error("MODIS Chlorophyll", f"HTTP {status}"))
         except Exception as e:
             print(LogStyle.error("MODIS Chlorophyll", str(e)[:50]))
         
@@ -677,8 +680,6 @@ class EnvironmentalDataService:
     async def _fetch_do_climatology(self, bbox: Dict) -> Dict:
         """Fetch DO from World Ocean Atlas climatology."""
         try:
-            session = await self._get_session()
-            
             # WOA18 Dissolved Oxygen climatology
             url = (
                 f"https://coastwatch.pfeg.noaa.gov/erddap/griddap/woa18_decav_o00_04.json?"
@@ -686,17 +687,16 @@ class EnvironmentalDataService:
                 f"[({bbox['lat_min']}):1:({bbox['lat_max']})]"
                 f"[({bbox['lon_min']}):1:({bbox['lon_max']})]"
             )
-            
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    result = self._parse_erddap_grid(data, 'o_an', 'WOA18_DO_CLIMATOLOGY')
-                    
-                    # Convert from ml/L to mg/L (multiply by 1.429)
-                    if result.get('grid') and result['grid']['values'] is not None:
-                        result['grid']['values'] = result['grid']['values'] * 1.429
-                    
-                    return result
+
+            status, data = await self._fetch_erddap_json(url)
+            if status == 200 and data is not None:
+                result = self._parse_erddap_grid(data, 'o_an', 'WOA18_DO_CLIMATOLOGY')
+
+                # Convert from ml/L to mg/L (multiply by 1.429)
+                if result.get('grid') and result['grid']['values'] is not None:
+                    result['grid']['values'] = result['grid']['values'] * 1.429
+
+                return result
         except Exception as e:
             logger.error(f"WOA DO fetch failed: {e}")
         

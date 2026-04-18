@@ -384,6 +384,7 @@ router.post('/generate-report', authenticate, async (req: AuthRequest, res: Resp
     const response = await fetch(`${AI_SERVICE_URL}/generate-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         title: title || 'Marine Data Analysis Report',
         report_type: report_type || 'custom',
@@ -419,6 +420,7 @@ router.post('/quick-report', authenticate, async (req: AuthRequest, res: Respons
     const response = await fetch(`${AI_SERVICE_URL}/generate-quick-report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         analysis_type: analysis_type || 'custom',
         data: data || {},

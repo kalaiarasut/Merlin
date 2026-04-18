@@ -504,14 +504,24 @@ export const aiService = {
     apiClient.post<{ response: string }>('/ai/chat', { message, context, requestId, provider }),
 
   // Streaming chat - yields tokens as they're generated
-  // Calls Python directly to avoid Express auth issues with streaming
+  // Routes through backend proxy for proper CORS handling
   chatStream: async function* (message: string, context?: any, requestId?: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') {
-    const response = await fetch(`${AI_SERVICE_URL}/chat/stream`, {
+    // Get auth token for backend proxy
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const stored = localStorage.getItem('auth-storage');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.state?.token) {
+          headers['Authorization'] = `Bearer ${parsed.state.token}`;
+        }
+      }
+    } catch { /* ignore parse errors */ }
+
+    const response = await fetch(`${BACKEND_ROOT_URL}/api/ai/chat/stream`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ message, context, request_id: requestId, provider })
+      headers,
+      body: JSON.stringify({ message, context, requestId, provider })
     });
 
     if (!response.ok) {

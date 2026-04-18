@@ -70,7 +70,7 @@ router.post('/chat', authenticate, async (req: AuthRequest, res: Response, next)
         context,
         request_id: requestId,  // Forward to Python for progress tracking
         provider,
-      }, { timeout: 600000 }); // 600 seconds (10 mins) for LLM + FishBase enrichment
+      }, { timeout: 45000 }); // 45 seconds – must respond before App Runner gateway timeout
 
       const elapsed = Date.now() - startTime;
       logger.info(`Python AI service responded in ${elapsed}ms`);
@@ -120,7 +120,7 @@ router.post('/chat/stream', authenticate, async (req: AuthRequest, res: Response
         url: `${AI_SERVICE_URL}/chat/stream`,
         data: { message, context, request_id: requestId, provider },
         responseType: 'stream',
-        timeout: 600000
+        timeout: 45000
       });
 
       // Pipe the stream from Python to client

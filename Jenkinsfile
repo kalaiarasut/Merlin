@@ -13,10 +13,7 @@ pipeline {
     ECR_REGISTRY = '204687257890.dkr.ecr.ap-south-1.amazonaws.com'
     BACKEND_REPO = 'merlin-backend'
     AI_REPO = 'merlin-ai-services'
-  }
-
-  triggers {
-    githubPush()
+    FRONTEND_BUCKET = 'merlin-frontend'
   }
 
   stages {
@@ -93,12 +90,33 @@ pipeline {
         }
       }
     }
+
+    stage('Build Frontend') {
+      steps {
+        sh '''
+          cd frontend
+          npm ci
+          npm run build
+        '''
+      }
+    }
+
+    stage('Deploy Frontend to S3') {
+      when {
+        branch 'main'
+      }
+      steps {
+        sh '''
+          aws s3 sync frontend/dist s3://${FRONTEND_BUCKET} --delete
+        '''
+      }
+    }
   }
 
   post {
     success {
       echo "Backend and AI images pushed successfully: ${IMAGE_TAG} and latest"
-      echo 'App Runner should auto-deploy if source is latest.'
+      echo "Frontend deployed to s3://${FRONTEND_BUCKET} from frontend/dist"
     }
     failure {
       echo 'Build or push failed. Check stage logs.'

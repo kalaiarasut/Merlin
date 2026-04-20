@@ -105,7 +105,7 @@ export default function Login() {
               Discover the <span className="text-ocean-300">Ocean's</span> Secrets
             </h2>
             <p className="text-lg text-ocean-100/80 mb-12">
-              Advanced marine research platform for biodiversity monitoring, 
+              Kalai Advanced marine research platform for biodiversity monitoring, 
               ecological analysis, and ocean conservation.
             </p>
 

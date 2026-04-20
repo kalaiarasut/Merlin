@@ -102,9 +102,6 @@ pipeline {
     }
 
     stage('Deploy Frontend to S3') {
-      when {
-        branch 'main'
-      }
       steps {
         sh '''
           aws s3 sync frontend/dist s3://${FRONTEND_BUCKET} --delete

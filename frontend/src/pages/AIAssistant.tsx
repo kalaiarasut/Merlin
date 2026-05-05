@@ -13,7 +13,7 @@ import {
   Wifi, WifiOff, Sparkles, Database, Globe, HelpCircle, ChevronDown, Square
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { aiService, AI_SERVICE_URL } from '@/services/api';
+import { aiService } from '@/services/api';
 
 interface Message {
   id: string;
@@ -183,8 +183,7 @@ export default function AIAssistant() {
     queryKey: ['ai-status'],
     queryFn: async (): Promise<AIStatusResponse> => {
       try {
-        const response = await fetch(`${AI_SERVICE_URL}/ai/status`);
-        return response.json();
+        return aiService.getStatus();
       } catch {
         return {
           internet: false,
@@ -275,8 +274,7 @@ export default function AIAssistant() {
     // Start polling for progress
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${AI_SERVICE_URL}/chat/progress-status/${requestId}`);
-        const data = await res.json();
+        const data = await aiService.getProgressStatus(requestId);
         if (data.stage && data.stage !== 'not_found') {
           setProgress(data);
         }
@@ -376,9 +374,7 @@ export default function AIAssistant() {
     if (!currentRequestId) return;
 
     try {
-      await fetch(`${AI_SERVICE_URL}/chat/cancel/${currentRequestId}`, {
-        method: 'POST'
-      });
+      await aiService.cancelRequest(currentRequestId);
       setIsLoading(false);
       setProgress(null);
 

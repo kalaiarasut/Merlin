@@ -142,6 +142,101 @@ router.post('/chat/stream', authenticate, async (req: AuthRequest, res: Response
   }
 });
 
+// AI service status endpoint - proxies Python status so the frontend never calls localhost in production
+router.get('/status', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.get(`${AI_SERVICE_URL}/ai/status`, { timeout: 10000 });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`AI status service error: ${aiError.message}`);
+    res.status(503).json({
+      internet: false,
+      ollama: false,
+      groq: false,
+      fishbase: false,
+      active_provider: 'offline',
+      error: 'AI service unavailable',
+    });
+  }
+});
+
+router.get('/chat/progress-status/:requestId', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.get(`${AI_SERVICE_URL}/chat/progress-status/${encodeURIComponent(req.params.requestId)}`, {
+      timeout: 10000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.warn(`AI progress status unavailable: ${aiError.message}`);
+    res.json({ stage: 'not_found' });
+  }
+});
+
+router.post('/chat/cancel/:requestId', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.post(`${AI_SERVICE_URL}/chat/cancel/${encodeURIComponent(req.params.requestId)}`, {}, {
+      timeout: 10000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`AI cancel service error: ${aiError.message}`);
+    res.status(503).json({ error: 'AI service unavailable' });
+  }
+});
+
+router.post('/methodology/query-live', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.post(`${AI_SERVICE_URL}/methodology/query-live`, req.body, {
+      timeout: 120000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`Methodology query service error: ${aiError.message}`);
+    const status = aiError.response?.status || 503;
+    res.status(status).json(aiError.response?.data || { error: 'Methodology service unavailable' });
+  }
+});
+
+router.post('/research/papers', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.post(`${AI_SERVICE_URL}/research/papers`, req.body, {
+      timeout: 60000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`Research paper search service error: ${aiError.message}`);
+    const status = aiError.response?.status || 503;
+    res.status(status).json(aiError.response?.data || { error: 'Research service unavailable' });
+  }
+});
+
+router.post('/research/export', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.post(`${AI_SERVICE_URL}/research/export`, req.body, {
+      timeout: 60000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`Research export service error: ${aiError.message}`);
+    const status = aiError.response?.status || 503;
+    res.status(status).json(aiError.response?.data || { error: 'Research export service unavailable' });
+  }
+});
+
+router.get('/research/similar', authenticate, async (req: AuthRequest, res: Response, next) => {
+  try {
+    const response = await axios.get(`${AI_SERVICE_URL}/research/similar`, {
+      params: req.query,
+      timeout: 60000,
+    });
+    res.json(response.data);
+  } catch (aiError: any) {
+    logger.error(`Similar papers service error: ${aiError.message}`);
+    const status = aiError.response?.status || 503;
+    res.status(status).json(aiError.response?.data || { error: 'Similar papers service unavailable' });
+  }
+});
+
 // Fish classification endpoint - Fishial.AI powered
 router.post('/classify-fish', authenticate, upload.single('image'), async (req: AuthRequest, res: Response, next) => {
   try {

@@ -500,6 +500,18 @@ export const correlationService = {
 
 // AI service
 export const aiService = {
+  getStatus: () =>
+    apiClient.get<any>('/ai/status'),
+
+  getProgressStatus: (requestId: string) =>
+    apiClient.get<any>(`/ai/chat/progress-status/${encodeURIComponent(requestId)}`),
+
+  cancelRequest: (requestId: string) =>
+    apiClient.post<any>(`/ai/chat/cancel/${encodeURIComponent(requestId)}`, {}),
+
+  queryMethodologyLive: (query: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') =>
+    apiClient.post<any>('/ai/methodology/query-live', { query, provider }),
+
   chat: (message: string, context?: any, requestId?: string, provider?: 'groq' | 'ollama' | 'ollama_agent' | 'auto') =>
     apiClient.post<{ response: string }>('/ai/chat', { message, context, requestId, provider }),
 
@@ -608,32 +620,32 @@ export const aiService = {
 
   // Research paper search
   paperSearch: async (query: string, limit: number = 20) => {
-    return aiServicesClient.post<{
+    return apiClient.post<{
       success: boolean;
       total: number;
       papers: any[];
       query: string;
-    }>('/research/papers', { query, limit });
+    }>('/ai/research/papers', { query, limit });
   },
 
   // Export citations in various formats
   exportCitations: async (papers: any[], format: 'bibtex' | 'ris' | 'apa' | 'mla') => {
-    return aiServicesClient.post<{
+    return apiClient.post<{
       success: boolean;
       format: string;
       text: string;
       count: number;
-    }>('/research/export', { papers, format });
+    }>('/ai/research/export', { papers, format });
   },
 
   // Get similar papers for a given paper
   getSimilarPapers: async (paperId: string, limit: number = 10) => {
-    return aiServicesClient.get<{
+    return apiClient.get<{
       success: boolean;
       count: number;
       papers: any[];
       source_paper_id: string;
-    }>(`/research/similar?paper_id=${encodeURIComponent(paperId)}&limit=${limit}`);
+    }>(`/ai/research/similar?paper_id=${encodeURIComponent(paperId)}&limit=${limit}`);
   },
 };
 

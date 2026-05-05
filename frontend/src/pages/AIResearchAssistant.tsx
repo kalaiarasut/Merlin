@@ -9,7 +9,7 @@ import {
   Search, Database, Library, GitMerge
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { aiService, AI_SERVICE_URL } from '@/services/api';
+import { aiService } from '@/services/api';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, Area, AreaChart
@@ -451,17 +451,7 @@ export default function AIResearchAssistant() {
     if (mode === 'methodology' || query.toLowerCase().includes('method') || query.toLowerCase().includes('how to')) {
       // Use HYBRID RAG with REAL papers from Semantic Scholar/Europe PMC
       try {
-        const response = await fetch(`${AI_SERVICE_URL}/methodology/query-live`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, provider: selectedProvider })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const ragResult = await response.json();
+        const ragResult = await aiService.queryMethodologyLive(query, selectedProvider);
 
         if (ragResult.success && ragResult.methodology) {
           // Build formatted response with real citations

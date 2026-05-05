@@ -612,6 +612,17 @@ class LLMService:
         except Exception as e:
             import traceback
             logger.error(f"Chat error: {str(e)}\n{traceback.format_exc()}")
+            if search_context:
+                return {
+                    "response": (
+                        "I could not complete LLM synthesis, but web search is available. "
+                        "Here is the live search context I found:\n\n"
+                        f"{search_context}"
+                    ),
+                    "confidence": 0.65,
+                    "provider": "search-fallback",
+                    "error": str(e)
+                }
             
             return {
                 "response": self._generate_fallback_response(message, context),

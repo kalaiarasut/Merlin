@@ -4149,14 +4149,14 @@ async def generate_report(request: ReportGenerationRequest):
             filename=filename
         )
 
-        # Required: push report artifact to S3
+        # Optional: push report artifact to S3 when configured.
         from utils.s3_storage import upload_file_to_s3
 
         s3_upload = upload_file_to_s3(
             filepath,
             key_prefix=os.getenv("S3_REPORTS_PREFIX", "reports"),
         )
-        if not s3_upload:
+        if os.getenv("REPORTS_REQUIRE_S3", "").lower() in ("1", "true", "yes") and not s3_upload:
             raise HTTPException(
                 status_code=500,
                 detail="Report generated but S3 upload failed. Ensure S3_BUCKET and AWS credentials/role are configured."
@@ -4520,14 +4520,14 @@ async def generate_quick_report(request: QuickReportRequest):
         with open(filepath, 'r') as f:
             content = f.read()
 
-        # Required: push quick report artifact to S3
+        # Optional: push quick report artifact to S3 when configured.
         from utils.s3_storage import upload_file_to_s3
 
         s3_upload = upload_file_to_s3(
             filepath,
             key_prefix=os.getenv("S3_REPORTS_PREFIX", "reports"),
         )
-        if not s3_upload:
+        if os.getenv("REPORTS_REQUIRE_S3", "").lower() in ("1", "true", "yes") and not s3_upload:
             raise HTTPException(
                 status_code=500,
                 detail="Quick report generated but S3 upload failed. Ensure S3_BUCKET and AWS credentials/role are configured."

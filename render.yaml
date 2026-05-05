@@ -30,3 +30,25 @@ services:
         sync: false
       - key: POSTGRES_PASSWORD
         sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: SEMANTIC_SCHOLAR_API_KEY
+        sync: false
+      - key: COPERNICUS_USERNAME
+        sync: false
+      - key: COPERNICUS_PASSWORD
+        sync: false
+      - key: NCBI_EMAIL
+        sync: false
+      - key: NCBI_API_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: REPORTS_REQUIRE_S3
+        value: "false"

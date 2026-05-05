@@ -418,9 +418,11 @@ async def chat_stream(request: ChatRequest):
     async def generate_stream():
         try:
             from chat.llm_service import get_llm_service
+            from chat.llm_service import is_live_database_question
             from utils.redis_cache import cache_get
 
             llm_service = get_llm_service(preferred_provider=request.provider)
+            is_db_question = is_live_database_question(request.message, request.context)
             
             # Check if search context is needed
             if llm_service.search_service.is_search_query(request.message):
@@ -435,10 +437,14 @@ async def chat_stream(request: ChatRequest):
             message_hash = hashlib.md5(request.message.lower().strip().encode()).hexdigest()[:16]
             cache_key = f"chat_response_v3:{request.provider}:{message_hash}"
             
-            try:
-                cached_response = cache_get(cache_key)
-            except:
+            if is_db_question:
                 cached_response = None
+                print("[STREAM] Skipping cache for live database question")
+            else:
+                try:
+                    cached_response = cache_get(cache_key)
+                except:
+                    cached_response = None
             
             if cached_response:
                 # FAST STREAMING for cached responses - like ChatGPT's quick typing
@@ -472,13 +478,14 @@ async def chat_stream(request: ChatRequest):
                     yield f"data: {json.dumps({'token': token})}\n\n"
                 
                 # CACHE the response for fast streaming next time
-                try:
-                    from utils.redis_cache import cache_set
-                    result = {"response": full_response, "confidence": 0.95}
-                    cache_set(cache_key, result, ttl_seconds=600)  # 10 min TTL
-                    print(f"[STREAM] Response cached for future fast streaming")
-                except Exception as e:
-                    print(f"[STREAM] Cache write failed: {e}")
+                if not is_db_question:
+                    try:
+                        from utils.redis_cache import cache_set
+                        result = {"response": full_response, "confidence": 0.95}
+                        cache_set(cache_key, result, ttl_seconds=600)  # 10 min TTL
+                        print(f"[STREAM] Response cached for future fast streaming")
+                    except Exception as e:
+                        print(f"[STREAM] Cache write failed: {e}")
                 
                 yield f"data: {json.dumps({'done': True, 'full_response': full_response})}\n\n"
             

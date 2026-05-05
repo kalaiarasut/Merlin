@@ -18,3 +18,15 @@ services:
         value: https://merlinhq.vercel.app,https://merlin-kalaiarasuts-projects.vercel.app,http://localhost:3000,http://localhost:5173
       - key: SKIP_PREEMPTIVE_CACHE
         value: "true"
+      - key: MONGODB_URI
+        sync: false
+      - key: POSTGRES_HOST
+        sync: false
+      - key: POSTGRES_PORT
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false

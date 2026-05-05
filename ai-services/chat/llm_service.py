@@ -83,11 +83,12 @@ MARINE_SYSTEM_PROMPT = (
     "You are a helpful AI assistant for the CMLRE Marine Data Platform.\n"
     "\n"
     "GUIDELINES:\n"
-    "1. Use the DATABASE CONTEXT provided below as your primary source of information.\n"
-    "2. When users ask about species, oceanography, or marine data - use the database context to answer.\n"
-    "3. You can list all species from the database when asked.\n"
+    "1. Use only LIVE DATABASE sections below for facts about Merlin's database.\n"
+    "2. When users ask about species, oceanography, eDNA, otoliths, fisheries, counts, lists, records, or uploaded data, answer only from live database context.\n"
+    "3. If live database context is missing, disconnected, empty, or does not contain the requested fact, say you cannot verify it from the database right now. Do not guess.\n"
     "4. For questions that require external/internet information (news, trends, recent research), use the web search context if provided.\n"
-    "5. Be helpful, informative, and accurate.\n"
+    "5. Give exact numbers and names from live context. Do not estimate database facts.\n"
+    "6. Be helpful, informative, and accurate.\n"
     "\n"
     "You specialize in:\n"
     "- Marine Biology: Species info, taxonomy, ecology\n"
@@ -97,11 +98,28 @@ MARINE_SYSTEM_PROMPT = (
     "\n"
     "When asked to list species, generate reports, or summarize data - use the information from the === LIVE DATABASE === sections below.\n"
     "\n"
-    "You have access to a marine database with species records, oceanographic data, eDNA samples, and otolith images.\n"
+    "Do not claim database access unless a LIVE DATABASE section below confirms a connected source.\n"
     "\n"
     "IMPORTANT: The local database context may have missing details (e.g., 'Unknown' habitat, diet, or depth).\n"
     "If you see 'Unknown' fields for a species, and you have the ability to use tools, you MUST use the `enrich_species_data` tool to fetch this missing information before answering. Do not simply report 'unknown' if the tool can retrieve it.\n"
 )
+
+DATABASE_QUESTION_KEYWORDS = (
+    "database", "species", "fish", "fisheries", "oceanographic", "oceanography",
+    "edna", "eDNA", "otolith", "record", "records", "dataset", "datasets",
+    "catalog", "catalogue", "count", "counts", "how many", "list", "show",
+    "uploaded", "ingested", "occurrence", "occurrences", "survey", "surveys",
+)
+
+
+def is_live_database_question(message: str, context: Optional[Dict[str, Any]] = None) -> bool:
+    """Return true when an answer can go stale or hallucinate without live DB context."""
+    text = (message or "").lower()
+    if any(keyword.lower() in text for keyword in DATABASE_QUESTION_KEYWORDS):
+        return True
+    if context and any(key in context for key in ("data_summary", "selected_species", "backend_database_context")):
+        return True
+    return False
 
 # Tool Definitions
 FISHBASE_TOOL_DEF = {
@@ -139,7 +157,7 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from database import get_all_species, get_species_analytics, get_oceanographic_summary
-        
+
         # ============================================
         # MongoDB Atlas - Species Data
         # ============================================
@@ -246,7 +264,9 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
                 db_context += "\nKey Insights:\n"
                 for insight in analytics['insights']:
                     db_context += f"  • {insight}\n"
-        
+        else:
+            db_context += "\n\n=== LIVE DATABASE SPECIES ===\nMongoDB Atlas: Not connected or no species records returned.\n"
+
         # ============================================
         # PostgreSQL - Oceanographic Data
         # ============================================
@@ -296,22 +316,12 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
         db_context += f"6. Give EXACT numbers from the data - don't estimate.\n"
             
     except Exception as e:
-        # Fallback to static file
-        import json
-        from pathlib import Path
-        possible_paths = [
-            Path(__file__).parent.parent.parent / "database" / "seeds" / "species.json",
-        ]
-        for db_path in possible_paths:
-            if db_path.exists():
-                try:
-                    with open(db_path, 'r') as f:
-                        data = json.load(f)
-                    unique = {sp.get('scientificName'): sp.get('commonName') for sp in data if sp.get('scientificName')}
-                    db_context = f"\n\nDatabase contains {len(unique)} species (from backup file).\n"
-                    break
-                except:
-                    pass
+        logger.error(f"Live database context failed: {e}")
+        db_context = (
+            "\n\n=== LIVE DATABASE CONTEXT ===\n"
+            f"Unavailable: {str(e)[:120]}\n"
+            "Do not answer Merlin database facts from memory, seed files, or estimates.\n"
+        )
     
     return MARINE_SYSTEM_PROMPT + db_context
 
@@ -499,20 +509,24 @@ class LLMService:
     ) -> Dict[str, Any]:
         # Chat Method
         import hashlib
+        is_db_question = is_live_database_question(message, context)
         
         # Generate cache key (based on message only, not context for simplicity)
         message_hash = hashlib.md5(message.lower().strip().encode()).hexdigest()[:16]
         cache_key = f"chat_response:{message_hash}"
         
         # 1. Check cache first
-        try:
-            from utils.redis_cache import cache_get, cache_set
-            cached = cache_get(cache_key)
-            if cached:
-                logger.info(f"CHAT CACHE HIT for: '{message[:40]}...'")
-                return cached
-        except Exception as e:
-            logger.debug(f"Cache check failed: {e}")
+        if not is_db_question:
+            try:
+                from utils.redis_cache import cache_get, cache_set
+                cached = cache_get(cache_key)
+                if cached:
+                    logger.info(f"CHAT CACHE HIT for: '{message[:40]}...'")
+                    return cached
+            except Exception as e:
+                logger.debug(f"Cache check failed: {e}")
+        else:
+            logger.info("Skipping chat cache for live database question")
         
         # 2. Internet Search Integration (also cached in SearchService)
         search_context = ""
@@ -556,11 +570,12 @@ class LLMService:
             }
             
             # 5. Store in cache (10 minute TTL)
-            try:
-                cache_set(cache_key, result, ttl_seconds=600)
-                logger.info(f"Chat response cached (TTL: 600s)")
-            except Exception as e:
-                logger.debug(f"Cache store failed: {e}")
+            if not is_db_question:
+                try:
+                    cache_set(cache_key, result, ttl_seconds=600)
+                    logger.info(f"Chat response cached (TTL: 600s)")
+                except Exception as e:
+                    logger.debug(f"Cache store failed: {e}")
             
             return result
             
@@ -794,7 +809,16 @@ class LLMService:
             context_parts.append(f"Selected species: {context['selected_species']}")
         
         if context.get("data_summary"):
-            context_parts.append(f"Data context: {context['data_summary']}")
+            data_summary = context["data_summary"]
+            if isinstance(data_summary, (dict, list)):
+                data_summary = json.dumps(data_summary, default=str)
+            context_parts.append(f"Data context: {data_summary}")
+        
+        if context.get("backend_database_context"):
+            backend_context = context["backend_database_context"]
+            if isinstance(backend_context, (dict, list)):
+                backend_context = json.dumps(backend_context, default=str)
+            context_parts.append(f"Authoritative backend database context: {backend_context}")
         
         if context.get("recent_analysis"):
             context_parts.append(f"Recent analysis: {context['recent_analysis']}")

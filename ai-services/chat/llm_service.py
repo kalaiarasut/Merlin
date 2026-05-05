@@ -112,6 +112,13 @@ DATABASE_QUESTION_KEYWORDS = (
     "uploaded", "ingested", "occurrence", "occurrences", "survey", "surveys",
 )
 
+FULL_DATABASE_CONTEXT_KEYWORDS = (
+    "list all", "all species", "every species", "entire database", "full database",
+    "species list", "catalog", "catalogue", "details", "detail", "describe",
+    "tell me about", "habitat", "diet", "depth", "family", "conservation",
+    "distribution", "starting with", "ending with", "by family", "by habitat",
+)
+
 
 def is_live_database_question(message: str, context: Optional[Dict[str, Any]] = None) -> bool:
     """Return true when an answer can go stale or hallucinate without live DB context."""
@@ -121,6 +128,12 @@ def is_live_database_question(message: str, context: Optional[Dict[str, Any]] = 
     if context and any(key in context for key in ("data_summary", "selected_species", "backend_database_context")):
         return True
     return False
+
+
+def needs_full_database_context(message: str) -> bool:
+    """Use full record context only when the user asks for lists or detailed fields."""
+    text = (message or "").lower()
+    return any(keyword in text for keyword in FULL_DATABASE_CONTEXT_KEYWORDS)
 
 # Tool Definitions
 FISHBASE_TOOL_DEF = {
@@ -167,6 +180,7 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
         if species_list:
             count = len(species_list)
             db_context = f"\n\n=== LIVE DATABASE SPECIES (EXACTLY {count} species from MongoDB Atlas) ===\n"
+            include_full_species_context = needs_full_database_context(message)
             
             # Legacy Rule-Based Enrichment (Only run if NOT skipping)
             fishbase_data = {}
@@ -220,26 +234,37 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
             else:
                 logger.info("Skipping legacy FishBase enrichment (Agentic Tools Active)")
             
-            for sp in sorted(species_list, key=lambda x: x.get('scientificName', '')):
-                sci = sp.get('scientificName', 'Unknown')
-                common = sp.get('commonName', '')
-                
-                # Get FishBase enriched data if available
-                fb = fishbase_data.get(sci, {})
-                
-                # Use FishBase data if available, otherwise fall back to database
-                habitat = fb.get('habitat') or sp.get('habitat', 'Unknown habitat')
-                color = fb.get('color', 'Color unknown')
-                depth_min = fb.get('depth_min', '')
-                depth_max = fb.get('depth_max', '')
-                depth_str = f"{depth_min}-{depth_max}m" if depth_min or depth_max else "Depth unknown"
-                diet = fb.get('diet') or fb.get('feeding_type') or sp.get('diet', 'Diet unknown')
-                max_length = fb.get('max_length', '')
-                status = fb.get('iucn_status') or sp.get('conservationStatus', 'Status unknown')
-                
-                db_context += f"- {sci} ({common})\n"
-                db_context += f"   Habitat: {habitat} | Depth: {depth_str} | Color: {color}\n"
-                db_context += f"   Diet: {diet} | Max Length: {max_length}cm | IUCN: {status}\n"
+            if include_full_species_context:
+                for sp in sorted(species_list, key=lambda x: x.get('scientificName', '')):
+                    sci = sp.get('scientificName', 'Unknown')
+                    common = sp.get('commonName', '')
+                    
+                    # Get FishBase enriched data if available
+                    fb = fishbase_data.get(sci, {})
+                    
+                    # Use FishBase data if available, otherwise fall back to database
+                    habitat = fb.get('habitat') or sp.get('habitat', 'Unknown habitat')
+                    color = fb.get('color', 'Color unknown')
+                    depth_min = fb.get('depth_min', '')
+                    depth_max = fb.get('depth_max', '')
+                    depth_str = f"{depth_min}-{depth_max}m" if depth_min or depth_max else "Depth unknown"
+                    diet = fb.get('diet') or fb.get('feeding_type') or sp.get('diet', 'Diet unknown')
+                    max_length = fb.get('max_length', '')
+                    status = fb.get('iucn_status') or sp.get('conservationStatus', 'Status unknown')
+                    
+                    db_context += f"- {sci} ({common})\n"
+                    db_context += f"   Habitat: {habitat} | Depth: {depth_str} | Color: {color}\n"
+                    db_context += f"   Diet: {diet} | Max Length: {max_length}cm | IUCN: {status}\n"
+            else:
+                sample_names = [
+                    sp.get('scientificName', 'Unknown')
+                    for sp in sorted(species_list, key=lambda x: x.get('scientificName', ''))[:20]
+                ]
+                db_context += (
+                    "Full species records are available but not included for this short factual question. "
+                    "Use the exact count and analytics below; ask for a list or details to include full records.\n"
+                )
+                db_context += f"Sample scientific names: {', '.join(sample_names)}\n"
             
             # Get analytics for complex questions
             analytics = get_species_analytics()

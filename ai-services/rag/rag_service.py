@@ -383,14 +383,16 @@ Format each step as:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
-                    model="llama-3.3-70b-versatile",
+                    model=os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
                     temperature=0.3,
                     max_tokens=2048,
                 )
                 return completion.choices[0].message.content
             except Exception as e:
-                logger.error(f"Groq API failed, falling back to Ollama: {e}")
-                # Fall through to Ollama
+                logger.error(f"Groq API failed: {e}")
+                if provider == "groq":
+                    return f"Error: Groq methodology generation failed: {str(e)}"
+                # Fall through to Ollama only for auto/fallback mode.
 
 
         try:

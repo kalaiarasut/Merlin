@@ -13,7 +13,7 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: llama-3.1-8b-instant
       - key: CORS_ALLOW_ORIGINS
         value: https://merlinhq.vercel.app,https://merlin-kalaiarasuts-projects.vercel.app,http://localhost:3000,http://localhost:5173
       - key: SKIP_PREEMPTIVE_CACHE

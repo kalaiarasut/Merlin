@@ -1149,97 +1149,21 @@ class LLMService:
         try:
             client = Groq(api_key=self.config.groq_api_key)
             
-            # Strategy: FORCE tool use if query implies species listing or details
-            # This overcomes "lazy agent" behavior where it relies on the summary
-            msg_lower = message.lower()
-            force_tool = any(k in msg_lower for k in ["list", "species", "fish", "marine", "detail", "info", "what is"])
-            
-            forced_tool_choice = "auto"
-            if force_tool and "enrich_species_data" in str(FISHBASE_TOOL_DEF):
-                forced_tool_choice = {"type": "function", "function": {"name": "enrich_species_data"}}
-                logger.info("Forcing Tool Use: enrich_species_data")
-
-            # 1. Start Stream with Tools
             stream = client.chat.completions.create(
                 messages=messages,
                 model=self.config.groq_model,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
-                stream=True,
-                tools=[FISHBASE_TOOL_DEF],
-                tool_choice=forced_tool_choice
+                stream=True
             )
-            
-            tool_calls_buffer = {}
-            
+
             for chunk in stream:
                 if not chunk.choices:
                     continue
-                    
+
                 delta = chunk.choices[0].delta
-                
-                # Check for Content (yield immediately)
                 if delta.content:
                     yield delta.content
-                    
-                # Check for Tool Calls (buffer them)
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        if tc.index not in tool_calls_buffer:
-                            tool_calls_buffer[tc.index] = {"id": tc.id, "name": tc.function.name, "args": ""}
-                        # Append arguments fragment
-                        if tc.function.arguments:
-                            tool_calls_buffer[tc.index]["args"] += tc.function.arguments
-            
-            # 2. If Tools Were Called
-            if tool_calls_buffer:
-                logger.info(f"Groq Stream - Tools Triggered: {len(tool_calls_buffer)}")
-                
-                # Reconstruct Tool Calls for History
-                full_tool_calls = []
-                for idx in sorted(tool_calls_buffer.keys()):
-                    entry = tool_calls_buffer[idx]
-                    full_tool_calls.append({
-                        "id": entry["id"],
-                        "type": "function",
-                        "function": {
-                            "name": entry["name"],
-                            "arguments": entry["args"]
-                        }
-                    })
-                
-                # Append Assistant's Tool Call Request
-                messages.append({
-                    "role": "assistant",
-                    "tool_calls": full_tool_calls
-                })
-                
-                # Execute Tools
-                for tc in full_tool_calls:
-                    # Create a Mock object to reuse _execute_tool_call
-                    class ToolCallMock:
-                        def __init__(self, d):
-                            self.id = d['id']
-                            self.function = type('obj', (object,), {
-                                'name': d['function']['name'], 
-                                'arguments': d['function']['arguments']
-                            })
-                    
-                    result_msgs = await self._execute_tool_call(ToolCallMock(tc), request_id)
-                    if result_msgs:
-                        messages.extend(result_msgs)
-                
-                # 3. Stream Final Response
-                stream_final = client.chat.completions.create(
-                    messages=messages,
-                    model=self.config.groq_model,
-                    temperature=self.config.temperature,
-                    stream=True
-                )
-                
-                for chunk in stream_final:
-                    if chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
                     
         except Exception as e:
             logger.error(f"Groq streaming error: {e}")

@@ -1,0 +1,137 @@
+{
+  "Thunnus albacares": {
+    "scientific_name": "Thunnus albacares",
+    "common_name": "Yellowfin Tuna",
+    "habitat": "pelagic",
+    "family": "Scombridae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Katsuwonus pelamis": {
+    "scientific_name": "Katsuwonus pelamis",
+    "common_name": "Skipjack Tuna",
+    "habitat": "pelagic",
+    "family": "Scombridae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Thunnus obesus": {
+    "scientific_name": "Thunnus obesus",
+    "common_name": "Bigeye Tuna",
+    "habitat": "pelagic",
+    "family": "Scombridae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Caranx ignobilis": {
+    "scientific_name": "Caranx ignobilis",
+    "common_name": "Giant Trevally",
+    "habitat": "reef",
+    "family": "Carangidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Caranx sexfasciatus": {
+    "scientific_name": "Caranx sexfasciatus",
+    "common_name": "Bigeye Trevally",
+    "habitat": "reef",
+    "family": "Carangidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Scomberoides lysan": {
+    "scientific_name": "Scomberoides lysan",
+    "common_name": "Double-spotted Queenfish",
+    "habitat": "coastal",
+    "family": "Carangidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Lutjanus bohar": {
+    "scientific_name": "Lutjanus bohar",
+    "common_name": "Two-spot Red Snapper",
+    "habitat": "reef",
+    "family": "Lutjanidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Lutjanus argentimaculatus": {
+    "scientific_name": "Lutjanus argentimaculatus",
+    "common_name": "Mangrove Red Snapper",
+    "habitat": "coastal",
+    "family": "Lutjanidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Epinephelus coioides": {
+    "scientific_name": "Epinephelus coioides",
+    "common_name": "Orange-spotted Grouper",
+    "habitat": "reef",
+    "family": "Serranidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Epinephelus malabaricus": {
+    "scientific_name": "Epinephelus malabaricus",
+    "common_name": "Malabar Grouper",
+    "habitat": "coastal",
+    "family": "Serranidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Coryphaena hippurus": {
+    "scientific_name": "Coryphaena hippurus",
+    "common_name": "Mahi-mahi",
+    "habitat": "pelagic",
+    "family": "Coryphaenidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Xiphias gladius": {
+    "scientific_name": "Xiphias gladius",
+    "common_name": "Swordfish",
+    "habitat": "pelagic",
+    "family": "Xiphiidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Istiophorus platypterus": {
+    "scientific_name": "Istiophorus platypterus",
+    "common_name": "Indo-Pacific Sailfish",
+    "habitat": "pelagic",
+    "family": "Istiophoridae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Sphyraena barracuda": {
+    "scientific_name": "Sphyraena barracuda",
+    "common_name": "Great Barracuda",
+    "habitat": "reef",
+    "family": "Sphyraenidae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  },
+  "Rachycentron canadum": {
+    "scientific_name": "Rachycentron canadum",
+    "common_name": "Cobia",
+    "habitat": "coastal",
+    "family": "Rachycentridae",
+    "training_images": 0,
+    "added_date": "2025-12-20T10:19:15.485359",
+    "last_trained": ""
+  }
+}

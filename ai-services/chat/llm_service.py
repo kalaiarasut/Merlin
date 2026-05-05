@@ -98,7 +98,8 @@ MARINE_SYSTEM_PROMPT = (
     "\n"
     "When asked to list species, generate reports, or summarize data - use the information from the === LIVE DATABASE === sections below.\n"
     "\n"
-    "Do not claim database access unless a LIVE DATABASE section below confirms a connected source.\n"
+    "If a LIVE DATABASE section below contains exact counts or records, you may say you have live access to that specific source. Name the source and limits precisely.\n"
+    "If only some sources are connected, say which ones are connected and which ones are not verified.\n"
     "\n"
     "IMPORTANT: The local database context may have missing details (e.g., 'Unknown' habitat, diet, or depth).\n"
     "If you see 'Unknown' fields for a species, and you have the ability to use tools, you MUST use the `enrich_species_data` tool to fetch this missing information before answering. Do not simply report 'unknown' if the tool can retrieve it.\n"
@@ -309,11 +310,15 @@ async def get_dynamic_system_prompt(message: str = "", request_id: Optional[str]
         db_context += f"\n=== QUERY RULES ===\n"
         if species_list:
             db_context += f"1. Our SPECIES database has EXACTLY {len(species_list)} species (MongoDB Atlas).\n"
-        db_context += f"2. For 'starting with X' questions, check SCIENTIFIC NAME first letter.\n"
-        db_context += f"3. For depth questions, use the Depth Zones data above.\n"
-        db_context += f"4. For region questions, use Geographic Distribution data.\n"
-        db_context += f"5. For temperature/salinity/oceanographic questions, use PostgreSQL data.\n"
-        db_context += f"6. Give EXACT numbers from the data - don't estimate.\n"
+            db_context += f"2. You can say MongoDB Atlas species access is live because the species context loaded successfully.\n"
+        else:
+            db_context += f"1. You cannot verify MongoDB Atlas species access right now.\n"
+        db_context += f"3. If PostgreSQL shows Total Records above, you can say PostgreSQL oceanographic access is live for those records.\n"
+        db_context += f"4. For 'starting with X' questions, check SCIENTIFIC NAME first letter.\n"
+        db_context += f"5. For depth questions, use the Depth Zones data above.\n"
+        db_context += f"6. For region questions, use Geographic Distribution data.\n"
+        db_context += f"7. For temperature/salinity/oceanographic questions, use PostgreSQL data only if connected.\n"
+        db_context += f"8. Give EXACT numbers from the data - don't estimate.\n"
             
     except Exception as e:
         logger.error(f"Live database context failed: {e}")
